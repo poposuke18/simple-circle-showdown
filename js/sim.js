@@ -611,12 +611,41 @@ window.SCS = window.SCS || {};
       const mom = fd > 0.2 ? "PLRが圧倒する流れ" : fd > 0.08 ? "ややPLRに分がある" : fd < -0.2 ? "CPUが押し込む展開" : fd < -0.08 ? "ややCPU優勢" : "互角の睨み合い";
       return `${dfeel}（${pd}％）、${arena.name}。${ln}。${mom}。`;
     }
-    function narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC) {
+    // ★決着ターン専用：倒れる側の「最後の行動（〜しようとした）＋死因＋崩れ方」を一文に（同時動作を保ったまま自然に）
+    const FIN_MV = {
+      ADVANCE: ["踏み込もうとした", "間合いを詰めようとした", "前へ出ようとした"],
+      RETREAT: ["距離を取ろうとした", "退こうとした", "身を引こうとした"],
+      STRAFE_L: ["左へ回り込もうとした", "横へ回ろうとした", "身をかわそうとした"],
+      STRAFE_R: ["右へ回り込もうとした", "横へ流れようとした", "身をかわそうとした"],
+      COVER: ["遮蔽へ逃れようとした", "物陰へ転がり込もうとした"],
+      HOLD: ["構え直そうとした", "機を窺っていた", "踏み止まろうとした"],
+    };
+    function finishIntent(dec, ev, sd) {
+      if (ev.dodge) return px(["紙一重でかわそうと身を翻した刹那", "見切ろうとした、まさにその瞬間"], sideSalt(sd, 84));
+      if (ev.reloading) return px(["弾を込めようとした矢先", "リロードに入った刹那"], sideSalt(sd, 84));
+      if (ev.guard) return px(["受けに回ろうとした、が", "防ごうと身構えた——が及ばず"], sideSalt(sd, 84));
+      if (ev.charge) return px(["突進を仕掛けた——が及ばず", "踏み込んでの一撃を狙った、が"], sideSalt(sd, 84));
+      if (ev.attack === "RANGED" || ev.attack === "MELEE") return px(["一撃を返そうとした、が", "迎え撃とうとした——が及ばず", "相討ちを狙った、が一歩遅く"], sideSalt(sd, 84));
+      return px(FIN_MV[dec.cand.move] || ["動こうとした"], sideSalt(sd, 84));
+    }
+    function finishCause(cause, foe) {
+      if (cause === "counter") return px(["迎え撃つ反撃が深々と突き刺さり", "回避から放たれた一閃が捉え"], 85);
+      if (cause === "fire") return px(["燃え盛る炎に呑まれ", "立ち上る業火に巻かれ"], 85);
+      if (cause && cause.indexOf("status:") === 0) { const m = { bleed: "止まらぬ出血に力を奪われ", poison: "毒が全身に回り", burn: "燃え広がる炎に灼かれ" }; return m[cause.slice(7)] || "深手がもとで"; }
+      return px([`${foe.name}の一撃が深々と突き刺さり`, "相手の渾身の一撃が捉え", "放たれた決定打が突き刺さり"], 85);
+    }
+    function composeFinish(side, dec, ev, cause) {
+      const self = stat(side), sd = self.side, foe = stat(other(side));
+      return `${finishIntent(dec, ev, sd)}——${finishCause(cause, foe)}、${px(FIN_KO, sideSalt(sd, 80))}`;
+    }
+    function narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC, ko) {
       const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100));
+      const plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP));
+      const cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC));
       const lines = [
         { text: `【戦況】${situationLine(pre)}`, cls: "sit" },
-        { text: `　▸ PLR（${plr.name}）　${composeAction("p", decP, evP, guilePrefix(geP))}`, cls: "plr" },
-        { text: `　▸ CPU（${cpu.name}）　${composeAction("c", decC, evC, guilePrefix(geC))}`, cls: "cpu" },
+        { text: `　▸ PLR（${plr.name}）　${plrAct}`, cls: "plr" },
+        { text: `　▸ CPU（${cpu.name}）　${cpuAct}`, cls: "cpu" },
         { text: `　└ 結果：間合い ${pd}→${displayDist()}％／PLR ${hpP0}→${plr.hp}${hpWord(plr)}・CPU ${hpC0}→${cpu.hp}${hpWord(cpu)}`, cls: "dim" },
       ];
       for (const c of commentary(evP, evC, hpP0, hpC0)) lines.push(c);
@@ -807,7 +836,15 @@ window.SCS = window.SCS || {};
       if (cntP) stats.p.dmgDealt += cntP;
       if (cntC) stats.c.dmgDealt += cntC;
       stats.p.hpSeries.push(plr.hp); stats.c.hpSeries.push(cpu.hp);
-      const lines = narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC);
+      const pDead = hpP0 > 0 && plr.hp <= 0, cDead = hpC0 > 0 && cpu.hp <= 0; // ★この決着ターンに倒れた側＋死因を判定し、描写を自然に
+      const causeFor = (dead) => {
+        const fEv = dead === "p" ? evC : evP, fCnt = dead === "p" ? cntC : cntP, mTick = dead === "p" ? tkP : tkC, mFire = dead === "p" ? fire.p : fire.c, dir = fEv.dmg || 0;
+        if (fCnt > 0 && fCnt >= dir && fCnt >= mTick.dmg && fCnt >= mFire) return "counter";
+        if (mFire > 0 && mFire >= dir && mFire >= mTick.dmg) return "fire";
+        if (mTick.dmg > 0 && mTick.dmg >= dir) return "status:" + (mTick.types[0] || "bleed");
+        return "attack";
+      };
+      const lines = narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC, { p: pDead, c: cDead, causeP: pDead ? causeFor("p") : null, causeC: cDead ? causeFor("c") : null });
       if (tkP.dmg > 0) lines.push({ text: `　　＊PLR(${plr.name}) ${tkP.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tkP.dmg}${plr.hp <= 0 ? "（戦闘不能）" : ""}`, cls: "plr" });
       if (tkC.dmg > 0) lines.push({ text: `　　＊CPU(${cpu.name}) ${tkC.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tkC.dmg}${cpu.hp <= 0 ? "（戦闘不能）" : ""}`, cls: "cpu" });
       if (swP) lines.push({ text: `── 火事場の馬鹿力——PLR(${plr.name})、最後の力を振り絞る！`, cls: "cm" });
