@@ -32,7 +32,7 @@ window.SCS = window.SCS || {};
     const field = { w: arena.w, h: arena.h }, obstacles = arena.obstacles, baseTerrain = T[arena.base];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = S.turnCap;
 
-    function initUnit(u, side, start) { return Object.assign(u, { side, x: start.x, y: start.y, speed: 0.5 + u.micros.B5 * 0.5 + u.micros.B3 * 0.2, oppModel: { recent: [] }, hurtAt: {}, plan: null, planPressure: 0, ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, windLeft: 0, statuses: [], stun: 0, stamina: 1, momentum: 0 }); }
+    function initUnit(u, side, start) { return Object.assign(u, { side, x: start.x, y: start.y, speed: 0.5 + u.micros.B5 * 0.5 + u.micros.B3 * 0.2, oppModel: { recent: [] }, hurtAt: {}, plan: null, planPressure: 0, ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, windLeft: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, oppProfile: { atk: 0, adv: 0, dist: 0, dodge: 0, n: 0 }, strategy: null, stratPressure: 0 }); }
     const plr = initUnit(plrUnit, "PLR", arena.start.p), cpu = initUnit(cpuUnit, "CPU", arena.start.c);
     const stat = (s) => (s === "p" ? plr : cpu), other = (s) => (s === "p" ? "c" : "p");
     let turn = 0, over = false, result = null, noDamageTurns = 0;
@@ -53,7 +53,7 @@ window.SCS = window.SCS || {};
     function tickStatuses(u) { let dmg = 0; const types = []; for (const s of u.statuses) { if (s.dmg) { dmg += s.dmg; types.push(s.type); } s.turns--; } u.statuses = u.statuses.filter((s) => s.turns > 0); return { dmg, types }; }
 
     // ===== 戦闘統計（分析フィードバック用・パラメータは見せず挙動の結果で語る）=====
-    const mkStat = () => ({ shots: 0, hits: 0, crits: 0, dmgDealt: 0, dmgTaken: 0, ranged: 0, melee: 0, reloads: 0, empties: 0, statusOut: {}, mv: {}, near: 0, mid: 0, far: 0, distSum: 0, distN: 0, guile: 0, biggest: 0, biggestTurn: 0, firstHit: 0, hpSeries: [], dodges: 0, counters: 0, winded: 0 });
+    const mkStat = () => ({ shots: 0, hits: 0, crits: 0, dmgDealt: 0, dmgTaken: 0, ranged: 0, melee: 0, reloads: 0, empties: 0, statusOut: {}, mv: {}, near: 0, mid: 0, far: 0, distSum: 0, distN: 0, guile: 0, biggest: 0, biggestTurn: 0, firstHit: 0, hpSeries: [], dodges: 0, counters: 0, winded: 0, strat: {} });
     const stats = { p: mkStat(), c: mkStat() };
 
     const losClear = (a, b) => !obstacles.some((r) => segIntersectsRect(a, b, r));
@@ -178,8 +178,20 @@ window.SCS = window.SCS || {};
       const lead = shpf - fhpf, late = turnsLeft < 12; // D4 時間の駆け引き
       if (late && lead > 0.05) w.threat *= 1 + m.D4 * 0.5;  // 有利→逃げ切り上手（脅威回避↑）
       if (late && lead < -0.05) w.engage += m.D4 * 0.3;     // 不利→急かし上手（攻め↑）
-      const stall = Math.min(1, noDamageTurns / 4); // 膠着が続くほど全員が交戦を急ぐ＝膠着打破（早めに発火）
-      if (stall > 0) { w.engage += stall * 0.6; w.winRange += stall * 0.3; w.threat *= 1 - stall * 0.5; w.cover *= 1 - stall * 0.6; }
+      // 戦略レイヤー：複数ターンの方針で評価重み・狙う間合いが傾く（Wave2）
+      const sm = self.strategy;
+      if (sm) {
+        let prefT = self.prefRange;
+        if (sm === "RUSHDOWN") { prefT = Math.max(self.melee.reach * 0.8, self.prefRange - 12); w.engage += 0.28; w.kill += 0.15; w.threat *= 0.72; w.danger *= 0.78; }
+        else if (sm === "KITE") { prefT = self.prefRange + 7; w.winRange += 0.22; w.threat += 0.15; }
+        else if (sm === "COUNTER") { w.threat += 0.2; w.engage *= 0.88; w.danger += 0.08; }
+        else if (sm === "ZONE") { prefT = self.prefRange + 3; w.cover += 0.2; w.terrain += 0.2; w.pos += 0.2; }
+        else if (sm === "ATTRITION") { w.threat += 0.12; w.trade += 0.14; w.engage *= 0.9; }
+        if (prefT !== self.prefRange) f.winRange = 1 - clamp(Math.abs(d - prefT) / (55 - m.B4 * 25), 0, 1.4);
+      }
+      // アンチストールは戦略より後＝最優先（守り戦略でも膠着・時間切れを防ぐ）
+      const stall = Math.min(1, noDamageTurns / 4);
+      if (stall > 0) { w.engage += stall * 0.7; w.winRange += stall * 0.3; w.threat *= 1 - stall * 0.6; w.cover *= 1 - stall * 0.6; }
       let v = 0; for (const k in f) v += f[k] * w[k];
       return { v, f, w };
     }
@@ -193,6 +205,43 @@ window.SCS = window.SCS || {};
     function rollout(state, first, g, horizon, forWhom) { let s = { p: { ...state.p }, c: { ...state.c } }, mv = first; for (let i = 0; i < horizon && !terminal(s); i++) { const gb = greedyBest(s, mv); s = applyStochastic(s, mv, gb.c, g); mv = other(mv); } return evalState(s, forWhom); }
 
     function predictMove(self) { const r = self.oppModel.recent.slice(-5); if (!r.length) return null; const c = {}; let b = null, bv = 0; for (const mv of r) { c[mv] = (c[mv] || 0) + 1; if (c[mv] > bv) { bv = c[mv]; b = mv; } } return bv >= 2 ? b : null; }
+    // ===== Wave2：思考レイヤー（戦略・相手の性格推定・リスク評価）=====
+    function inferOppStyle(u) { const p = u.oppProfile, n = p.n || 1; return { aggression: clamp((p.atk + p.adv * 0.6) / n, 0, 1), avgDist: p.dist / n, dodgy: p.dodge / n > 0.18, sampled: p.n >= 3 }; }
+    const STRAT_JP = { RUSHDOWN: "速攻", KITE: "カイト", COUNTER: "カウンター狙い", ZONE: "制圧", BAIT: "誘い出し", ATTRITION: "持久" };
+    function strategyScores(self, lead) {
+      const m = self.micros, close = self.winDist <= 25, far = self.winDist >= 45, opp = inferOppStyle(self), adapt = self.cog.oppModelWeight > 0.45 || m.D2 > 0.6;
+      const sc = {
+        RUSHDOWN: 0.15 + m.A2 * 0.45 + m.A3 * 0.35 + m.C2 * 0.25 + (close ? 0.25 : 0) - m.C1 * 0.3,
+        KITE: 0.18 + m.B2 * 0.55 + (far ? 0.35 : 0) + m.B5 * 0.25 + m.A1 * 0.2 - m.A3 * 0.3,
+        COUNTER: 0.12 + m.D1 * 0.4 + m.D6 * 0.28 + m.B3 * 0.3 + m.C5 * 0.15 - m.A2 * 0.2,
+        ZONE: 0.18 + m.B1 * 0.45 + m.B6 * 0.35 + m.D5 * 0.4 + m.B4 * 0.1,
+        BAIT: 0.14 + m.D4 * 0.55 + m.D3 * 0.35 + m.D2 * 0.2,
+        ATTRITION: 0.2 + m.C5 * 0.35 + m.B4 * 0.4 + (self.maxHp > 105 ? 0.3 : 0) + m.C1 * 0.2 - m.A2 * 0.35,
+      };
+      if (adapt && opp.sampled) { // 相手の攻守傾向に合わせて適応（順応/相手読みが高い人格のみ）
+        if (opp.aggression > 0.55) { sc.COUNTER += 0.3; sc.KITE += 0.2; sc.RUSHDOWN -= 0.15; }
+        else { sc.RUSHDOWN += 0.25; sc.ZONE += 0.2; sc.COUNTER -= 0.15; }
+      }
+      if (lead < -0.12) { sc.RUSHDOWN += 0.2; sc.BAIT += 0.15; }       // 負け→動いて変える
+      else if (lead > 0.12) { sc.KITE += 0.2; sc.ATTRITION += 0.2; }   // 勝ち→逃げ切り
+      if (self.stamina < 0.4) { sc.ATTRITION += 0.2; sc.RUSHDOWN -= 0.15; } // 息切れ→持久
+      return sc;
+    }
+    function chooseStrategy(self, lead) { // ヒステリシス（順応D2が高いほど乗り換えやすい）
+      const sc = strategyScores(self, lead);
+      let best = null, bv = -Infinity; for (const k in sc) if (sc[k] > bv) { bv = sc[k]; best = k; }
+      if (self.strategy == null) { self.strategy = best; return best; }
+      if (best === self.strategy) { self.stratPressure = 0; return best; }
+      const margin = 0.12 + (1 - self.micros.D2) * 0.25;
+      if (bv > sc[self.strategy] + margin) { self.stratPressure++; if (self.stratPressure >= 2) { self.strategy = best; self.stratPressure = 0; } } else self.stratPressure = 0;
+      return self.strategy;
+    }
+    function candVariance(c, self) { // 行動の分散（高いほど博打）。リスク評価用
+      if (c.attack === "MELEE") return self.melee.pattern === "heavy" ? 0.9 : self.melee.pattern === "balanced" ? 0.5 : 0.25;
+      if (c.attack === "RANGED") { const rw = self.ranged; return rw.mode === "charge" ? 0.85 : rw.key === "shotgun" ? 0.7 : rw.fireRate >= 6 ? 0.2 : 0.45; }
+      if (c.attack === "DODGE") return 0.5;
+      return 0.1;
+    }
     function naturalPlan(self, foe, d) { if (foe.hp / foe.maxHp < 0.3) return "仕留め"; if (self.hp / self.maxHp < 0.25 && self.micros.C6 < 0.5) return "退避"; if (d > self.prefRange + 12) return "接近"; if (d < self.prefRange - 12) return "距離取り"; return "定間合い"; }
     function commitPlan(self, foe, d) { // 順応(D2)が高いほど乗り換えやすい・規律寄りは固執
       const np = naturalPlan(self, foe, d), hard = np === "仕留め" || np === "退避";
@@ -215,12 +264,15 @@ window.SCS = window.SCS || {};
       let best = cands[0], bv = -Infinity;
       for (const c of cands) { const v = evalState(applyExpected(s0, side, c), side); if (v > bv) { bv = v; best = c; } }
       const self = stat(side);
-      return { cand: { ...best, attack: "RELOAD" }, reason: "弾込め", predFoe: null, depth: self.cog.searchDepth, mc: 0, plan: "リロード", second: null, readFoe: null };
+      return { cand: { ...best, attack: "RELOAD" }, reason: "弾込め", predFoe: null, depth: self.cog.searchDepth, mc: 0, plan: "リロード", second: null, readFoe: null, strat: self.strategy, stratChanged: false, gamble: false };
     }
     function decide(side) {
       const fo = other(side), self = stat(side), foe = stat(fo), cog = self.cog, s0 = snapshot();
       const ammoFrac = self.ammo / self.ranged.mag, caution = clamp((1 - self.micros.C2) * 0.40, 0, 0.45); // リスク低=早めに装填／博打打ちは弾切れまで撃つ
       if (self.reloadLeft > 0 || self.ammo === 0 || (ammoFrac < caution && (expEx(foe, self, { x: foe.x, y: foe.y }, { x: self.x, y: self.y }, dist(self, foe), losClear(self, foe)) < 12 || !losClear(self, foe)))) return reloadDecision(side);
+      const lead = self.hp / self.maxHp - foe.hp / foe.maxHp;
+      const oldStrat = self.strategy, strat = chooseStrategy(self, lead), stratChanged = oldStrat != null && oldStrat !== strat; // Wave2：戦略を選ぶ（評価重みに反映）
+      const riskAppetite = (self.micros.C2 - 0.5) * 0.5 + (lead < -0.1 ? 0.25 : lead > 0.1 ? -0.2 : 0); // リスク選好＋戦況（負け→博打/勝ち→安全）
       const predist = Math.round(dist(self, foe)), plan = commitPlan(self, foe, predist);
       const learned = predictMove(self), useModel = !!learned && cog.oppModelWeight > 0.5;
       const planW = 0.12 + (1 - self.micros.D2) * 0.18; // 順応低=プラン固執（バイアス強）
@@ -246,6 +298,7 @@ window.SCS = window.SCS || {};
         if (cog.mcSamples > 0 && c.attack !== "DODGE") { let sum = 0; for (let r = 0; r < cog.mcSamples; r++) { const think = SCS.makeRNG(((seed >>> 0) ^ (turn * 131) ^ (side === "p" ? 1 : 2) ^ ((cands.indexOf(c) + 1) * 977) ^ (r * 13)) >>> 0); sum += rollout(ns, fo, think, cog.searchDepth * 2, side); } v = v * 0.4 + (sum / cog.mcSamples) * 0.6; }
         v += planW * planBias(c, plan, self, predist);
         if (c.attack === "RANGED" && c.los2) { const hc = rangedHit(self.ranged, c.newPos, { x: s0[fo].x, y: s0[fo].y }, foe, c.d2, true, c.moved); const gate = clamp(self.micros.A5 * 0.6 - self.micros.A4 * 0.4, 0, 0.45); if (hc < gate) v -= (gate - hc) * 0.7; } // A5/A4: 命中見込み低なら撃たない/とにかく撃つ
+        v += riskAppetite * candVariance(c, self) * 0.5; // Wave2 リスク/EV：博打を好む/避ける（性格×戦況）
         v += rng.range(-cog.explorationTemp, cog.explorationTemp);
         c.v = v; c.ns = ns;
       }
@@ -253,7 +306,7 @@ window.SCS = window.SCS || {};
       const best = cands[0], second = cands[1] ? cands[1].move : null;
       let predFoe = useModel ? learned : null;
       if (!predFoe && cog.searchDepth >= 2 && best.ns.p.hp > 0 && best.ns.c.hp > 0) predFoe = greedyBest(best.ns, fo).c.move;
-      return { cand: best, reason: dominantFactor(best.ns, side), predFoe, depth: cog.searchDepth, mc: cog.mcSamples, plan, second, readFoe: useModel ? learned : null };
+      return { cand: best, reason: dominantFactor(best.ns, side), predFoe, depth: cog.searchDepth, mc: cog.mcSamples, plan, second, readFoe: useModel ? learned : null, strat, stratChanged, gamble: candVariance(best, self) > 0.6 && riskAppetite > 0.12 };
     }
 
     function moveUnit(side, cand) { const s = stat(side); s.x = cand.newPos.x; s.y = cand.newPos.y; }
@@ -452,15 +505,16 @@ window.SCS = window.SCS || {};
       if (ev.dodge) {
         const cnt = ev.counter ? px([`——読んでいた！回避から鋭い反撃、−${ev.counter}！`, `見切りざまの一閃が突き刺さる、−${ev.counter}！`, `紙一重でかわし、反撃を叩き込む、−${ev.counter}！`], sideSalt(sd, 67)) : "";
         const base = px(["身を翻し、紙一重でかわす。", "読んで、すっと攻撃線から外れる。", "半身でいなし、攻撃を受け流す。", "見切って横へ跳んだ。"], sideSalt(sd, 68));
-        return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${base}${cnt} 〈回避/深${dec.depth}〉`;
+        return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${base}${cnt} 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}回避/深${dec.depth}〉`;
       }
       const dem = px(DEMEANOR[moodOf(self)], sideSalt(sd, 11));
+      const gmb = dec.gamble ? px(["一か八か、", "乾坤一擲——", "ここで勝負と、"], sideSalt(sd, 69)) : ""; // リスク選好の博打
       const mvp = px(MV[dec.cand.move], sideSalt(sd, 12));
       const terr = terrainPhrase(terrainAt(self)), terrC = terr ? terr + "、" : "";
       const atk = composeAttack(self, stat(other(side)), ev);
-      const body = `${dem}${gpre || ""}${terrC}${mvp}、${atk}`;
+      const body = `${dem}${gpre || ""}${gmb}${terrC}${mvp}、${atk}`;
       const read = dec.readFoe && hsh(sideSalt(sd, 13)) % 2 === 0 ? ` ${px(["相手の", "敵の"], sideSalt(sd, 14))}${MOVE_JP[dec.readFoe]}を見切っていた。` : "";
-      const tags = ` 〈${dec.plan}/深${dec.depth}${dec.mc ? "+MC" : ""}・${dec.reason}〉`;
+      const tags = ` 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}${dec.plan}/深${dec.depth}${dec.mc ? "+MC" : ""}・${dec.reason}〉`;
       return `${body}${read}${tags}`;
     }
     const hpWord = (u) => { const f = u.hp / u.maxHp; return u.hp <= 0 ? "（戦闘不能）" : f < 0.25 ? "（瀕死）" : f < 0.5 ? "（手負い）" : ""; };
@@ -497,6 +551,8 @@ window.SCS = window.SCS || {};
         { text: `　└ 結果：間合い ${pd}→${displayDist()}％／PLR ${hpP0}→${plr.hp}${hpWord(plr)}・CPU ${hpC0}→${cpu.hp}${hpWord(cpu)}`, cls: "dim" },
       ];
       for (const c of commentary(evP, evC, hpP0, hpC0)) lines.push(c);
+      if (decP.stratChanged) lines.push({ text: `── PLR(${plr.name})、構えを変えた——${STRAT_JP[decP.strat]}へ。`, cls: "cm" });
+      if (decC.stratChanged) lines.push({ text: `── CPU(${cpu.name})、構えを変えた——${STRAT_JP[decC.strat]}へ。`, cls: "cm" });
       return lines;
     }
     const FIN_KO = ["崩れ落ちた。", "ついに膝をついた。", "力尽きて倒れ込む。", "糸が切れたように沈黙した。", "もう立ち上がれない。"];
@@ -536,7 +592,7 @@ window.SCS = window.SCS || {};
       return null;
     }
     // 麻痺中は行動不能（その場で硬直）
-    function stunnedDecision(side) { const self = stat(side); return { cand: { move: "HOLD", attack: "NONE", newPos: { x: self.x, y: self.y }, moved: false, d2: dist(plr, cpu), los2: losClear(plr, cpu) }, reason: "麻痺", predFoe: null, depth: self.cog.searchDepth, mc: 0, plan: "麻痺", second: null, readFoe: null, stunned: true }; }
+    function stunnedDecision(side) { const self = stat(side); return { cand: { move: "HOLD", attack: "NONE", newPos: { x: self.x, y: self.y }, moved: false, d2: dist(plr, cpu), los2: losClear(plr, cpu) }, reason: "麻痺", predFoe: null, depth: self.cog.searchDepth, mc: 0, plan: "麻痺", second: null, readFoe: null, stunned: true, strat: self.strategy, stratChanged: false, gamble: false }; }
 
     function recordStats(side, dec, ev, ge, dmgTaken, preDist) {
       const s = stats[side], band = Math.round(clamp((preDist / maxDist) * 100, 0, 100));
@@ -553,6 +609,7 @@ window.SCS = window.SCS || {};
       if (ev.dodge) s.dodges++;
       if (ev.counter) s.counters++;
       if (stat(side).stamina < 0.3) s.winded++;
+      if (dec.strat) s.strat[dec.strat] = (s.strat[dec.strat] || 0) + 1;
       s.dmgTaken += dmgTaken;
       if (ge) for (const k of ["feint", "exploit", "bait", "disinfo", "outwit"]) if (ge[k]) s.guile++;
     }
@@ -570,6 +627,8 @@ window.SCS = window.SCS || {};
         const statusSummary = Object.keys(s.statusOut).map((t) => `${STJP[t] || t}×${s.statusOut[t]}`).join("・");
         const rangeName = near >= mid && near >= far ? "近距離" : far >= mid && far >= near ? "遠距離" : "中距離";
         const notes = [], advice = [];
+        const stratTop = Object.keys(s.strat).sort((a, b) => s.strat[b] - s.strat[a])[0];
+        if (stratTop) notes.push(`主に「${STRAT_JP[stratTop]}」の構えで組み立てた`);
         notes.push(`主に${rangeName}で渡り合った（近${near}／中${mid}／遠${far}％）`);
         notes.push(atkRatio < 35 ? `守勢が中心（攻撃に出たのは${atkRatio}％）` : atkRatio > 62 ? `終始攻め続けた（攻撃${atkRatio}％）` : `攻守のバランス型（攻撃${atkRatio}％）`);
         if (s.shots >= 6) notes.push(hitRate >= 68 ? `命中が安定（${hitRate}％）` : hitRate <= 42 ? `命中が不安定（${hitRate}％）＝手数の割に通らず` : `命中率${hitRate}％`);
@@ -640,6 +699,9 @@ window.SCS = window.SCS || {};
       const mvForCpu = geP.disinfo ? falseMove(decP.cand.move) : decP.cand.move, mvForPlr = geC.disinfo ? falseMove(decC.cand.move) : decC.cand.move; // 撹乱：相手モデルへ偽情報
       cpu.oppModel.recent.push(mvForCpu); if (cpu.oppModel.recent.length > 8) cpu.oppModel.recent.shift();
       plr.oppModel.recent.push(mvForPlr); if (plr.oppModel.recent.length > 8) plr.oppModel.recent.shift();
+      // 相手の性格推定の観測（plrはcpuを、cpuはplrを観察＝攻め型/守り型を蓄積）
+      const obs = (u, fDec, fEv, d) => { const pf = u.oppProfile; pf.n++; if (fDec.cand.attack === "RANGED" || fDec.cand.attack === "MELEE") pf.atk++; if (fDec.cand.move === "ADVANCE") pf.adv++; if (fEv.dodge) pf.dodge++; pf.dist += d; };
+      obs(plr, decC, evC, preDist); obs(cpu, decP, evP, preDist);
       if (evP.dmg > 0) cpu.hurtAt[preBucket] = (cpu.hurtAt[preBucket] || 0) + evP.dmg;
       if (evC.dmg > 0) plr.hurtAt[preBucket] = (plr.hurtAt[preBucket] || 0) + evC.dmg;
       recordStats("p", decP, evP, geP, (evC.dmg || 0) + cntC + tkP.dmg, preDist);
