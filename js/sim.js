@@ -20,7 +20,7 @@ window.SCS = window.SCS || {};
   const MOVES = ["ADVANCE", "RETREAT", "STRAFE_L", "STRAFE_R", "COVER", "HOLD"];
   const MOVE_JP = { ADVANCE: "前進", RETREAT: "後退", STRAFE_L: "左へ回り込み", STRAFE_R: "右へ回り込み", COVER: "遮蔽へ", HOLD: "据え置き" };
   const ATK_JP = { RANGED: "遠距離", MELEE: "近接", NONE: "攻撃せず" };
-  const FACTOR_JP = { hp: "HP収支", trade: "トレード収支", engage: "射撃好機", winRange: "勝てる間合い", threat: "脅威回避", cover: "遮蔽優位", terrain: "地形利用", pos: "位置取り", kill: "仕留め", danger: "自己保存", tempo: "テンポ", avoid: "危険距離回避" };
+  const FACTOR_JP = { hp: "HP収支", trade: "トレード収支", engage: "射撃好機", winRange: "勝てる間合い", threat: "脅威回避", cover: "遮蔽優位", terrain: "地形利用", pos: "位置取り", kill: "仕留め", danger: "自己保存", tempo: "テンポ", avoid: "危険距離回避", hazard: "危険地帯回避" };
 
   SCS.makeBattle = function (plrUnit, cpuUnit, seed, arenaName) {
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
@@ -29,7 +29,9 @@ window.SCS = window.SCS || {};
     let arena;
     if (arenaName && arenaName !== "ランダム") arena = D.ARENAS.find((a) => a.name === arenaName) || D.ARENAS[0];
     else arena = D.ARENAS[SCS.makeRNG((seed ^ 0x5bd1e995) >>> 0).int(D.ARENAS.length)];
-    const field = { w: arena.w, h: arena.h }, obstacles = arena.obstacles, baseTerrain = T[arena.base];
+    const field = { w: arena.w, h: arena.h }, baseTerrain = T[arena.base];
+    const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 })); // ★遮蔽はHPを持ち、撃ち込みで崩れる（戦場が試合中に変化）。共有DATAは複製して非破壊
+    const hazards = []; // ★動的ハザード（燃え広がる炎）{ x, y, w, h, turns, dmg }
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = S.turnCap;
 
     function initUnit(u, side, start) { return Object.assign(u, { side, x: start.x, y: start.y, speed: 0.5 + u.micros.B5 * 0.5 + u.micros.B3 * 0.2, oppModel: { recent: [] }, hurtAt: {}, plan: null, planPressure: 0, ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, windLeft: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, oppProfile: { atk: 0, adv: 0, dist: 0, dodge: 0, n: 0 }, strategy: null, stratPressure: 0, flinch: 0, opening: 0, secondWind: 0, swUsed: false }); }
@@ -56,14 +58,16 @@ window.SCS = window.SCS || {};
     const mkStat = () => ({ shots: 0, hits: 0, crits: 0, dmgDealt: 0, dmgTaken: 0, ranged: 0, melee: 0, reloads: 0, empties: 0, statusOut: {}, mv: {}, near: 0, mid: 0, far: 0, distSum: 0, distN: 0, guile: 0, biggest: 0, biggestTurn: 0, firstHit: 0, hpSeries: [], dodges: 0, counters: 0, winded: 0, strat: {}, charges: 0, guards: 0 });
     const stats = { p: mkStat(), c: mkStat() };
 
-    const losClear = (a, b) => !obstacles.some((r) => segIntersectsRect(a, b, r));
+    const losClear = (a, b) => !obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
+    const blockingObstacle = (a, b) => obstacles.find((r) => r.hp > 0 && segIntersectsRect(a, b, r)); // 射線を遮る遮蔽（崩す対象）
+    function hazardAt(p) { let d = 0; for (const h of hazards) if (h.turns > 0 && ptInRect(p, h)) d += h.dmg; return d; } // 立っている地点の炎ダメージ
     const displayDist = () => Math.round(clamp((dist(plr, cpu) / maxDist) * 100, 0, 100));
     const cx = (x) => clamp(x, 0, field.w), cy = (y) => clamp(y, 0, field.h);
     function terrainAt(p) { for (const z of arena.terrain) if (ptInRect(p, z)) return T[z.t]; return baseTerrain; }
     const stepLen = (u, p) => S.baseStep * (0.6 + 0.8 * u.micros.B5) * terrainAt(p).move * slowOf(u) * (0.78 + 0.22 * clamp(u.stamina, 0, 1)); // 息切れで足が止まる
 
     function shotsFor(r, g) { let n = Math.floor(r); if (g.chance(r - n)) n++; return n; }
-    function nearestObstacle(p) { let best = null, bd = Infinity; for (const r of obstacles) { const ox = r.x + r.w / 2, oy = r.y + r.h / 2, d = Math.hypot(ox - p.x, oy - p.y); if (d < bd) { bd = d; best = { x: ox, y: oy }; } } return best; }
+    function nearestObstacle(p) { let best = null, bd = Infinity; for (const r of obstacles) { if (r.hp <= 0) continue; const ox = r.x + r.w / 2, oy = r.y + r.h / 2, d = Math.hypot(ox - p.x, oy - p.y); if (d < bd) { bd = d; best = { x: ox, y: oy }; } } return best; }
     function applyMove(sp, self, fp, move) {
       const st = stepLen(self, sp), dx = fp.x - sp.x, dy = fp.y - sp.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       let nx = sp.x, ny = sp.y;
@@ -167,13 +171,14 @@ window.SCS = window.SCS || {};
         pos: clamp(margin / 12, 0, 1) * 2 - 1,
         kill: fhpf < 0.3 ? (0.3 - fhpf) / 0.3 : 0, danger: shpf < 0.35 ? -(0.35 - shpf) / 0.35 : 0,
         tempo: turnsLeft < 8 && shpf - fhpf < -0.05 ? -0.6 : 0, avoid: dz != null && Math.abs(d - dz) < 15 ? -1 : 0,
+        hazard: -clamp(hazardAt(sp) / 8, 0, 1.2), // 炎の中＝危険、避ける
       };
       const tilt = shpf < 0.4 ? (1 - self.cog.evalStability) * 0.6 : 0;
       const desp = shpf < 0.3 ? m.C6 : 0; // C6 背水：瀕死で恐怖↓・攻め↑
       const w = {
         hp: 1.0, trade: 0.4 + m.C2 * 0.6, engage: 0.25 + m.A2 * 0.3 + m.A6 * 0.2 + desp * 0.4, winRange: 0.55 + m.A3 * 0.2 + m.B2 * 0.2,
         threat: (0.3 + m.C1 * 0.5) * (1 + tilt) * (1 - desp * 0.6), cover: 0.15 + m.B1 * 0.6 + m.D5 * 0.2, terrain: 0.2 + m.B1 * 0.4 + m.D5 * 0.4,
-        pos: 0.1 + m.B6 * 0.3 + m.D5 * 0.2, kill: 0.4 + m.A6 * 0.5 + m.C3 * 0.4, danger: 0.5 * (1 + tilt) * (1 - desp * 0.7), tempo: 0.3, avoid: self.cog.learning * 0.5,
+        pos: 0.1 + m.B6 * 0.3 + m.D5 * 0.2, kill: 0.4 + m.A6 * 0.5 + m.C3 * 0.4, danger: 0.5 * (1 + tilt) * (1 - desp * 0.7), tempo: 0.3, avoid: self.cog.learning * 0.5, hazard: 0.8,
       };
       const lead = shpf - fhpf, late = turnsLeft < 12; // D4 時間の駆け引き
       if (late && lead > 0.05) w.threat *= 1 + m.D4 * 0.5;  // 有利→逃げ切り上手（脅威回避↑）
@@ -369,6 +374,26 @@ window.SCS = window.SCS || {};
       u.secondWind = 3; u.stamina = 1; u.momentum = clamp(u.momentum + 0.4, -1, 1);
       return true;
     }
+    // ===== Wave3b：動的ハザード（崩れる遮蔽・燃え広がる炎） =====
+    function chipCover(att, def, ev) { // 遮蔽を削る → 崩れるとLoSが開く。①阻まれた射撃が壁を撃つ ②近接/突進の重い一撃が近くの壁を割る
+      let blk = null, amt = 0;
+      if (ev.negated) { blk = blockingObstacle({ x: att.x, y: att.y }, { x: def.x, y: def.y }); amt = att.ranged.damage * 0.5 + 5; }
+      else if ((ev.dmg || 0) >= 18 && (ev.attack === "MELEE" || ev.attack === "CHARGE")) { blk = obstacles.find((r) => r.hp > 0 && Math.abs(r.x + r.w / 2 - def.x) < 14 && Math.abs(r.y + r.h / 2 - def.y) < 14); amt = 18; }
+      if (!blk) return false;
+      blk.hp -= amt;
+      return blk.hp <= 0;
+    }
+    function igniteFire(tx, ty) { if (hazards.filter((h) => h.turns > 0).length < 6) hazards.push({ x: cx(tx - 5), y: cy(ty - 5), w: 10, h: 10, turns: 3, dmg: 5 }); } // 地面が燃える
+    function tickHazards() { // 今の炎ダメージを返す → 延焼（隣へ）＋寿命減
+      const dmgP = hazardAt(plr), dmgC = hazardAt(cpu);
+      const active = hazards.filter((h) => h.turns > 0);
+      for (const h of active) {
+        if (hazards.filter((x) => x.turns > 0).length < 6 && rng.chance(0.3)) { const ang = rng.range(0, 6.283); hazards.push({ x: cx(h.x + 5 + Math.cos(ang) * 9) - 5, y: cy(h.y + 5 + Math.sin(ang) * 9) - 5, w: 10, h: 10, turns: Math.max(1, h.turns - 1), dmg: h.dmg }); }
+        h.turns--;
+      }
+      for (let i = hazards.length - 1; i >= 0; i--) if (hazards[i].turns <= 0) hazards.splice(i, 1);
+      return { p: dmgP, c: dmgC };
+    }
     // 攻撃のみ解決（移動は済・最終位置で判定）。ダメージは step 側で同時適用するため hp はここで変えない
     function resolveAttack(side, cand, deceived, edge, foeDef) {
       const self = stat(side), foe = stat(other(side)), ev = { move: cand.move, attack: cand.attack, moved: cand.moved };
@@ -394,6 +419,7 @@ window.SCS = window.SCS || {};
         const rw = self.ranged;
         if (rw.mode === "charge" && !self.charged) { self.charged = true; ev.charging = true; return ev; } // チャージ：1ターン溜めてから撃つ（移動では解除しない）
         if (self.ammo <= 0) { ev.empty = true; return ev; }
+        if (rw.mode === "auto" && self.spread > 0.2 && rng.chance(0.05 + self.spread * 0.22)) { ev.jam = true; self.opening = 1; self.spread = 0; return ev; } // 過熱でジャム＝撃てず隙を晒す
         let shots = rw.mode === "charge" ? 1 : shotsFor(rw.fireRate, rng);
         if (precise > 0.55 && rw.mode !== "charge") shots = Math.max(1, Math.round(shots * (1 - precise * 0.5))); // 手数を絞る
         shots = Math.min(shots, self.ammo); self.ammo -= shots;
@@ -521,6 +547,7 @@ window.SCS = window.SCS || {};
       const slt = sideSalt(sd, rn ? 63 : 64);
       if (rn && ev.charging) return px([`${name}に狙いを溜める。エネルギーが満ちていく。`, `${name}を構え、照準を絞り込む。次の一射に懸ける。`, `${name}のチャージを開始。狙うは一撃必殺。`], slt);
       if (rn && ev.empty) return px([`引き金を引くも——${name}は弾切れだ！`, `${name}が沈黙する。弾がない！`, `カチ、と乾いた音。${name}は空だ。`], slt);
+      if (rn && ev.jam) return px([`${name}が過熱してジャム！撃てず、隙を晒す。`, `${name}が動作不良——弾が出ない。無防備だ。`], slt);
       if (rn && ev.negated) return px([`${name}を撃つも、遮蔽に阻まれ通らない。`, `放った弾は壁に弾かれた。`, `${name}の射線は遮られている。`], slt);
       if (!rn && ev.windup) return px([`${name}を大きく振りかぶる。次の一撃に全てを乗せる。`, `${name}を頭上高く構え、力を溜める。`, `${name}を引き絞るように振り上げた。`], slt);
       if (!rn && ev.outOfReach) return px([`${name}を振るうが、間合いがわずかに足りない。`, `${name}の切っ先は空を掠めるのみ。`, `あと一歩——${name}は届かない。`], slt);
@@ -723,6 +750,14 @@ window.SCS = window.SCS || {};
       const edgeP = 1 + (geP.exploit ? 0.12 : 0) + (geP.outwit ? 0.1 : 0) + (cOpen0 ? 0.25 : 0), edgeC = 1 + (geC.exploit ? 0.12 : 0) + (geC.outwit ? 0.1 : 0) + (pOpen0 ? 0.25 : 0); // 相手の隙(OPENING)を突くと命中↑
       const defC = defenseOf(decC.cand, cpu), defP = defenseOf(decP.cand, plr); // 回避側の被弾減
       const evP = resolveAttack("p", decP.cand, geC.feint, edgeP, defC), evC = resolveAttack("c", decC.cand, geP.feint, edgeC, defP); // 同時解決（揺さぶり/隙突き＋相手の回避を反映）
+      // 鍔迫り合い：双方が近接で噛み合うと押し合い、力(気力+流れ+威力+運)で負けた方の攻撃が乱れ怯む
+      let clashWin = null;
+      if ((evP.attack === "MELEE" || evP.attack === "CHARGE") && evP.shots && (evC.attack === "MELEE" || evC.attack === "CHARGE") && evC.shots) {
+        const pp = plr.stamina + plr.momentum * 0.5 + (evP.dmg || 0) / 50 + rng.range(0, 0.7), cp = cpu.stamina + cpu.momentum * 0.5 + (evC.dmg || 0) / 50 + rng.range(0, 0.7);
+        clashWin = pp >= cp ? "p" : "c";
+        if (clashWin === "p") { evC.dmg = Math.round((evC.dmg || 0) * 0.4); cpu.flinch = 1; } else { evP.dmg = Math.round((evP.dmg || 0) * 0.4); plr.flinch = 1; }
+        evP.clash = evC.clash = true;
+      }
       cpu.hp = Math.max(0, cpu.hp - (evP.dmg || 0));         // 同時にダメージ適用（相討ちあり）
       plr.hp = Math.max(0, plr.hp - (evC.dmg || 0));
       if (evP.kb) knockback(plr, cpu);
@@ -731,11 +766,16 @@ window.SCS = window.SCS || {};
       const cntP = plr.hp > 0 ? counterStrike(decP.cand, plr, evC, cpu) : 0, cntC = cpu.hp > 0 ? counterStrike(decC.cand, cpu, evP, plr) : 0;
       if (cntP) { cpu.hp = Math.max(0, cpu.hp - cntP); evP.counter = cntP; }
       if (cntC) { plr.hp = Math.max(0, plr.hp - cntC); evC.counter = cntC; }
+      const brokeP = chipCover(plr, cpu, evP), brokeC = chipCover(cpu, plr, evC); // 崩れる遮蔽：阻まれた射撃が壁を削る
       // 状態異常：今ターンの命中で付与（麻痺は確率で発動）→ DoTをtick（結果行に反映）
       if (evP.applyStatus) evP.statusType = addStatus(cpu, evP.applyStatus);
       if (evC.applyStatus) evC.statusType = addStatus(plr, evC.applyStatus);
       const tkP = tickStatuses(plr), tkC = tickStatuses(cpu);
       plr.hp = Math.max(0, plr.hp - tkP.dmg); cpu.hp = Math.max(0, cpu.hp - tkC.dmg);
+      const fire = tickHazards(); // 燃え広がる炎：今炎の中にいる者を焼く＋延焼
+      plr.hp = Math.max(0, plr.hp - fire.p); cpu.hp = Math.max(0, cpu.hp - fire.c);
+      if (evP.statusType === "burn") igniteFire(cpu.x, cpu.y); // 火炎放射器の着弾点が燃え上がる
+      if (evC.statusType === "burn") igniteFire(plr.x, plr.y);
       if (pStun) plr.stun = Math.max(0, plr.stun - 1); // 今ターン硬直した分を消費
       if (cStun) cpu.stun = Math.max(0, cpu.stun - 1);
       // 怯み(FLINCH)・隙(OPENING)の時間経過 → 大ヒットで新たに怯ませる（stun式タイミング）
@@ -753,7 +793,7 @@ window.SCS = window.SCS || {};
       const dealtP = (evP.dmg || 0) + cntP, dealtC = (evC.dmg || 0) + cntC; // 流れ：当てる/食らう/見切る
       momentumTick("p", dealtP, (evC.dmg || 0) + cntC + tkP.dmg, !!(evP.dodge && evC.shots));
       momentumTick("c", dealtC, (evP.dmg || 0) + cntP + tkC.dmg, !!(evC.dodge && evP.shots));
-      noDamageTurns = dealtP + dealtC + tkP.dmg + tkC.dmg > 0 ? 0 : noDamageTurns + 1; // アンチストール
+      noDamageTurns = dealtP + dealtC + tkP.dmg + tkC.dmg + fire.p + fire.c > 0 ? 0 : noDamageTurns + 1; // アンチストール
       const mvForCpu = geP.disinfo ? falseMove(decP.cand.move) : decP.cand.move, mvForPlr = geC.disinfo ? falseMove(decC.cand.move) : decC.cand.move; // 撹乱：相手モデルへ偽情報
       cpu.oppModel.recent.push(mvForCpu); if (cpu.oppModel.recent.length > 8) cpu.oppModel.recent.shift();
       plr.oppModel.recent.push(mvForPlr); if (plr.oppModel.recent.length > 8) plr.oppModel.recent.shift();
@@ -772,6 +812,10 @@ window.SCS = window.SCS || {};
       if (tkC.dmg > 0) lines.push({ text: `　　＊CPU(${cpu.name}) ${tkC.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tkC.dmg}${cpu.hp <= 0 ? "（戦闘不能）" : ""}`, cls: "cpu" });
       if (swP) lines.push({ text: `── 火事場の馬鹿力——PLR(${plr.name})、最後の力を振り絞る！`, cls: "cm" });
       if (swC) lines.push({ text: `── 火事場の馬鹿力——CPU(${cpu.name})、最後の力を振り絞る！`, cls: "cm" });
+      if (fire.p > 0) lines.push({ text: `　　＊PLR(${plr.name}) 業火に巻かれ −${fire.p}${plr.hp <= 0 ? "（戦闘不能）" : ""}`, cls: "plr" });
+      if (fire.c > 0) lines.push({ text: `　　＊CPU(${cpu.name}) 業火に巻かれ −${fire.c}${cpu.hp <= 0 ? "（戦闘不能）" : ""}`, cls: "cpu" });
+      if (brokeP || brokeC) lines.push({ text: `── 遮蔽が音を立てて崩れ落ちた！射線が開ける。`, cls: "cm" });
+      if (clashWin) lines.push({ text: `── 鍔迫り合い！${clashWin === "p" ? `PLR(${plr.name})` : `CPU(${cpu.name})`}が力で押し勝った。`, cls: "cm" });
       result = finishCheck();
       if (result) { over = true; for (const fl of finishNarration(result)) lines.push(fl); }
       return { turn, lines, dist: displayDist(), over, result };
