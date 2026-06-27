@@ -563,15 +563,22 @@ window.SCS = window.SCS || {};
       }
       return px(ATK_MISS[cat], slt).replace("{w}", name) + "。";
     }
-    function composeAction(side, dec, ev, gpre) {
-      const self = stat(side), sd = self.side;
+    function composeAction(side, dec, ev, gpre, foeEv) {
+      const self = stat(side), sd = self.side, foeAtk = !!(foeEv && foeEv.shots > 0); // 相手が実際にこのターン攻撃したか
       if (dec.stunned) return px(["痺れて動けない——！その場で隙を晒す。", "麻痺が全身を貫き、立ち尽くす。", "体が言うことを聞かない。動けないまま固まる。"], sideSalt(sd, 66)) + " 〈麻痺〉";
       if (ev.dodge) {
         const cnt = ev.counter ? px([`——読んでいた！回避から鋭い反撃、−${ev.counter}！`, `見切りざまの一閃が突き刺さる、−${ev.counter}！`, `紙一重でかわし、反撃を叩き込む、−${ev.counter}！`], sideSalt(sd, 67)) : "";
-        const base = px(["身を翻し、紙一重でかわす。", "読んで、すっと攻撃線から外れる。", "半身でいなし、攻撃を受け流す。", "見切って横へ跳んだ。"], sideSalt(sd, 68));
+        const base = foeAtk // 相手が攻めてきた時だけ「かわした」、来なければ「来ると読んで備える」
+          ? px(["身を翻し、紙一重でかわす。", "読んで、すっと攻撃線から外れる。", "半身でいなし、攻撃を受け流す。", "見切って横へ跳んだ。"], sideSalt(sd, 68))
+          : px(["来ると読んで、ふっと身をずらす。", "警戒し、いつでも動ける体勢を取る。", "仕掛けを読み、半身に構える。", "誘いと見て、軽く身をかわした。"], sideSalt(sd, 68));
         return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${base}${cnt} 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}回避/深${dec.depth}〉`;
       }
-      if (ev.guard) return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${px(["受けの構えで衝撃を受け止める。", "ガードを固め、攻撃を殺す。", "半身に構え、衝撃を受け流す。"], sideSalt(sd, 70))} 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}受け/深${dec.depth}〉`;
+      if (ev.guard) {
+        const g = foeAtk
+          ? px(["受けの構えで衝撃を受け止める。", "ガードを固め、攻撃を殺す。", "半身に構え、衝撃を受け流す。"], sideSalt(sd, 70))
+          : px(["受けを固め、来るべき攻撃に備える。", "ガードを上げ、じっと機を窺う。", "守りを固めて様子を見る。"], sideSalt(sd, 70));
+        return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${g} 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}受け/深${dec.depth}〉`;
+      }
       if (ev.charge) {
         const line = ev.whiff ? px(["渾身の突進——空を切る！大きな隙を晒した。", "踏み込みざまの一撃は届かず、体勢が大きく崩れる。"], sideSalt(sd, 71)) : px([`渾身の突進から${self.melee.name}を叩き込み、−${ev.dmg}！`, `地を蹴って間合いを割り、${self.melee.name}が深々と入る、−${ev.dmg}！`], sideSalt(sd, 72)) + (ev.crits > 0 ? "会心！" : "");
         return `${px(DEMEANOR[moodOf(self)], sideSalt(sd, 11))}${line} 〈${dec.strat ? STRAT_JP[dec.strat] + "・" : ""}突進/深${dec.depth}〉`;
@@ -656,8 +663,8 @@ window.SCS = window.SCS || {};
       let plrAct, cpuAct;
       if (ko && ko.p && ko.c) { const mf = mutualFinish(evP, evC); plrAct = mf.plr; cpuAct = mf.cpu; } // 相討ち＝特殊描写
       else {
-        plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP));
-        cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC));
+        plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP), evC);
+        cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC), evP);
       }
       const lines = [
         { text: `【戦況】${situationLine(pre)}`, cls: "sit" },
