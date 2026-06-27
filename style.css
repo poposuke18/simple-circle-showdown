@@ -21,6 +21,7 @@ body {
   display: flex;
   justify-content: center;
   padding: 18px;
+  overflow-x: hidden; /* 端末幅を超える行があってもページ自体は横スクロールさせない（保険） */
 }
 .crt {
   width: 100%;
@@ -139,6 +140,12 @@ select, input[type="number"] {
 .ahint { color: var(--green-dim); font-size: 11px; margin-top: 10px; }
 
 @media (max-width: 640px) {
+  body { padding: 8px; }
+  .crt { padding: 10px 10px 14px; }
+  .terminal { padding: 10px 8px; }
   .plr-params, .params, .acols { grid-template-columns: 1fr; }
   header h1 { font-size: 22px; letter-spacing: 3px; }
+  /* 位置バー・HPバーは固定文字数の<pre>。狭幅では文字を詰めて確実に収める */
+  .dist { font-size: 12px; letter-spacing: 0; }
+  .hp { font-size: 12px; }
 }

@@ -13,6 +13,8 @@ window.SCS = window.SCS || {};
   let autoTimer = null;
 
   const weaponStr = (u) => `${u.ranged.name}＋${u.melee.name}`;
+  // 狭い画面（スマホ縦）ではバー長を短く＝はみ出し防止
+  const mini = (big, small) => (typeof window !== "undefined" && window.innerWidth && window.innerWidth < 520 ? small : big);
 
   function buildConfig() {
     const wrap = $("plrParams");
@@ -95,7 +97,7 @@ window.SCS = window.SCS || {};
 
   // 両ユニットの実X座標を 0..field.w → 0..W に投影（PLRもCPUも動く・左右は戦場の左右で固定側ではない）
   function distBarHtml() {
-    const W = 36, fw = battle.field.w;
+    const W = mini(36, 24), fw = battle.field.w;
     const pos = (x) => Math.max(0, Math.min(W - 1, Math.round((x / fw) * (W - 1))));
     const px = pos(battle.plr.x), cx = pos(battle.cpu.x);
     const cells = new Array(W).fill("·");
@@ -105,7 +107,7 @@ window.SCS = window.SCS || {};
     return cells.join("");
   }
   function hpBar(u) {
-    const W = 20;
+    const W = mini(20, 14);
     const f = Math.max(0, Math.round((u.hp / u.maxHp) * W));
     return "[" + "|".repeat(f) + "·".repeat(W - f) + "]";
   }
@@ -113,7 +115,7 @@ window.SCS = window.SCS || {};
   function render() {
     if (!battle) return;
     const p = battle.plr, c = battle.cpu, d = battle.displayDist();
-    $("dist").innerHTML = `位置 ${distBarHtml()}　距離 ${d}%　<span class="mp">■</span>PLR <span class="mc">■</span>CPU`;
+    $("dist").innerHTML = `位置 ${distBarHtml()}　距離 ${d}%\n<span class="mp">■</span>PLR <span class="mc">■</span>CPU`;
     $("hpPlr").textContent = `PLAYER HP ${hpBar(p)} ${p.hp}/${p.maxHp}`;
     $("hpCpu").textContent = `CPU HP    ${hpBar(c)} ${c.hp}/${c.maxHp}`;
     $("turnInfo").textContent = `TURN ${battle.turn} / ${D.SIM.turnCap}`;
@@ -218,6 +220,7 @@ window.SCS = window.SCS || {};
     $("btnNext").addEventListener("click", nextStep);
     $("btnAuto").addEventListener("click", auto);
     $("btnParams").addEventListener("click", toggleParams);
+    window.addEventListener("resize", () => { if (battle) render(); }); // 回転・幅変更でバー長を再調整
     newBattle();
   }
   document.addEventListener("DOMContentLoaded", init);
