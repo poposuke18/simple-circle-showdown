@@ -74,10 +74,10 @@ window.SCS = window.SCS || {};
   // 遠距離武器（拡張版）。mode=auto/semi/burst/charge, mag=マガジン弾数, reloadTurns=リロード所要,
   // spreadGrowth=連射での拡散増, crit/critMult=会心, status=状態異常({type,dmg,turns}|null), moveAccuracy=移動射撃倍率
   const RANGED = [
-    { key: "sniper", name: "スナイパーライフル", damage: 42, rangeFrac: 0.95, fireRate: 0.5, accuracy: 0.97, effRange: 95, falloff: 60, moveAccuracy: 0.30, mode: "charge", mag: 8, reloadTurns: 1, spreadGrowth: 0, crit: 0.30, critMult: 2.5, status: null, aff: { 4: 1.0, 1: -0.7, 3: 0.5, 5: 0.5 }, base: 0 },
-    { key: "marksman", name: "マークスマンライフル", damage: 23, rangeFrac: 0.80, fireRate: 1.2, accuracy: 0.90, effRange: 80, falloff: 45, moveAccuracy: 0.55, mode: "semi", mag: 10, reloadTurns: 1, spreadGrowth: 0, crit: 0.15, critMult: 2.0, status: null, aff: { 5: 0.6, 3: 0.4, 4: 0.3 }, base: 0.1 },
+    { key: "sniper", name: "スナイパーライフル", damage: 45, rangeFrac: 0.95, fireRate: 0.5, accuracy: 0.97, effRange: 95, falloff: 60, moveAccuracy: 0.42, mode: "charge", mag: 8, reloadTurns: 1, spreadGrowth: 0, crit: 0.30, critMult: 2.5, status: null, aff: { 4: 1.0, 1: -0.7, 3: 0.5, 5: 0.5 }, base: 0 },
+    { key: "marksman", name: "マークスマンライフル", damage: 26, rangeFrac: 0.80, fireRate: 1.2, accuracy: 0.90, effRange: 80, falloff: 45, moveAccuracy: 0.55, mode: "semi", mag: 10, reloadTurns: 1, spreadGrowth: 0, crit: 0.15, critMult: 2.0, status: null, aff: { 5: 0.6, 3: 0.4, 4: 0.3 }, base: 0.1 },
     { key: "assault", name: "アサルトライフル", damage: 9, rangeFrac: 0.65, fireRate: 6, accuracy: 0.75, effRange: 65, falloff: 30, moveAccuracy: 0.75, mode: "auto", mag: 30, reloadTurns: 1, spreadGrowth: 0.12, crit: 0.05, critMult: 1.5, status: null, aff: { 5: 0.2 }, base: 0.3 },
-    { key: "smg", name: "SMG", damage: 8, rangeFrac: 0.45, fireRate: 12, accuracy: 0.64, effRange: 52, falloff: 20, moveAccuracy: 0.90, mode: "auto", mag: 25, reloadTurns: 1, spreadGrowth: 0.15, crit: 0.03, critMult: 1.5, status: null, aff: { 1: 1.0, 4: -0.7, 2: 0.5 }, base: 0 },
+    { key: "smg", name: "SMG", damage: 9, rangeFrac: 0.45, fireRate: 12, accuracy: 0.66, effRange: 52, falloff: 20, moveAccuracy: 0.90, mode: "auto", mag: 25, reloadTurns: 1, spreadGrowth: 0.15, crit: 0.03, critMult: 1.5, status: null, aff: { 1: 1.0, 4: -0.7, 2: 0.5 }, base: 0 },
     { key: "lmg", name: "LMG", damage: 8, rangeFrac: 0.60, fireRate: 9, accuracy: 0.60, effRange: 60, falloff: 28, moveAccuracy: 0.70, mode: "auto", mag: 60, reloadTurns: 2, spreadGrowth: 0.10, crit: 0.03, critMult: 1.5, status: null, aff: { 1: 0.7, 4: 0.4, 9: 0.4, 5: -0.2 }, base: 0 },
     { key: "shotgun", name: "ショットガン", damage: 44, rangeFrac: 0.30, fireRate: 1.2, accuracy: 0.90, effRange: 30, falloff: 12, moveAccuracy: 0.90, mode: "semi", mag: 6, reloadTurns: 2, spreadGrowth: 0, crit: 0.10, critMult: 1.5, status: null, aff: { 1: 0.8, 2: 0.6, 4: -0.3 }, base: 0 },
     { key: "pistol", name: "拳銃", damage: 15, rangeFrac: 0.50, fireRate: 2.5, accuracy: 0.82, effRange: 50, falloff: 30, moveAccuracy: 0.85, mode: "semi", mag: 12, reloadTurns: 1, spreadGrowth: 0, crit: 0.10, critMult: 1.8, status: null, aff: { 5: 0.3 }, base: 0.25 },
@@ -88,11 +88,11 @@ window.SCS = window.SCS || {};
   const MELEE = [
     { key: "knife", name: "ナイフ", damage: 7, reach: 6, rate: 4, pattern: "multi", windup: 0, knockback: 0, crit: 0.15, critMult: 2.0, status: { type: "bleed", dmg: 3, turns: 2 }, aff: { 4: -1.0, 7: -0.7, 5: -0.5, 10: 0.3 }, base: 0 },
     { key: "dualblades", name: "二刀", damage: 6, reach: 7, rate: 5, pattern: "multi", windup: 0, knockback: 0, crit: 0.10, critMult: 1.8, status: null, aff: { 4: -0.8, 10: 0.6, 6: 0.5 }, base: 0 },
-    { key: "katana", name: "刀", damage: 22, reach: 10, rate: 1.4, pattern: "balanced", windup: 0, knockback: 3, crit: 0.12, critMult: 2.0, status: { type: "bleed", dmg: 5, turns: 3 }, aff: { 7: 1.0, 5: 0.5, 3: 0.3 }, base: 0.2 },
+    { key: "katana", name: "刀", damage: 20, reach: 10, rate: 1.4, pattern: "balanced", windup: 0, knockback: 3, crit: 0.12, critMult: 2.0, status: { type: "bleed", dmg: 5, turns: 3 }, aff: { 7: 1.0, 5: 0.5, 3: 0.3 }, base: 0.2 },
     { key: "rapier", name: "レイピア", damage: 16, reach: 11, rate: 1.8, pattern: "balanced", windup: 0, knockback: 1, crit: 0.20, critMult: 2.2, status: { type: "poison", dmg: 3, turns: 3 }, aff: { 5: 0.7, 7: 0.4, 3: 0.4, 10: 0.3 }, base: 0 },
-    { key: "greatsword", name: "大剣", damage: 38, reach: 12, rate: 0.7, pattern: "heavy", windup: 0, knockback: 6, crit: 0.10, critMult: 1.8, status: { type: "weaken", turns: 2, amt: 0.30 }, aff: { 1: 0.8, 9: 0.6, 7: 0.4 }, base: 0 },
+    { key: "greatsword", name: "大剣", damage: 38, reach: 11, rate: 0.7, pattern: "heavy", windup: 0, knockback: 6, crit: 0.10, critMult: 1.8, status: { type: "weaken", turns: 2, amt: 0.30 }, aff: { 1: 0.8, 9: 0.6, 7: 0.4 }, base: 0 },
     { key: "hammer", name: "大槌・斧", damage: 44, reach: 9, rate: 0.7, pattern: "heavy", windup: 0, knockback: 6, crit: 0.08, critMult: 1.6, status: { type: "stun", turns: 1, chance: 0.45 }, aff: { 1: 1.0, 2: 0.7, 9: 0.5 }, base: 0 },
-    { key: "spear", name: "槍", damage: 18, reach: 15, rate: 1.0, pattern: "balanced", windup: 0, knockback: 5, crit: 0.10, critMult: 1.8, status: null, aff: { 1: -0.8, 4: 0.7, 2: -0.5 }, base: 0 },
+    { key: "spear", name: "槍", damage: 21, reach: 16, rate: 1.0, pattern: "balanced", windup: 0, knockback: 5, crit: 0.10, critMult: 1.8, status: null, aff: { 1: -0.8, 4: 0.7, 2: -0.5 }, base: 0 },
     { key: "chain", name: "鎖鎌", damage: 14, reach: 13, rate: 1.3, pattern: "balanced", windup: 0, knockback: 8, crit: 0.10, critMult: 1.8, status: { type: "slow", turns: 2, mult: 0.55 }, aff: { 10: 0.7, 6: 0.5, 8: 0.4, 7: -0.3 }, base: 0 },
   ];
   const STATUS_JP = { burn: "燃焼", bleed: "出血", poison: "毒", stun: "麻痺", weaken: "脆弱", slow: "鈍足" };

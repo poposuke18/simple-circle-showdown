@@ -383,7 +383,7 @@ window.SCS = window.SCS || {};
       blk.hp -= amt;
       return blk.hp <= 0;
     }
-    function igniteFire(tx, ty) { if (hazards.filter((h) => h.turns > 0).length < 6) hazards.push({ x: cx(tx - 5), y: cy(ty - 5), w: 10, h: 10, turns: 3, dmg: 5 }); } // 地面が燃える
+    function igniteFire(tx, ty) { if (hazards.filter((h) => h.turns > 0).length < 6) hazards.push({ x: cx(tx - 5), y: cy(ty - 5), w: 10, h: 10, turns: 3, dmg: 4 }); } // 地面が燃える
     function tickHazards() { // 今の炎ダメージを返す → 延焼（隣へ）＋寿命減
       const dmgP = hazardAt(plr), dmgC = hazardAt(cpu);
       const active = hazards.filter((h) => h.turns > 0);
