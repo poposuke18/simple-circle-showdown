@@ -638,10 +638,27 @@ window.SCS = window.SCS || {};
       const self = stat(side), sd = self.side, foe = stat(other(side));
       return `${finishIntent(dec, ev, sd)}——${finishCause(cause, foe)}、${px(FIN_KO, sideSalt(sd, 80))}`;
     }
+    // ★相討ち専用：両者が同じ刹那に決め手を放ち、共に崩れる一連の描写
+    function mutualBlow(side, ev) { // その者がこのターンに放った決め手（あれば）
+      const self = stat(side);
+      if (ev.dmg > 0 && (ev.attack === "RANGED" || ev.attack === "MELEE" || ev.attack === "CHARGE")) { const rn = ev.attack === "RANGED", w = rn ? self.ranged : self.melee; return `${px(ATK_HIT[weaponCat(w, rn)], sideSalt(self.side, 95)).replace("{w}", w.name)}、−${ev.dmg}`; }
+      if (ev.counter) return `回避から反撃を返し、−${ev.counter}`;
+      return null;
+    }
+    function mutualFinish(evP, evC) {
+      const bP = mutualBlow("p", evP), bC = mutualBlow("c", evC);
+      const fall = px(["両者、声もなく崩れ落ちた。相討ち——。", "どちらからともなく、二人同時に倒れ伏す。相討ち——。", "勝者なし。両者ともに膝をついた。相討ち——。"], 91);
+      if (bP && bC) { const cross = px(["二つの攻撃が同じ刹那に交差した——", "互いの一撃が寸分違わず重なる——", "刹那、両者の攻撃が交錯し——"], 90); return { plr: `${bP}。`, cpu: `時を同じくして${bC}。${cross}${fall}` }; }
+      return { plr: bP ? `${bP}。` : `力尽きかける——`, cpu: `${bC ? `時を同じくして${bC}。` : "時を同じくして相手も崩れ、"}${fall}` };
+    }
     function narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC, ko) {
       const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100));
-      const plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP));
-      const cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC));
+      let plrAct, cpuAct;
+      if (ko && ko.p && ko.c) { const mf = mutualFinish(evP, evC); plrAct = mf.plr; cpuAct = mf.cpu; } // 相討ち＝特殊描写
+      else {
+        plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP));
+        cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC));
+      }
       const lines = [
         { text: `【戦況】${situationLine(pre)}`, cls: "sit" },
         { text: `　▸ PLR（${plr.name}）　${plrAct}`, cls: "plr" },
@@ -670,7 +687,7 @@ window.SCS = window.SCS || {};
     function finishNarration(res) {
       const out = [{ text: "═══════════════  決　着  ═══════════════", cls: "result" }];
       if (res.type === "draw") {
-        out.push({ text: `　${res.text === "相討ち" ? "両者、同時に崩れ落ちた——相討ち！" : "時は尽き、決着はつかなかった。"}`, cls: "result" });
+        out.push({ text: `　${res.text === "相討ち" ? px(["両雄、並び立たず——刺し違えての痛み分け。", "刃を交え、勝敗は天に流れた。相討ち。", "互いの全てを出し切り、決着はつかなかった。"], 86) : "時は尽き、決着はつかなかった。"}`, cls: "result" });
         out.push({ text: `　最終 PLR ${plr.hp}/${plr.maxHp} ・ CPU ${cpu.hp}/${cpu.maxHp}（${res.text}）`, cls: "dim" });
       } else {
         const win = res.winner === "PLR" ? plr : cpu, lose = res.winner === "PLR" ? cpu : plr;
