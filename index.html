@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>S.C.S. AI — Simple Circle Showdown (テキストプロトタイプ)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="crt">
+    <header>
+      <h1>S.C.S. AI</h1>
+      <div class="sub">SIMPLE CIRCLE SHOWDOWN — TACTICAL AI BATTLE SIMULATOR（テキストプロトタイプ・思考エンジンv2／戦場ランダム）</div>
+    </header>
+
+    <section class="terminal">
+      <div id="turnInfo" class="turn-info"></div>
+      <pre id="dist" class="dist"></pre>
+      <pre id="hpPlr" class="hp plr"></pre>
+      <pre id="hpCpu" class="hp cpu"></pre>
+      <div class="logbox"><div id="log" class="log"></div></div>
+      <div class="controls">
+        <button id="btnNext">▶ NEXT STEP</button>
+        <button id="btnAuto">▶ 自動実行</button>
+        <button id="btnParams">⚔ 戦闘分析</button>
+      </div>
+    </section>
+
+    <section class="config">
+      <h3>AI CONFIG — あなたの人格（10軸 × 各4択）</h3>
+      <div id="plrParams" class="plr-params"></div>
+      <div class="cfg-foot">
+        <label>戦場：<select id="arenaSel"></select></label>
+        <label>CPU：<select id="cpuPreset"></select></label>
+        <label>seed：<input id="seed" type="number" value="12345" /></label>
+        <label><input type="checkbox" id="randSeed" checked /> 🎲毎回ランダム</label>
+        <button id="btnNew">新規対戦（適用）</button>
+        <span id="cfgLock" class="cfg-lock"></span>
+      </div>
+      <p class="hint">人格を選んで「新規対戦」→「NEXT STEP」で1ターンずつ。🎲ランダムON＝毎回違う戦闘（非決定論）。OFFにして seed 固定＝同じ戦闘を再現できます。</p>
+    </section>
+
+    <section id="paramsWrap" class="params-wrap hidden">
+      <h3>戦闘分析 — 観戦して「どこをどう直すか」を読む</h3>
+      <div id="params" class="params"></div>
+    </section>
+  </div>
+
+  <script src="js/rng.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/derive.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
