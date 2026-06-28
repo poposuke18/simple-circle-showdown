@@ -27,7 +27,7 @@ window.SCS = window.SCS || {};
     if (!id) return;
     const el = $(id); if (!el) return;
     spot = el; el.classList.add("ob-spot");
-    try { el.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+    try { el.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {} // nearest＝対象を中央ダイアログの背後へ送らない
   }
 
   function render() {

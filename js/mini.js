@@ -43,13 +43,14 @@ window.SCS = window.SCS || {};
     start();
   }
   function start() { if (running || typeof requestAnimationFrame === "undefined") return; running = true; loop(); }
-  function loop() { raf = requestAnimationFrame(loop); try { draw(); } catch (e) {} }
+  // 堅牢性：draw() が「まだ動くものがある」と返した時だけ次フレームを予約＝アイドルで回し続けない（電池/CPU節約）。sync/pushFxで再開
+  function loop() { let more = false; try { more = draw(); } catch (e) { more = false; } if (more) raf = requestAnimationFrame(loop); else running = false; }
 
   function draw() {
     if (!cv) cv = document.getElementById("mini");
-    if (!cv || !battle) return;
+    if (!cv || !battle) return false;
     const cssW = cv.clientWidth;
-    if (!cssW) return; // 非表示（ストーリーのマップ/スカウト等）
+    if (!cssW) return false; // 非表示（ストーリーのマップ/スカウト等）＝ループ停止（再表示時にsyncで再開）
     const f = battle.field;
     const cssH = Math.max(110, Math.min(190, Math.round(cssW * 0.46))); // 安定した横長レーダー
     const dpr = window.devicePixelRatio || 1;
@@ -118,13 +119,17 @@ window.SCS = window.SCS || {};
     ctx.setLineDash([]);
     if (near) { const mx = (px + cx) / 2, my = (py + cy) / 2; ctx.fillStyle = "rgba(255,207,92,.5)"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0; }
 
-    drawFx(SX, SY, scale); // ③ 撃ち合いの可視化（トレーサー/斬撃/ビーム/回避残像/着弾）
+    drawFx(SX, SY); // ③ 撃ち合いの可視化（トレーサー/斬撃/ビーム/回避残像/着弾）
     drawUnit(px, py, battle.plr, COL_P);
     drawUnit(cx, cy, battle.cpu, COL_C);
+    // 動くものが残っているか（位置補間中／エフェクト残／瀕死脈動／延焼）＝無ければループを畳む
+    const conv = Math.abs(battle.plr.x - disp.px) + Math.abs(battle.plr.y - disp.py) + Math.abs(battle.cpu.x - disp.cx) + Math.abs(battle.cpu.y - disp.cy) < 0.1;
+    const lowHp = (battle.plr.hp > 0 && battle.plr.hp / battle.plr.maxHp < 0.3) || (battle.cpu.hp > 0 && battle.cpu.hp / battle.cpu.maxHp < 0.3);
+    return fx.length > 0 || !conv || (!battle.over && (lowHp || haz.some((h) => h.turns > 0)));
   }
 
-  // ③ 寿命付きエフェクトを減衰描画。座標はfield系で持ち、ここでSX/SYへ投影（レターボックス追従）
-  function drawFx(SX, SY, scale) {
+  // ③ 寿命付きエフェクトを減衰描画。始点=攻め手・終点=相手の【補間後dist座標】で結ぶ＝本体ドットから線が外れない
+  function drawFx(SX, SY) {
     if (!fx.length) return;
     const now = perfNow();
     const next = [];
@@ -133,7 +138,10 @@ window.SCS = window.SCS || {};
       if (p >= 1) continue;
       next.push(e);
       const a = 1 - p, col = e.side === "p" ? COL_P : COL_C;
-      const ax = SX(e.ax), ay = SY(e.ay), bx = SX(e.bx), by = SY(e.by);
+      // 攻め手(side)と相手の現在の補間位置で投影＝スライド中もドットと線が一致
+      const aX = e.side === "p" ? disp.px : disp.cx, aY = e.side === "p" ? disp.py : disp.cy;
+      const tX = e.side === "p" ? disp.cx : disp.px, tY = e.side === "p" ? disp.cy : disp.py;
+      const ax = SX(aX), ay = SY(aY), bx = SX(tX), by = SY(tY);
       ctx.save();
       if (e.kind === "tracer") {
         if (e.whiff) { // 逸れる：着弾点を法線方向へずらす
@@ -147,17 +155,27 @@ window.SCS = window.SCS || {};
         }
       } else if (e.kind === "slash") {
         const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux, r = e.hit ? 9 : 6;
+        const ex = e.hit ? bx : ax + dx * 0.45, ey = e.hit ? by : ay + dy * 0.45; // 空振りは相手ではなく前方の空を切る（届かぬ突進が相手の真上に出ない）
         ctx.globalAlpha = e.hit ? a : a * 0.5; ctx.lineWidth = e.crit ? 2.4 : 1.6; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = e.hit ? 8 : 3;
-        ctx.beginPath(); ctx.moveTo(bx - ux * 3 + nx * r, by - uy * 3 + ny * r); ctx.quadraticCurveTo(bx + ux * 4, by + uy * 4, bx - ux * 3 - nx * r, by - uy * 3 - ny * r); ctx.stroke();
-        if (e.crit && e.hit) { ctx.shadowBlur = 0; ctx.fillStyle = "#ffcf5c"; spark(bx, by, 4, a); }
+        ctx.beginPath(); ctx.moveTo(ex - ux * 3 + nx * r, ey - uy * 3 + ny * r); ctx.quadraticCurveTo(ex + ux * 4, ey + uy * 4, ex - ux * 3 - nx * r, ey - uy * 3 - ny * r); ctx.stroke();
+        if (e.crit && e.hit) { ctx.shadowBlur = 0; ctx.fillStyle = "#ffcf5c"; spark(ex, ey, 4, a); }
       } else if (e.kind === "beam") {
-        ctx.globalAlpha = a; ctx.lineWidth = (e.hit ? 4 : 2.5) * (0.5 + a * 0.5); ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
-        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-        ring(bx, by, 4 + (1 - a) * 16, a, col);
+        if (e.whiff) { // 空撃ち：相手に届かず手前で霧散（着弾リング無し）＝ログ「空を切った」と一致
+          const mx = ax + (bx - ax) * 0.55, my = ay + (by - ay) * 0.55;
+          ctx.globalAlpha = a * 0.45; ctx.lineWidth = 2 * (0.5 + a * 0.5); ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(mx, my); ctx.stroke();
+        } else {
+          ctx.globalAlpha = a; ctx.lineWidth = (e.hit ? 4 : 2.5) * (0.5 + a * 0.5); ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+          ring(bx, by, 4 + (1 - a) * 16, a, col);
+        }
       } else if (e.kind === "burst") {
-        ring(bx, by, 3 + (1 - a) * 20, a, col);
-        ctx.globalAlpha = a * 0.8; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.lineWidth = 2;
-        for (let k = 0; k < 6; k++) { const ang = (k / 6) * 6.2832, rr = 5 + (1 - a) * 14; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(ang) * rr, by + Math.sin(ang) * rr); ctx.stroke(); }
+        if (e.whiff) ring(ax + (bx - ax) * 0.4, ay + (by - ay) * 0.4, 3 + (1 - a) * 6, a * 0.5, col); // 空撃ち：不発の小さな霧散のみ（満開の爆発を出さない）
+        else {
+          ring(bx, by, 3 + (1 - a) * 20, a, col);
+          ctx.globalAlpha = a * 0.8; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.lineWidth = 2;
+          for (let k = 0; k < 6; k++) { const ang = (k / 6) * 6.2832, rr = 5 + (1 - a) * 14; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(ang) * rr, by + Math.sin(ang) * rr); ctx.stroke(); }
+        }
       } else if (e.kind === "dodge") { // 残像：相手方向の法線へ流れる薄い輪
         const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, sl = (1 - a) * 10;
         ctx.globalAlpha = a * 0.55; ctx.strokeStyle = col; ctx.lineWidth = 1.4;

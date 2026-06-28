@@ -81,7 +81,7 @@ window.SCS = window.SCS || {};
         ch.enemies.forEach((k) => {
           const e = enemyByKey(k), cleared = isCleared(k), unlocked = isUnlocked(k);
           const cls = cleared ? "ene cleared" : unlocked ? "ene open" : "ene locked";
-          const mark = cleared ? "✓" : unlocked ? "▷" : "🔒";
+          const mark = cleared ? "✓" : unlocked ? "▷" : "▒"; // CRT記号で統一（絵文字不使用）
           html += `<button class="${cls}" data-ene="${k}" ${unlocked ? "" : "disabled"}>${mark} ${e.name}${e.boss ? "（章ボス）" : ""}</button>`;
         });
         html += `</div></div>`;

@@ -1204,7 +1204,7 @@ window.SCS = window.SCS || {};
         else if ((ev.attack === "MELEE" || ev.attack === "CHARGE") && (ev.shots > 0 || (ev.charge && ev.whiff))) events.push(meta({ type: "melee", whiff: (ev.hits || 0) === 0 }));
         if (ev.dodge) events.push({ side, from, to, type: "dodge" });
         if (ev.guard) events.push({ side, from, to, type: "guard" });
-        if (ev.grabHit || ev.clinch) events.push({ side, from, to, type: "grab", dmg: ev.dmg || 0 });
+        if (ev.grabHit || ev.clinch) events.push({ side, from, to, type: "grab", hits: 1, dmg: ev.dmg || 0 }); // hits=1で着弾フラッシュ(impact)が発火
         if (cnt > 0) events.push({ side, from, to, type: "counter", hits: 1, dmg: cnt, crit: false });
       };
       fxFor("p", evP, cntP); fxFor("c", evC, cntC);

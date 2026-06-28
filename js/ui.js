@@ -92,6 +92,7 @@ window.SCS = window.SCS || {};
 
   function newBattle() {
     stopAuto();
+    markPredictStale(); // 実行中の勝率試算を打ち切る（出撃で生戦闘と並走させない）
     if (!$("randSeed") || $("randSeed").checked) { seed = Math.floor(Math.random() * 0x7fffffff) >>> 0; $("seed").value = seed; } // 毎回ランダム＝非決定論（一期一会）
     else seed = parseInt($("seed").value, 10) || 1; // チェックを外せば seed 固定で同じ戦闘を再現
     const plr = SCS.derive.buildUnit("YOU", plrChoices);
@@ -125,9 +126,10 @@ window.SCS = window.SCS || {};
     $("modSel").disabled = !enabled;
     $("seed").disabled = !enabled;
     $("config").classList.toggle("locked", !enabled);
-    $("cfgLock").textContent = enabled ? "" : "🔒 戦闘中：性格はロック（決着後 or 新規対戦で解除）";
+    $("cfgLock").textContent = enabled ? "" : "[ LOCK ] 戦闘中：性格はロック（決着後 or 新規対戦で解除）";
   }
-  function applyLockUI() { document.querySelectorAll("#plrParams select").forEach((s, i) => { const lk = i === lockedAxis; if (lk) s.disabled = true; s.classList.toggle("locked-axis", lk); }); }
+  // 核軸ロック表示。lk=false で必ず disabled を戻す（旧版は一方向ラッチで解除経路が無くダイヤルが固まった）
+  function applyLockUI() { document.querySelectorAll("#plrParams select").forEach((s, i) => { const lk = i === lockedAxis; s.disabled = lk; s.classList.toggle("locked-axis", lk); }); }
   function updateConfigLock() {
     const locked = !!battle && battle.turn >= 1 && !battle.over;
     setConfigEnabled(!locked);
@@ -224,7 +226,7 @@ window.SCS = window.SCS || {};
   // チャンク非同期で進捗を出しつつ、同一設定はキャッシュ＝再設計の試行を軽快に。
   const PREDICT_SEEDS = 20;
   let predictCtx = null, predictRun = 0, lastEstimate = null;
-  const predictCache = {};
+  const predictCache = {}; const predictCacheKeys = []; // 簡易LRU（無制限肥大を防ぐ）
   function predictContext() {
     if (predictCtx) return { plrChoices: plrChoices.slice(), cpuChoices: predictCtx.cpuChoices, cpuName: predictCtx.cpuName, arena: predictCtx.arena, mod: predictCtx.mod, rnd: false };
     const aSel = $("arenaSel").value, mSel = $("modSel").value, preset = $("cpuPreset").value;
@@ -235,7 +237,7 @@ window.SCS = window.SCS || {};
   }
   function predictKey(ctx) { return ctx.plrChoices.join("") + "|" + (ctx.cpuChoices || []).join("") + "|" + ctx.arena + "|" + ctx.mod; }
   function predictHtml(ctx, t, prevEst) {
-    const w = t.winRate, dr = t.drawRate, l = 100 - w - dr;
+    const w = t.winRate, dr = t.drawRate, l = Math.max(0, 100 - w - dr); // 独立丸めで和が100超でも敗率は負にしない（進捗中の負値表示を防ぐ）
     const prog = t.done ? "" : `<span class="pg-prog">試算中 ${t.n}/${t.total}…</span>`;
     let delta = "";
     if (prevEst && t.done) { const d = w - prevEst.winRate, arr = d === 0 ? "±0" : (d > 0 ? `+${d}` : `${d}`); delta = `<span class="pg-delta ${d > 0 ? "dgood" : d < 0 ? "dbad" : "d0"}">前回試算 ${prevEst.winRate}％ → <b>${w}％</b>（${arr}pt）</span>`; }
@@ -257,7 +259,7 @@ window.SCS = window.SCS || {};
     SCS.batchSimAsync(ctx.plrChoices, ctx.cpuChoices, ctx.arena, ctx.mod, SCS.batchSeeds(PREDICT_SEEDS), { cpuName: ctx.cpuName, chunk: 2, cancelled: () => myRun !== predictRun, onProgress: draw })
       .then((t) => {
         if (myRun !== predictRun) return;
-        if (t.done) { predictCache[key] = t; draw(t); lastEstimate = { key, winRate: t.winRate }; }
+        if (t.done) { if (!predictCache[key]) { predictCacheKeys.push(key); if (predictCacheKeys.length > 64) delete predictCache[predictCacheKeys.shift()]; } predictCache[key] = t; draw(t); lastEstimate = { key, winRate: t.winRate }; }
         btn.disabled = false; btn.textContent = "▶ 勝率を再試算（20戦）";
       });
   }
@@ -383,7 +385,7 @@ window.SCS = window.SCS || {};
     getPlrChoices() { return plrChoices.slice(); },
     lockAxis(idx) { lockedAxis = idx; applyLockUI(); },
     launchStoryBattle(opts) { storyCpuChoices = opts.cpuChoices; storyCpuName = opts.cpuName; arenaName = opts.arena; modName = opts.mod; onBattleOver = opts.onOver || null; newBattle(); },
-    clearStory() { storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; predictCtx = null; markPredictStale(); applyLockUI(); },
+    clearStory() { stopAuto(); storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; predictCtx = null; markPredictStale(); applyLockUI(); }, // stopAuto＝モード切替で旧バトルの自動進行を裏で走らせない
     freeBattle() { storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; predictCtx = null; applyLockUI(); newBattle(); },
     setPredictContext(ctx) { predictCtx = ctx; markPredictStale(); }, // ② ストーリー設計時：試算の相手＝この敵のホーム
     nextStep, auto,

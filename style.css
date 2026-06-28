@@ -202,7 +202,7 @@ h3::before { content: "▌ "; }
 .btn.small { padding: 4px 12px; font-size: 12px; }
 .predict-note { color: var(--dim); font-size: 10.5px; letter-spacing: .2px; }
 .predict { border: 1px solid var(--line2); border-left: 3px solid var(--green2); background: rgba(58, 209, 123, .05); border-radius: 3px; padding: 9px 12px; margin-bottom: 14px; }
-.predict.stale { opacity: .42; }
+.predict.stale > * { opacity: .42; } /* 古い数値だけ減光。::after（再試算の催促）は親側なので満アンバーのまま残す */
 .predict.stale::after { content: " ⟲ 設計が変わりました。再試算してください"; color: var(--amber); font-size: 10.5px; }
 .pg-head { display: flex; align-items: baseline; gap: 10px; }
 .pg-title { color: var(--green2); font-size: 12px; letter-spacing: 1px; }
@@ -359,7 +359,7 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .ob-foot { display: flex; align-items: center; gap: 8px; }
 .ob-spacer { flex: 1; }
 .btn.tiny { padding: 4px 10px; font-size: 11px; }
-.ob-spot { position: relative; z-index: 10000; outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; box-shadow: 0 0 22px rgba(255, 207, 92, .35); animation: obspot 1.4s ease-in-out infinite; }
+.ob-spot { position: relative; z-index: 10002; outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; box-shadow: 0 0 22px rgba(255, 207, 92, .35); animation: obspot 1.4s ease-in-out infinite; } /* 暗幕(10001)より前面＝強調要素が沈まない */
 @keyframes obspot { 0%, 100% { outline-color: rgba(255, 207, 92, .55); } 50% { outline-color: rgba(255, 207, 92, 1); } }
 
 /* ── モバイル ── */
@@ -372,7 +372,7 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
   .macros, .acols { grid-template-columns: 1fr; }
   .log { height: 44vh; min-height: 230px; }
   .btn { min-width: 0; padding: 11px 8px; font-size: 13px; }
-  .btn.ghost { flex: 1 1 100%; min-width: 0; order: 3; }
+  .controls .btn.ghost { flex: 1 1 100%; min-width: 0; order: 3; } /* 分析ボタンのみ末尾全幅。.predict-bar/storyのghostへ漏らさない */
   .uc-weap { font-size: 9px; }
   select, input[type="number"] { max-width: 52%; }
 }
