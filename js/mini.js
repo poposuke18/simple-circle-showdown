@@ -85,10 +85,14 @@ window.SCS = window.SCS || {};
     disp.cx += (battle.cpu.x - disp.cx) * k; disp.cy += (battle.cpu.y - disp.cy) * k;
     const px = SX(disp.px), py = SY(disp.py), cx = SX(disp.cx), cy = SY(disp.cy);
 
-    // 交戦軸（淡い線）＋接近グロー
+    // 射線（LoS）：シムと同じ battle.losClear で判定＝戦闘挙動と必ず一致。通れば実線、遮蔽で切れれば破線
+    const losOK = battle.losClear ? battle.losClear({ x: battle.plr.x, y: battle.plr.y }, { x: battle.cpu.x, y: battle.cpu.y }) : true;
     const near = Math.hypot(disp.px - disp.cx, disp.py - disp.cy) / f.w < 0.08;
-    ctx.lineWidth = 1; ctx.strokeStyle = near ? "rgba(255,207,92,.35)" : "rgba(109,255,160,.13)";
+    ctx.lineWidth = 1;
+    if (losOK) { ctx.setLineDash([]); ctx.strokeStyle = near ? "rgba(255,207,92,.4)" : "rgba(109,255,160,.26)"; }
+    else { ctx.setLineDash([3, 4]); ctx.strokeStyle = "rgba(255,94,94,.34)"; } // 射線が遮蔽で切れている
     ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(cx, cy); ctx.stroke();
+    ctx.setLineDash([]);
     if (near) { const mx = (px + cx) / 2, my = (py + cy) / 2; ctx.fillStyle = "rgba(255,207,92,.5)"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0; }
 
     drawUnit(px, py, battle.plr, COL_P);
