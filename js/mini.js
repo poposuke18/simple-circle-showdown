@@ -24,8 +24,8 @@ window.SCS = window.SCS || {};
     if (!cv || !battle) return;
     const cssW = cv.clientWidth;
     if (!cssW) return; // 非表示（ストーリーのマップ/スカウト等）
-    const f = battle.field, aspect = f.h / f.w;
-    const cssH = Math.max(70, Math.min(210, Math.round(cssW * aspect)));
+    const f = battle.field;
+    const cssH = Math.max(110, Math.min(190, Math.round(cssW * 0.46))); // 安定した横長レーダー
     const dpr = window.devicePixelRatio || 1;
     if (cv.style.height !== cssH + "px") cv.style.height = cssH + "px";
     const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
@@ -35,20 +35,24 @@ window.SCS = window.SCS || {};
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
 
-    const pad = 7, iw = cssW - pad * 2, ih = cssH - pad * 2;
-    const SX = (x) => pad + (x / f.w) * iw, SY = (y) => pad + (y / f.h) * ih;
+    // レターボックス：戦場の実縦横比を保ったまま中央に配置（正方形寄りの戦場が横に伸びる歪みを防ぐ）
+    const pad = 8, availW = cssW - pad * 2, availH = cssH - pad * 2;
+    const scale = Math.min(availW / f.w, availH / f.h);
+    const drawW = f.w * scale, drawH = f.h * scale;
+    const ox = Math.round((cssW - drawW) / 2), oy = Math.round((cssH - drawH) / 2);
+    const SX = (x) => ox + (x / f.w) * drawW, SY = (y) => oy + (y / f.h) * drawH;
 
-    // 走査線グリッド（淡）
+    // 走査線グリッド（淡・戦場枠内）
     ctx.lineWidth = 1; ctx.strokeStyle = "rgba(31,107,67,.22)";
-    for (let gx = 1; gx < 6; gx++) { const x = pad + (iw * gx) / 6; ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, pad + ih); ctx.stroke(); }
-    for (let gy = 1; gy < 3; gy++) { const y = pad + (ih * gy) / 3; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(pad + iw, y); ctx.stroke(); }
+    for (let gx = 1; gx < 6; gx++) { const x = ox + (drawW * gx) / 6; ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + drawH); ctx.stroke(); }
+    for (let gy = 1; gy < 3; gy++) { const y = oy + (drawH * gy) / 3; ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + drawW, y); ctx.stroke(); }
     // 戦場の枠
-    ctx.lineWidth = 1.3; ctx.strokeStyle = "#1f6b43"; ctx.strokeRect(pad + .5, pad + .5, iw - 1, ih - 1);
+    ctx.lineWidth = 1.3; ctx.strokeStyle = "#1f6b43"; ctx.strokeRect(ox + .5, oy + .5, drawW - 1, drawH - 1);
 
     // 障害物（遮蔽。HPで濃さが変わり、崩れると消える＝回り込みが読める文脈）
     for (const o of battle.obstacles || []) {
       if (o.hp <= 0) continue;
-      const x = SX(o.x), y = SY(o.y), w = (o.w / f.w) * iw, h = (o.h / f.h) * ih, fr = Math.max(0, Math.min(1, o.hp / 70));
+      const x = SX(o.x), y = SY(o.y), w = o.w * scale, h = o.h * scale, fr = Math.max(0, Math.min(1, o.hp / 70));
       ctx.fillStyle = "rgba(58,116,86," + (0.1 + 0.14 * fr) + ")";
       ctx.fillRect(x, y, w, h);
       ctx.lineWidth = 1; ctx.strokeStyle = "rgba(95,160,120," + (0.25 + 0.4 * fr) + ")";
