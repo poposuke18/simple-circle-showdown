@@ -13,16 +13,16 @@ window.SCS = window.SCS || {};
   let autoTimer = null;
 
   const weaponStr = (u) => `${u.ranged.name}＋${u.melee.name}`;
-  // 狭い画面（スマホ縦）ではバー長を短く＝はみ出し防止
-  const mini = (big, small) => (typeof window !== "undefined" && window.innerWidth && window.innerWidth < 520 ? small : big);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), clamp01 = (v) => clamp(v, 0, 1);
 
   function buildConfig() {
     const wrap = $("plrParams");
     wrap.innerHTML = "";
     D.MACROS.forEach((mac, i) => {
       const row = document.createElement("div");
-      row.className = "cfg-row";
+      row.className = "macro";
       const label = document.createElement("label");
+      label.className = "macro-lbl";
       label.textContent = mac.name;
       const sel = document.createElement("select");
       mac.poles.forEach((p, ci) => {
@@ -72,6 +72,7 @@ window.SCS = window.SCS || {};
     const cpu = SCS.derive.buildUnit(cpuName, cpuChoices);
     arenaName = $("arenaSel").value;
     battle = SCS.makeBattle(plr, cpu, seed, arenaName);
+    $("arenaChip").textContent = battle.arena.name;
     $("log").innerHTML = "";
     appendRaw(`⚔ 戦場：${battle.arena.name} — ${battle.arena.flavor}`, "arena");
     appendRaw(`>> 対戦開始  PLR:${weaponStr(plr)} HP${plr.maxHp}  vs  CPU(${cpu.name}):${weaponStr(cpu)} HP${cpu.maxHp}`, "sys");
@@ -95,29 +96,37 @@ window.SCS = window.SCS || {};
     setConfigEnabled(!locked);
   }
 
-  // 両ユニットの実X座標を 0..field.w → 0..W に投影（PLRもCPUも動く・左右は戦場の左右で固定側ではない）
-  function distBarHtml() {
-    const W = mini(36, 24), fw = battle.field.w;
-    const pos = (x) => Math.max(0, Math.min(W - 1, Math.round((x / fw) * (W - 1))));
-    const px = pos(battle.plr.x), cx = pos(battle.cpu.x);
-    const cells = new Array(W).fill("·");
-    cells[cx] = '<span class="mc">■</span>';
-    cells[px] = '<span class="mp">■</span>';
-    if (px === cx) cells[px] = '<span class="mx">◈</span>';
-    return cells.join("");
+  // 状態異常チップ（DoT/脆弱/鈍足は statuses、麻痺は stun、火事場は secondWind）
+  function chipsHtml(u) {
+    const out = [];
+    (u.statuses || []).forEach((s) => out.push(`<span class="chip ${s.type}">${D.STATUS_JP[s.type] || s.type}</span>`));
+    if (u.stun > 0) out.push(`<span class="chip stun">麻痺</span>`);
+    if (u.secondWind > 0) out.push(`<span class="chip sw">火事場</span>`);
+    return out.join("");
   }
-  function hpBar(u) {
-    const W = mini(20, 14);
-    const f = Math.max(0, Math.round((u.hp / u.maxHp) * W));
-    return "[" + "|".repeat(f) + "·".repeat(W - f) + "]";
+  function setUnit(side, u, label) {
+    const f = Math.round(clamp01(u.hp / u.maxHp) * 100);
+    const hpf = $("hpf" + side);
+    hpf.style.width = f + "%";
+    hpf.parentElement.classList.toggle("low", u.hp > 0 && u.hp / u.maxHp < 0.3);
+    $("hpn" + side).textContent = `${u.hp} / ${u.maxHp}`;
+    $("sta" + side).style.width = Math.round(clamp01(u.stamina == null ? 1 : u.stamina) * 100) + "%";
+    $("chips" + side).innerHTML = chipsHtml(u);
+    $("name" + side).textContent = label;
+    $("weap" + side).textContent = weaponStr(u);
   }
-
+  // 実X座標を 0..field.w → 0..100% に投影（PLR/CPUとも動く・左右は固定でない）。HP/気力/流れ/状態異常を可視化
   function render() {
     if (!battle) return;
-    const p = battle.plr, c = battle.cpu, d = battle.displayDist();
-    $("dist").innerHTML = `位置 ${distBarHtml()}　距離 ${d}%\n<span class="mp">■</span>PLR <span class="mc">■</span>CPU`;
-    $("hpPlr").textContent = `PLAYER HP ${hpBar(p)} ${p.hp}/${p.maxHp}`;
-    $("hpCpu").textContent = `CPU HP    ${hpBar(c)} ${c.hp}/${c.maxHp}`;
+    const p = battle.plr, c = battle.cpu, fw = battle.field.w;
+    $("mP").style.left = clamp01(p.x / fw) * 100 + "%";
+    $("mC").style.left = clamp01(c.x / fw) * 100 + "%";
+    $("track").classList.toggle("clash", Math.abs(p.x - c.x) / fw < 0.04);
+    $("distNum").textContent = `距離 ${battle.displayDist()}%`;
+    setUnit("P", p, "YOU");
+    setUnit("C", c, c.name);
+    const net = clamp(((p.momentum || 0) - (c.momentum || 0)) / 1.5, -1, 1); // 流れ：PLR側(左)↔CPU側(右)
+    $("moFill").style.left = clamp(50 - net * 42, 4, 96) + "%";
     $("turnInfo").textContent = `TURN ${battle.turn} / ${D.SIM.turnCap}`;
   }
 
@@ -138,30 +147,6 @@ window.SCS = window.SCS || {};
     updateConfigLock();
     if (r.over) { stopAuto(); $("paramsWrap").classList.remove("hidden"); renderParams(); } // 決着→総括(戦闘分析)を自動表示。決着演出はシム側のログに含まれる
     else if (!$("paramsWrap").classList.contains("hidden")) renderParams(); // 分析を開いている間は毎ターン更新
-  }
-
-  function showResult(res) {
-    stopAuto();
-    const p = battle.plr, c = battle.cpu;
-    appendRaw("═══════════════════════════════", "result");
-    if (res.type === "draw") {
-      appendRaw(`  ☒ DRAW — ${res.text}`, "result");
-      appendRaw(`  両者倒れる（PLR ${p.hp}/${p.maxHp}・CPU ${c.hp}/${c.maxHp}）`, "dim");
-    } else {
-      const win = res.winner === "PLR" ? p : c, lose = res.winner === "PLR" ? c : p;
-      const banner = res.text === "KO" ? "★ K.O. ★" : "★ 決着 ★";
-      appendRaw(`  ${banner}　WINNER ▶ ${res.winner}（${win.name}）`, "result");
-      appendRaw(`  ${res.text}／勝 ${win.hp}/${win.maxHp} — 敗 ${lose.hp}/${lose.maxHp}`, "dim");
-      appendRaw(`  「${finishFlavor(res, win, lose)}」`, "result");
-    }
-    appendRaw("═══════════════════════════════", "result");
-  }
-  function finishFlavor(res, win, lose) {
-    if (res.text && res.text.indexOf("時間切れ") === 0) return "間合いを支配し続けた者が、判定を制した";
-    if (lose.hp <= 0 && win.hp / win.maxHp < 0.2) return "満身創痍、執念がもぎ取った勝利";
-    const rpool = { sniper: "狙い澄ました一射が、勝敗を断ち切った", mg: "浴びせ続けた弾幕が、ねじ伏せた", shotgun: "至近の一撃が、すべてを吹き飛ばした", pistol: "堅実な撃ち合いを、確実に制した" };
-    const mpool = { hammer: "渾身の一撃が、とどめを刺した", knife: "刃の連撃が、急所を捉えた", katana: "一閃が、勝負を決めた", spear: "穂先が、間合いの果てを貫いた" };
-    return (win.winDist <= 25 ? mpool[win.melee.key] : rpool[win.ranged.key]) || rpool[win.ranged.key] || mpool[win.melee.key] || "巧みな立ち回りが、勝敗を分けた";
   }
 
   function auto() {
