@@ -109,6 +109,13 @@ body::after {
 .sta-lbl { font-size: 9.5px; color: var(--dim); min-width: 24px; }
 .stabar { position: relative; flex: 1; height: 5px; background: #07150d; border: 1px solid var(--dim2); overflow: hidden; }
 .stabar i { display: block; height: 100%; background: var(--amber); box-shadow: 0 0 7px rgba(255, 207, 92, .6); transition: width .25s ease; }
+/* 気迫ゲージ（満タンで必殺解放） */
+.res-row { margin-top: 5px; }
+.resbar i { background: linear-gradient(90deg, var(--green), #eafff3); box-shadow: 0 0 7px rgba(109, 255, 160, .6); }
+.res-row.full .sta-lbl { color: var(--green); text-shadow: 0 0 8px var(--green); }
+.res-row.full .resbar { border-color: var(--green); box-shadow: 0 0 8px rgba(109, 255, 160, .5); }
+.res-row.full .resbar i { animation: pulse .8s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 .chips { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 7px; min-height: 15px; font-size: 11px; }
 .chip { letter-spacing: .5px; }
 .chip::before { content: "["; opacity: .6; } .chip::after { content: "]"; opacity: .6; }

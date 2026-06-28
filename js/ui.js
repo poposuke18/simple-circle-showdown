@@ -125,6 +125,9 @@ window.SCS = window.SCS || {};
     hpf.parentElement.classList.toggle("low", u.hp > 0 && u.hp / u.maxHp < 0.3);
     $("hpn" + side).textContent = `${u.hp} / ${u.maxHp}`;
     $("sta" + side).style.width = Math.round(clamp01(u.stamina == null ? 1 : u.stamina) * 100) + "%";
+    const rf = clamp01(u.resolve || 0); // 気迫ゲージ（満タンで必殺解放＝発光）
+    $("res" + side).style.width = Math.round(rf * 100) + "%";
+    $("resRow" + side).classList.toggle("full", rf >= 1);
     $("chips" + side).innerHTML = chipsHtml(u);
     $("name" + side).textContent = label;
     $("weap" + side).textContent = weaponStr(u);
