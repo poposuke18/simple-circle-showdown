@@ -73,16 +73,9 @@ body::after {
 
 /* ── 位置トラック（ミニマップ）── */
 .track-wrap { margin: 4px 0 12px; }
-.track {
-  position: relative; height: 22px; background: #04100a;
-  border: 1px solid var(--line2); box-shadow: inset 0 0 10px rgba(0, 0, 0, .6);
-}
-.track-grid { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, var(--dim2) 0 1px, transparent 1px 5%); opacity: .55; }
-.marker { position: absolute; top: 50%; width: 9px; height: 15px; transform: translate(-50%, -50%); transition: left .25s ease; z-index: 2; }
-.marker.mP { background: var(--plr); box-shadow: 0 0 10px var(--plr), 0 0 2px #fff inset; }
-.marker.mC { background: var(--cpu); box-shadow: 0 0 10px var(--cpu), 0 0 2px #fff inset; }
-.track.clash { box-shadow: inset 0 0 16px rgba(255, 255, 255, .4); }
-.track-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 11px; }
+/* 2D上空ミニマップ（CRTレーダー） */
+.mini { display: block; width: 100%; height: 120px; background: radial-gradient(120% 90% at 50% 0%, #06170e 0%, #03100a 70%); border: 1px solid var(--line2); box-shadow: inset 0 0 16px rgba(0, 0, 0, .55), 0 0 10px rgba(31, 107, 67, .12); image-rendering: auto; }
+.track-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 5px; font-size: 11px; }
 .track-foot .lg.p { color: var(--plr); } .track-foot .lg.c { color: var(--cpu); }
 .track-foot .dist { color: var(--dim); }
 

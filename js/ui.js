@@ -85,6 +85,7 @@ window.SCS = window.SCS || {};
     const cpu = SCS.derive.buildUnit(cpuName, cpuChoices);
     if (!storyCpuChoices) { arenaName = $("arenaSel").value; modName = $("modSel").value; } // ストーリーはホーム固定（外部指定）
     battle = SCS.makeBattle(plr, cpu, seed, arenaName, modName);
+    if (SCS.mini) SCS.mini.reset(); // 新規対戦：ミニマップの位置をスナップ
     $("arenaChip").textContent = battle.arena.name;
     const mc = $("modChip");
     if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else { mc.textContent = ""; mc.style.display = "none"; }
@@ -139,10 +140,8 @@ window.SCS = window.SCS || {};
   // 実X座標を 0..field.w → 0..100% に投影（PLR/CPUとも動く・左右は固定でない）。HP/気力/流れ/状態異常を可視化
   function render() {
     if (!battle) return;
-    const p = battle.plr, c = battle.cpu, fw = battle.field.w;
-    $("mP").style.left = clamp01(p.x / fw) * 100 + "%";
-    $("mC").style.left = clamp01(c.x / fw) * 100 + "%";
-    $("track").classList.toggle("clash", Math.abs(p.x - c.x) / fw < 0.04);
+    const p = battle.plr, c = battle.cpu;
+    if (SCS.mini) SCS.mini.sync(battle); // 2D上空ミニマップ（mini.jsが補間描画）
     $("distNum").textContent = `距離 ${battle.displayDist()}%`;
     setUnit("P", p, "YOU");
     setUnit("C", c, c.name);
