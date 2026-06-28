@@ -166,7 +166,7 @@ window.SCS = window.SCS || {};
     $("storyResult").innerHTML = html;
     show("storyResult", true);
     const nb = $("rNext"); if (nb) nb.addEventListener("click", () => renderScout(nxt));
-    const rt = $("rRetry"); if (rt) rt.addEventListener("click", () => enterDesign(curEnemy));
+    const rt = $("rRetry"); if (rt) rt.addEventListener("click", () => { st.choices = SCS.ui.getPlrChoices(); save(); enterDesign(curEnemy); }); // ④ 結果画面で助言を押したナッジを再挑戦へ引き継ぐ
     const mp = $("rMap"); if (mp) mp.addEventListener("click", renderHome);
     setView("result");
   }
