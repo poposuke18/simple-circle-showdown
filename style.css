@@ -56,6 +56,7 @@ body::after {
   text-shadow: 0 0 10px rgba(109, 255, 160, .55), 0 0 24px rgba(109, 255, 160, .25);
 }
 .app-head h1 .ai { color: var(--cpu); margin-left: 6px; text-shadow: 0 0 12px rgba(255, 94, 94, .6); }
+.app-head h1 .ver { font-size: 10px; color: var(--dim); font-weight: 400; letter-spacing: 1px; margin-left: 14px; vertical-align: middle; text-shadow: none; }
 .app-head .sub { color: var(--dim); font-size: 11.5px; letter-spacing: 1px; margin-top: 4px; }
 
 /* ── stage ── */
