@@ -169,5 +169,36 @@ window.SCS = window.SCS || {};
     { key: "inferno", name: "火の海", flavor: "そこかしこで炎が噴き上がる", ignite: true, weight: 2 },
   ];
 
-  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS };
+  // ===== ストーリーモード（[[ストーリーモード設計]]）=====
+  // 敵＝看板キャラ：name/flavor(口上)/scout(偵察ヒント)/lesson(教える事)/choices(10択人格)/arena+mod(ホーム固定)/boss。
+  // choices=null は鏡（プレイヤーの直近勝利ビルドを実行時に流し込む）。撃破で choices が「流派」プリセットとして解禁。
+  const ENEMIES = [
+    // 第1章 気質
+    { key: "buruga", name: "猛牛バルガ", flavor: "「止まったら負けだ。出し惜しみはしねぇ！」", scout: "超攻撃・全力で殴りに来る。だが脆い。", lesson: "全力攻撃は脆い。受け・カウンター・HPで耐えて咎める。", choices: [3, 3, 1, 0, 2, 2, 1, 2, 3, 1], arena: "狭い闘技場", mod: "通常" },
+    { key: "garon", name: "鉄塞のガロン", flavor: "「来い。私の壁は崩れん。」", scout: "長射程で待ち構える要塞。開けた平原が庭。", lesson: "要塞をこじ開ける＝攻め・接近・崩しの価値。", choices: [0, 0, 3, 3, 2, 2, 2, 1, 0, 1], arena: "開けた平原", mod: "通常", boss: true },
+    // 第2章 間合い
+    { key: "saika", name: "韋駄天サイカ", flavor: "「捕まえられるかな？」", scout: "距離を取って撃つカイター。追っても逃げる。", lesson: "カイターを捕まえる＝接近重視＋側背面取り。", choices: [1, 1, 2, 3, 2, 2, 1, 1, 1, 2], arena: "開けた平原", mod: "通常" },
+    { key: "kuro", name: "影縫いのクロ", flavor: "「影は、いつでも背後にいる。」", scout: "狡猾な暗殺者。側面と至近で揺さぶる。", lesson: "側面取りと至近の捌き。", choices: [2, 3, 1, 0, 0, 3, 0, 2, 2, 3], arena: "市街の廃墟", mod: "通常" },
+    { key: "jin", name: "長刀のジン", flavor: "「一足一刀。間合いはこちらのものだ。」", scout: "長いリーチで間合いを支配。細い橋が舞台。", lesson: "超接近の殴り合いで間合いを制する。", choices: [1, 1, 2, 3, 2, 2, 2, 2, 1, 1], arena: "吊り橋", mod: "通常", boss: true },
+    // 第3章 読み合い
+    { key: "veil", name: "千面のヴェイル", flavor: "「さて、私はどの顔だと思う？」", scout: "掴みどころが無い。霧の廃墟で撹乱してくる。", lesson: "揺さぶり・撹乱を読む＝規律・相手読み・確定反撃。", choices: [2, 2, 1, 1, 1, 3, 0, 2, 2, 3], arena: "市街の廃墟", mod: "濃霧" },
+    { key: "tetsu", name: "不動のテツ", flavor: "「……（無言で構える）」", scout: "至近で受け続ける鉄壁。正面からは割れない。", lesson: "受けを崩す＝崩し（投げ）の三すくみ。", choices: [2, 0, 3, 2, 2, 1, 2, 1, 1, 0], arena: "狭い闘技場", mod: "通常" },
+    { key: "yamato", name: "二律のヤマト", flavor: "「攻めも守りも、流れのままに。」", scout: "攻守を自在に切替え、こちらに合わせてくる。", lesson: "確定反撃＋畳みかけで上回る。", choices: [2, 1, 3, 1, 3, 3, 2, 2, 1, 2], arena: "中央遮蔽", mod: "サドンデス", boss: true },
+    // 第4章 戦場
+    { key: "ignis", name: "溶岩王イグニス", flavor: "「全て、灰にしてやろう。」", scout: "炎と溶岩が己の庭。近づけば焼かれる。", lesson: "ハザード回避＋遠距離・壁際に追い込ませない。", choices: [2, 2, 2, 1, 0, 3, 0, 2, 2, 3], arena: "溶岩洞窟", mod: "火の海" },
+    { key: "doom", name: "崩落のドゥーム", flavor: "「足元から崩してやる。」", scout: "崩れる遺跡と狭まる戦場を味方につける。", lesson: "崩れる遮蔽と中央追い込みを逆手に取る。", choices: [2, 1, 2, 2, 2, 3, 1, 2, 2, 3], arena: "崩れゆく遺跡", mod: "狭まる戦場" },
+    { key: "shura", name: "霧隠れのシュラ", flavor: "「霧の中、君は私を見つけられない。」", scout: "深い霧の森で狙撃してくる。視界が利かない。", lesson: "視界不良で接近して仕留める。", choices: [1, 1, 3, 2, 3, 2, 1, 2, 1, 2], arena: "深い森", mod: "濃霧", boss: true },
+    // 第5章 極
+    { key: "ogre", name: "百戦のオウガ", flavor: "「小手先は通じんぞ、若いの。」", scout: "全てに隙が無いベテラン。総合力で来る。", lesson: "総合力勝負。隙を作って崩す。", choices: [2, 2, 3, 2, 3, 3, 2, 2, 2, 2], arena: "中央遮蔽", mod: "一触即発" },
+    { key: "mirror", name: "鏡（MIRROR）", flavor: "「私は、お前自身だ。」", scout: "あなたの戦いを全て見てきた。あなたの写し。", lesson: "自分の設計哲学を超える＝予測不能性・戦術切替が鍵。", choices: null, arena: "中央遮蔽", mod: "サドンデス", boss: true, mirror: true },
+  ];
+  const CHAPTERS = [
+    { key: "ch1", title: "第1章 気質", theme: "トレードオフを体で覚える", enemies: ["buruga", "garon"] },
+    { key: "ch2", title: "第2章 間合い", theme: "距離と位置", enemies: ["saika", "kuro", "jin"] },
+    { key: "ch3", title: "第3章 読み合い", theme: "yomi・三すくみ", enemies: ["veil", "tetsu", "yamato"] },
+    { key: "ch4", title: "第4章 戦場", theme: "環境支配", enemies: ["ignis", "doom", "shura"] },
+    { key: "ch5", title: "第5章 極", theme: "総合と自己理解", enemies: ["ogre", "mirror"] },
+  ];
+
+  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS, ENEMIES, CHAPTERS };
 })();
