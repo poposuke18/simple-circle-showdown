@@ -65,6 +65,9 @@ body::after {
 .arena-chip, .turn-chip { font-size: 12px; letter-spacing: 1px; padding: 2px 4px; }
 .arena-chip { color: var(--amber); text-shadow: 0 0 8px rgba(255, 207, 92, .35); }
 .arena-chip::before { content: "▌ "; }
+.chips-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mod-chip { font-size: 11px; color: var(--cpu); border: 1px solid var(--cpu); padding: 1px 7px; letter-spacing: 1px; text-shadow: 0 0 8px rgba(255, 94, 94, .35); }
+.mod-chip::before { content: "戦況 "; color: var(--dim); }
 .turn-chip { color: var(--dim); }
 .turn-chip::before { content: "["; } .turn-chip::after { content: "]"; }
 

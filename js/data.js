@@ -118,6 +118,7 @@ window.SCS = window.SCS || {};
     rubble: { name: "瓦礫", def: 0.35, avoid: 0.05, move: 0.70, aim: 0 },
     swamp: { name: "沼地", def: 0, avoid: -0.10, move: 0.50, aim: 0 },
     highground: { name: "高所", def: 0.10, avoid: 0, move: 1.0, aim: 0.15 },
+    lava: { name: "溶岩", def: 0, avoid: 0, move: 0.7, aim: 0, dmg: 7 }, // 立つと毎ターン被弾＝避けるべき危険地帯
   };
 
   // 戦場プール（ランダム選択）。obstacles=射線を遮る固体、terrain=立つと効果のゾーン、base=全域の既定地形
@@ -142,7 +143,31 @@ window.SCS = window.SCS || {};
       obstacles: [{ x: 48, y: 18, w: 16, h: 16 }],
       terrain: [{ x: 18, y: 20, w: 12, h: 12, t: "rubble" }, { x: 82, y: 20, w: 12, h: 12, t: "rubble" }, { x: 46, y: 5, w: 20, h: 6, t: "swamp" }, { x: 46, y: 41, w: 20, h: 6, t: "swamp" }],
       start: { p: { x: 10, y: 26 }, c: { x: 102, y: 26 } } },
+    { key: "volcano", name: "溶岩洞窟", flavor: "溶岩が点在・立ち位置が命取り（押し込まれると焼かれる）", w: 96, h: 50, base: "plains",
+      obstacles: [{ x: 30, y: 8, w: 8, h: 7 }, { x: 60, y: 35, w: 8, h: 7 }],
+      terrain: [{ x: 42, y: 0, w: 12, h: 17, t: "lava" }, { x: 42, y: 33, w: 12, h: 17, t: "lava" }, { x: 22, y: 12, w: 9, h: 8, t: "lava" }, { x: 65, y: 30, w: 9, h: 8, t: "lava" }, { x: 12, y: 23, w: 8, h: 6, t: "rubble" }],
+      start: { p: { x: 8, y: 25 }, c: { x: 88, y: 25 } } },
+    { key: "bridge", name: "吊り橋", flavor: "細い一本道・超接近の殴り合い", w: 80, h: 18, base: "plains",
+      obstacles: [],
+      terrain: [{ x: 34, y: 0, w: 12, h: 18, t: "highground" }],
+      start: { p: { x: 8, y: 9 }, c: { x: 72, y: 9 } } },
+    { key: "collapse", name: "崩れゆく遺跡", flavor: "脆い遮蔽だらけ・撃ち込みで崩落多発", w: 104, h: 50, base: "plains",
+      obstacles: [{ x: 26, y: 10, w: 8, h: 8 }, { x: 48, y: 30, w: 8, h: 8 }, { x: 70, y: 12, w: 8, h: 8 }, { x: 52, y: 8, w: 7, h: 6 }, { x: 30, y: 34, w: 7, h: 6 }],
+      terrain: [{ x: 12, y: 20, w: 12, h: 12, t: "rubble" }, { x: 80, y: 20, w: 12, h: 12, t: "rubble" }],
+      start: { p: { x: 8, y: 25 }, c: { x: 96, y: 25 } } },
   ];
 
-  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP };
+  // 戦況モディファイア（毎戦ランダム or 指定）。戦闘のルール自体を変えて毎戦に変化を付ける
+  // acc=全命中倍率, staMul=気力消費倍率, crit=会心率加算, dmgMul=全ダメージ倍率, sudden=終盤被ダメ増, ring=外周崩壊(中央へ), ignite=各所で発火
+  const MODIFIERS = [
+    { key: "none", name: "通常", flavor: "", weight: 4 },
+    { key: "fog", name: "濃霧", flavor: "視界が悪く、命中が落ちる", acc: 0.78, weight: 2 },
+    { key: "heat", name: "灼熱", flavor: "うだる暑さ、消耗が激しい", staMul: 1.7, weight: 2 },
+    { key: "sudden", name: "サドンデス", flavor: "終盤、被ダメージが跳ね上がる", sudden: true, weight: 2 },
+    { key: "ring", name: "狭まる戦場", flavor: "外周が崩れ、中央へ追い込まれる", ring: true, weight: 2 },
+    { key: "edge", name: "一触即発", flavor: "会心が出やすく、誰もが脆い", crit: 0.15, dmgMul: 1.12, weight: 2 },
+    { key: "inferno", name: "火の海", flavor: "そこかしこで炎が噴き上がる", ignite: true, weight: 2 },
+  ];
+
+  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS };
 })();

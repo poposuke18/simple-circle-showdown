@@ -8,6 +8,7 @@ window.SCS = window.SCS || {};
   let plrChoices = D.PRESETS["中庸バランス"].slice();
   let cpuPresetName = "専守要塞";
   let arenaName = "ランダム";
+  let modName = "ランダム";
   let seed = 12345;
   let battle = null;
   let autoTimer = null;
@@ -52,6 +53,15 @@ window.SCS = window.SCS || {};
     asel.value = arenaName;
     asel.addEventListener("change", () => { arenaName = asel.value; });
 
+    const msel = $("modSel");
+    msel.innerHTML = "";
+    ["ランダム"].concat(D.MODIFIERS.map((m) => m.name)).forEach((name) => {
+      const o = document.createElement("option");
+      o.value = name; o.textContent = name; msel.appendChild(o);
+    });
+    msel.value = modName;
+    msel.addEventListener("change", () => { modName = msel.value; });
+
     $("seed").value = seed;
   }
 
@@ -70,11 +80,14 @@ window.SCS = window.SCS || {};
     if (cpuPresetName === "ランダム") { cpuChoices = genRandomChoices(seed); cpuName = `ランダム#${seed}`; }
     else { cpuChoices = D.PRESETS[cpuPresetName]; cpuName = cpuPresetName; }
     const cpu = SCS.derive.buildUnit(cpuName, cpuChoices);
-    arenaName = $("arenaSel").value;
-    battle = SCS.makeBattle(plr, cpu, seed, arenaName);
+    arenaName = $("arenaSel").value; modName = $("modSel").value;
+    battle = SCS.makeBattle(plr, cpu, seed, arenaName, modName);
     $("arenaChip").textContent = battle.arena.name;
+    const mc = $("modChip");
+    if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else { mc.textContent = ""; mc.style.display = "none"; }
     $("log").innerHTML = "";
     appendRaw(`>> 戦場：${battle.arena.name} — ${battle.arena.flavor}`, "arena");
+    if (battle.modifier) appendRaw(`>> 戦況：${battle.modifier.name} — ${battle.modifier.flavor}`, "arena");
     appendRaw(`>> 対戦開始  PLR:${weaponStr(plr)} HP${plr.maxHp}  vs  CPU(${cpu.name}):${weaponStr(cpu)} HP${cpu.maxHp}`, "sys");
     appendRaw(`>> seed=${seed}（同じ人格＋同じseed → 必ず同じ戦闘）`, "dim");
     $("paramsWrap").classList.add("hidden"); // 新規対戦時は分析を畳む（決着で自動展開）
@@ -87,6 +100,7 @@ window.SCS = window.SCS || {};
     document.querySelectorAll("#plrParams select").forEach((s) => (s.disabled = !enabled));
     $("cpuPreset").disabled = !enabled;
     $("arenaSel").disabled = !enabled;
+    $("modSel").disabled = !enabled;
     $("seed").disabled = !enabled;
     $("config").classList.toggle("locked", !enabled);
     $("cfgLock").textContent = enabled ? "" : "🔒 戦闘中：性格はロック（決着後 or 新規対戦で解除）";
