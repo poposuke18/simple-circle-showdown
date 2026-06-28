@@ -61,7 +61,7 @@ window.SCS = window.SCS || {};
     function tickStatuses(u) { let dmg = 0; const types = []; for (const s of u.statuses) { if (s.dmg) { dmg += s.dmg; types.push(s.type); } s.turns--; } u.statuses = u.statuses.filter((s) => s.turns > 0); return { dmg, types }; }
 
     // ===== 戦闘統計（分析フィードバック用・パラメータは見せず挙動の結果で語る）=====
-    const mkStat = () => ({ shots: 0, hits: 0, crits: 0, dmgDealt: 0, dmgTaken: 0, ranged: 0, melee: 0, reloads: 0, empties: 0, statusOut: {}, mv: {}, near: 0, mid: 0, far: 0, distSum: 0, distN: 0, guile: 0, biggest: 0, biggestTurn: 0, firstHit: 0, hpSeries: [], dodges: 0, counters: 0, winded: 0, strat: {}, charges: 0, guards: 0, grabs: 0, grabFails: 0, flankSide: 0, flankRear: 0, ults: 0, corners: 0, envThrows: 0, maxCombo: 0, punishes: 0 });
+    const mkStat = () => ({ shots: 0, hits: 0, crits: 0, dmgDealt: 0, dmgTaken: 0, ranged: 0, melee: 0, reloads: 0, empties: 0, statusOut: {}, mv: {}, near: 0, mid: 0, far: 0, distSum: 0, distN: 0, guile: 0, biggest: 0, biggestTurn: 0, firstHit: 0, hpSeries: [], dodges: 0, counters: 0, winded: 0, strat: {}, charges: 0, guards: 0, grabs: 0, grabFails: 0, flankSide: 0, flankRear: 0, ults: 0, corners: 0, envThrows: 0, maxCombo: 0, punishes: 0, openSeen: 0, openTaken: 0, wasFlanked: 0, ultIdle: 0, gaveOpening: 0, resPeak: 0 });
     const stats = { p: mkStat(), c: mkStat() };
 
     const losClear = (a, b) => !obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
@@ -902,8 +902,17 @@ window.SCS = window.SCS || {};
     // 麻痺中は行動不能（その場で硬直）
     function stunnedDecision(side) { const self = stat(side); return { cand: { move: "HOLD", attack: "NONE", newPos: { x: self.x, y: self.y }, moved: false, d2: dist(plr, cpu), los2: losClear(plr, cpu) }, reason: "麻痺", predFoe: null, depth: self.cog.searchDepth, mc: 0, plan: "麻痺", second: null, readFoe: null, stunned: true, strat: self.strategy, stratChanged: false, gamble: false }; }
 
-    function recordStats(side, dec, ev, ge, dmgTaken, preDist) {
+    const isAtkAttack = (a) => a === "MELEE" || a === "RANGED" || a === "CHARGE" || a === "GRAB" || a === "ULT";
+    function recordStats(side, dec, ev, ge, dmgTaken, preDist, ctx) {
       const s = stats[side], band = Math.round(clamp((preDist / maxDist) * 100, 0, 100));
+      // 観戦→調整の手がかり：見逃した好機・被フランク・気迫の温存・自分が晒した隙
+      if (ctx) {
+        if (ctx.foeOpenPre) { s.openSeen++; if (isAtkAttack(dec.cand.attack)) s.openTaken++; } // 相手の隙を咎められたか
+        if (ctx.foeEv && ctx.foeEv.flank && (ctx.foeEv.dmg || 0) > 0) s.wasFlanked++;             // 側背面を取られた被弾
+        if (ctx.resPre >= 1 && dec.cand.attack !== "ULT") s.ultIdle++;                            // 気迫満タンなのに必殺を撃たなかった
+        if (ev.whiff || ev.jam || ev.emptyReload || ev.grabFail || ev.grabWhiff) s.gaveOpening++; // 自分が大技/弾切れで隙を晒した
+        if ((ctx.resPre || 0) > s.resPeak) s.resPeak = ctx.resPre;
+      }
       s.mv[dec.cand.move] = (s.mv[dec.cand.move] || 0) + 1;
       if (band < 25) s.near++; else if (band < 55) s.mid++; else s.far++;
       s.distSum += band; s.distN++;
@@ -935,58 +944,82 @@ window.SCS = window.SCS || {};
     // 分析フィードバック：パラメータ(24小パラ)は見せず、戦闘の「結果」から挙動を要約＋次の方向性を示す
     function getAnalysis() {
       const STJP = D.STATUS_JP;
-      function one(side) {
+      function one(side, fs) {
         const u = stat(side), s = stats[side], n = s.distN || 1;
         const hitRate = s.shots ? Math.round((s.hits / s.shots) * 100) : 0;
         const atk = s.ranged + s.melee, atkRatio = Math.round((atk / n) * 100);
         const near = Math.round((s.near / n) * 100), mid = Math.round((s.mid / n) * 100), far = Math.round((s.far / n) * 100);
         const wpnMix = s.ranged + s.melee === 0 ? "—" : s.ranged > s.melee * 2 ? "遠距離主体" : s.melee > s.ranged * 2 ? "接近戦主体" : "遠近を併用";
         const won = !!result && result.type === "win" && (result.winner === u.side);
+        const draw = !!result && result.type === "draw";
         const statusSummary = Object.keys(s.statusOut).map((t) => `${STJP[t] || t}×${s.statusOut[t]}`).join("・");
         const rangeName = near >= mid && near >= far ? "近距離" : far >= mid && far >= near ? "遠距離" : "中距離";
-        const notes = [], advice = [];
-        const stratTop = Object.keys(s.strat).sort((a, b) => s.strat[b] - s.strat[a])[0];
-        if (stratTop) notes.push(`主に「${STRAT_JP[stratTop]}」の構えで組み立てた`);
-        notes.push(`主に${rangeName}で渡り合った（近${near}／中${mid}／遠${far}％）`);
-        notes.push(atkRatio < 35 ? `守勢が中心（攻撃に出たのは${atkRatio}％）` : atkRatio > 62 ? `終始攻め続けた（攻撃${atkRatio}％）` : `攻守のバランス型（攻撃${atkRatio}％）`);
-        if (s.shots >= 6) notes.push(hitRate >= 68 ? `命中が安定（${hitRate}％）` : hitRate <= 42 ? `命中が不安定（${hitRate}％）＝手数の割に通らず` : `命中率${hitRate}％`);
-        notes.push(`${wpnMix}（与ダメ${s.dmgDealt}／被ダメ${s.dmgTaken}）`);
-        if (statusSummary) notes.push(`状態異常を継続的に与えた（${statusSummary}）`);
-        if (s.guile >= 4) notes.push(`揺さぶり・駆け引きを多用（${s.guile}回）`);
-        if (s.counters > 0) notes.push(`回避から反撃を決めた（カウンター×${s.counters}）`);
-        else if (s.dodges >= 3) notes.push(`回避を多用した（${s.dodges}回）`);
-        if (s.charges >= 2) notes.push(`突進で間合いをこじ開けた（×${s.charges}）`);
-        else if (s.guards >= 3) notes.push(`受けで凌ぐ場面が多かった（${s.guards}回）`);
-        if (s.grabs > 0) notes.push(`崩し（投げ）で守りを破った（×${s.grabs}）`);
-        if (s.flankRear + s.flankSide >= 2) notes.push(`側面・背後を取って攻めた（背${s.flankRear}／側${s.flankSide}）`);
-        if (s.ults > 0) notes.push(`気迫を解き放ち必殺を決めた（×${s.ults}）`);
-        if (s.envThrows > 0) notes.push(`壁・地形へ叩き込んだ（×${s.envThrows}）`);
-        if (s.corners >= 2) notes.push(`壁際へ追い込んで攻めた（×${s.corners}）`);
-        if (s.maxCombo >= 2) notes.push(`最大${s.maxCombo}連撃で畳みかけた`);
-        if (s.punishes > 0) notes.push(`相手の空振りに確定反撃を決めた（×${s.punishes}）`);
-        if (s.winded >= Math.max(3, n * 0.35)) notes.push(`息切れが目立った（攻め急ぎ／持久力不足）`);
-        if (s.empties > 0) notes.push(`弾切れを起こす場面があった（${s.empties}回）`);
-        if (s.biggest > 0) notes.push(`最大の一撃は${s.biggestTurn}ターン目の −${s.biggest}`);
-        // 次の方向性（パラメータ名は出さず、人格をどちらへ寄せるかだけ示唆）
         const rangedWpn = u.winDist > 25;
+        // ── 観戦→調整の手がかり（見逃した好機・被フランク・気迫の温存・自分の隙）──
+        const missedPunish = Math.max(0, s.openSeen - s.openTaken);
+        const flankedHard = s.wasFlanked >= 2;
+        const ultUnused = s.ults === 0 && s.resPeak >= 1; // 気迫を満たしたのに必殺を一度も撃たなかった
+        const winded = s.winded >= Math.max(3, n * 0.35);
+        const overDefensive = atkRatio < 35;
+        const dmgEdge = s.dmgDealt - s.dmgTaken;
+        const outpaced = fs && fs.dmgDealt > s.dmgDealt * 1.3; // 相手の方が大きく削った＝押し込まれた
+        const stratTop = Object.keys(s.strat).sort((a, b) => s.strat[b] - s.strat[a])[0];
+        const notes = [], advice = [];
+        // 戦いぶり（事実の要約・簡潔に）
+        notes.push(`${stratTop ? `「${STRAT_JP[stratTop]}」中心、` : ""}主に${rangeName}（近${near}／中${mid}／遠${far}％）・${overDefensive ? "守勢" : atkRatio > 62 ? "終始攻勢" : "攻守均衡"}（攻撃${atkRatio}％）`);
+        if (s.shots >= 6) notes.push(hitRate >= 68 ? `命中が安定（${hitRate}％）` : hitRate <= 42 ? `命中が不安定（${hitRate}％・手数の割に通らず）` : `命中率${hitRate}％`);
+        notes.push(`与ダメ${s.dmgDealt}／被ダメ${s.dmgTaken}・${wpnMix}${outpaced ? "（火力で押し込まれた）" : dmgEdge > u.maxHp * 0.4 ? "（撃ち合いを優位に運んだ）" : ""}`);
+        if (statusSummary) notes.push(`状態異常を与えた（${statusSummary}）`);
+        // 光った技（最大2つだけ拾う）
+        const hi = [];
+        if (s.punishes > 0) hi.push(`確定反撃×${s.punishes}`);
+        if (s.maxCombo >= 2) hi.push(`最大${s.maxCombo}連撃`);
+        if (s.ults > 0) hi.push(`必殺×${s.ults}`);
+        if (s.grabs > 0) hi.push(`崩し×${s.grabs}`);
+        if (s.flankRear + s.flankSide >= 2) hi.push(`側背面取り（背${s.flankRear}／側${s.flankSide}）`);
+        if (s.counters > 0) hi.push(`カウンター×${s.counters}`);
+        if (s.envThrows > 0) hi.push(`環境叩きつけ×${s.envThrows}`);
+        if (hi.length) notes.push(`光った攻め：${hi.slice(0, 3).join("・")}`);
+        // 課題の兆候
+        if (flankedHard) notes.push(`側背面を取られ被弾が嵩んだ（×${s.wasFlanked}）`);
+        if (missedPunish >= 2) notes.push(`相手の隙を${missedPunish}回見逃した（好機に攻めきれず）`);
+        if (ultUnused) notes.push(`気迫を満たしたが必殺を温存（${s.ultIdle}ターン未使用）`);
+        if (winded) notes.push(`息切れが目立った（攻め急ぎ／持久不足）`);
+        if (s.empties > 0) notes.push(`弾切れの場面（${s.empties}回）`);
+        if (s.gaveOpening >= 2) notes.push(`大技の空振り等で隙を晒した（×${s.gaveOpening}）`);
+        // ── 一言の総評（この一戦の物語）──
+        let verdict;
+        if (won) verdict = s.dmgTaken < u.maxHp * 0.4 ? "危なげない快勝" : (s.punishes > 0 || s.maxCombo >= 3) ? "好機を捉えて押し切った勝利" : "撃ち合いを制した辛勝";
+        else if (draw) verdict = result.text === "相討ち" ? "刺し違えての痛み分け" : "決め手を欠いた引き分け";
+        else if (overDefensive && outpaced) verdict = "守勢に回り押し切られた";
+        else if (flankedHard) verdict = "側背面を取られ翻弄された";
+        else if (winded) verdict = "攻め急ぎ、息切れして失速";
+        else if (missedPunish >= 2) verdict = "好機を逃し、決め切れず競り負け";
+        else if (ultUnused) verdict = "切り札を抱えたまま競り負け";
+        else verdict = "紙一重の競り負け";
+        // ── 次の方向性（優先度順・行動で示す。括弧内は寄せる人格軸のヒント）──
         if (won) {
-          advice.push("この方針は機能した。さらに長所を尖らせる余地がある。");
-          if (s.dmgTaken > u.maxHp * 0.6) advice.push("被弾はやや多め——守りを少し厚くすると安定するかも。");
+          advice.push("この方針は機能した。長所をさらに尖らせる余地がある。");
+          if (s.dmgTaken > u.maxHp * 0.6) advice.push("被弾はやや多め——守りを一段厚く（慎重さ・間合い管理）すると盤石に。");
+          if (ultUnused) advice.push("気迫を抱えたまま終えた——必殺を仕留めに使えばより楽に勝てる（非情さ・好機の食いつき）。");
+          if (missedPunish >= 2) advice.push(`相手の隙を${missedPunish}回見送った——確定反撃を拾えば完勝に近づく（好機の食いつき・相手読み）。`);
         } else {
-          if (atkRatio < 35 && s.dmgDealt < s.dmgTaken) advice.push("守勢に寄りすぎた——もっと攻めへ振ると展開が動くかも。");
-          if (s.dmgTaken > u.maxHp * 0.7) advice.push("被弾が多い——慎重さ・間合い管理を上げて被弾を減らしたい。");
-          if (s.winded >= n * 0.4) advice.push("攻め急いで息切れ——緩急（忍耐・冷静）を上げると終盤に粘れる。");
-          if (rangedWpn && near > far) advice.push("遠武器なのに近づかれた——距離を保つ人格にすると武器が活きる。");
-          if (!rangedWpn && far > near) advice.push("近接武器なのに距離が空いた——接近重視に寄せたい。");
-          if (hitRate <= 42 && s.shots >= 6) advice.push("当たらない——当てる間合い/タイミングを選ぶ慎重さを。");
-          if (s.empties > 0) advice.push("弾の管理（撃ち急がない）を見直すと良い。");
-          if (s.grabs === 0 && hitRate <= 58 && s.shots >= 5) advice.push("相手の守りが固い——崩し（投げ）や側背面取りで守りを破りたい。崩しは攻めの早さ・狡猾さ、回り込みは機動・陣取りを上げると出やすい。");
-          if (s.maxCombo < 2 && s.punishes === 0 && atk > 0) advice.push("攻めが単発で途切れがち——相手の空振りを咎める確定反撃や、当てた後の畳みかけを狙いたい。攻めの早さ・好機の食いつきを上げると流れを作れる。");
-          if (!advice.length) advice.push("僅差の負け——細部の詰めで勝てる位置にいる。");
+          if (overDefensive && (outpaced || dmgEdge < 0)) advice.push("守勢に寄りすぎ——攻めへ振ると展開が動く（闘争心・攻めの早さ）。");
+          if (flankedHard) advice.push(`側背面を${s.wasFlanked}回取られた——回り込みへの警戒と動き直しを（順応性・冷静さ／間合い管理）。`);
+          if (missedPunish >= 2) advice.push(`相手の隙を${missedPunish}回見逃した——空振りを咎める確定反撃を狙いたい（好機の食いつき・相手読み）。`);
+          if (ultUnused) advice.push("気迫を溜めたのに必殺不発——仕留めの一撃に使う踏ん切りを（非情さ・リスク選好）。");
+          if (winded) advice.push("攻め急いで息切れ——緩急をつけて終盤に粘りたい（忍耐・冷静さ）。");
+          if (hitRate <= 42 && s.shots >= 6) advice.push("攻撃が当たっていない——当てる間合い・タイミングを選ぶ慎重さを（命中見込み・間合い管理）。");
+          if (rangedWpn && near > far) advice.push("遠武器なのに近づかれた——距離を保つと武器が活きる（間合い管理・カイト）。");
+          if (!rangedWpn && far > near) advice.push("近接武器なのに距離が空いた——接近重視に寄せたい（闘争心・近接傾倒）。");
+          if (s.grabs === 0 && hitRate <= 58 && s.shots >= 5) advice.push("相手の守りが固い——崩し（投げ）や側背面取りで破りたい（攻めの早さ・狡猾さ／機動・陣取り）。");
+          if (s.maxCombo < 2 && s.punishes === 0 && atk > 0 && !overDefensive) advice.push("攻めが単発で途切れがち——畳みかけ・確定反撃で流れを作りたい（攻めの早さ・好機の食いつき）。");
+          if (s.empties > 0) advice.push("弾切れが痛い——撃ち急がず弾を管理したい（規律）。");
+          if (!advice.length) advice.push("僅差——細部の詰めで勝てる位置にいる。");
         }
-        return { name: u.name, side: u.side, hp: `${u.hp}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, hitRate, dmgDealt: s.dmgDealt, dmgTaken: s.dmgTaken, crits: s.crits, atkRatio, avgDist: Math.round(s.distSum / n), near, mid, far, wpnMix, status: statusSummary, guile: s.guile, biggest: s.biggest, biggestTurn: s.biggestTurn, notes, advice, won };
+        return { name: u.name, side: u.side, hp: `${u.hp}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, hitRate, dmgDealt: s.dmgDealt, dmgTaken: s.dmgTaken, crits: s.crits, atkRatio, avgDist: Math.round(s.distSum / n), near, mid, far, wpnMix, status: statusSummary, guile: s.guile, biggest: s.biggest, biggestTurn: s.biggestTurn, verdict, notes, advice: advice.slice(0, 4), won };
       }
-      return { turns: turn, arena: arena.name, over, result, plr: one("p"), cpu: one("c") };
+      return { turns: turn, arena: arena.name, over, result, plr: one("p", stats.c), cpu: one("c", stats.p) };
     }
 
     function step() {
@@ -999,6 +1032,7 @@ window.SCS = window.SCS || {};
       { const setFace = (u, fo) => { const dx = fo.x - u.x, dy = fo.y - u.y, l = Math.hypot(dx, dy) || 1; u.faceX = dx / l; u.faceY = dy / l; }; setFace(plr, cpu); setFace(cpu, plr); }
       const pStun = plr.stun > 0, cStun = cpu.stun > 0;
       const pFlinch0 = plr.flinch > 0, cFlinch0 = cpu.flinch > 0, pOpen0 = plr.opening > 0, cOpen0 = cpu.opening > 0; // Wave3：怯み/隙は前ターン由来（stun式）
+      const pRes0 = plr.resolve || 0, cRes0 = cpu.resolve || 0; // 決断時点の気迫（必殺を撃てたか＝温存の判定用）
       const decP = pStun ? stunnedDecision("p") : decide("p"), decC = cStun ? stunnedDecision("c") : decide("c"); // 同時決定（麻痺中は硬直）
       const dd0 = dist(plr, cpu); // D4狡猾：状況に合った小ズルのみ発動
       const geP = guileEvents("p", { foeAttacks: decC.cand.attack, selfAttacks: decP.cand.attack, foeReads: cpu.cog.oppModelWeight, dist: dd0 });
@@ -1092,8 +1126,8 @@ window.SCS = window.SCS || {};
       obs(plr, decC, evC, preDist); obs(cpu, decP, evP, preDist);
       if (evP.dmg > 0) cpu.hurtAt[preBucket] = (cpu.hurtAt[preBucket] || 0) + evP.dmg;
       if (evC.dmg > 0) plr.hurtAt[preBucket] = (plr.hurtAt[preBucket] || 0) + evC.dmg;
-      recordStats("p", decP, evP, geP, (evC.dmg || 0) + cntC + tkP.dmg, preDist);
-      recordStats("c", decC, evC, geC, (evP.dmg || 0) + cntP + tkC.dmg, preDist);
+      recordStats("p", decP, evP, geP, (evC.dmg || 0) + cntC + tkP.dmg, preDist, { foeEv: evC, foeOpenPre: cOpen0, resPre: pRes0 });
+      recordStats("c", decC, evC, geC, (evP.dmg || 0) + cntP + tkC.dmg, preDist, { foeEv: evP, foeOpenPre: pOpen0, resPre: cRes0 });
       if (cntP) stats.p.dmgDealt += cntP;
       if (cntC) stats.c.dmgDealt += cntC;
       stats.p.hpSeries.push(plr.hp); stats.c.hpSeries.push(cpu.hp);

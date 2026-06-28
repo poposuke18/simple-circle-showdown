@@ -199,6 +199,7 @@ window.SCS = window.SCS || {};
     const row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
     let s = `<div class="acol"><h4>${label} ${badge}</h4>`;
     s += `<div class="aweap">${u.weapon}　HP ${u.hp}</div>`;
+    if (u.verdict) s += `<div class="averdict">${u.verdict}</div>`;
     s += `<table class="atab">`;
     s += row("命中率", `${u.hitRate}%`);
     s += row("与ダメ / 被ダメ", `${u.dmgDealt} / ${u.dmgTaken}`);

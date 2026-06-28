@@ -209,6 +209,8 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .acol:last-child { border-left: 3px solid var(--cpu); }
 .acol h4 { margin: 0 0 7px; color: var(--green); display: flex; align-items: center; gap: 8px; font-size: 13px; border-bottom: 1px dashed var(--line); padding-bottom: 5px; }
 .aweap { color: var(--amber); font-size: 11.5px; margin-bottom: 8px; }
+.averdict { font-size: 12.5px; font-weight: 700; color: var(--green); border: 1px solid var(--line2); border-left: 3px solid var(--green); background: rgba(109, 255, 160, .06); padding: 5px 8px; margin-bottom: 9px; letter-spacing: .5px; }
+.acol:last-child .averdict { color: #ffd9d9; border-left-color: var(--cpu); background: rgba(255, 94, 94, .06); }
 .atab { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 9px; }
 .atab td { padding: 2px 4px; border-bottom: 1px solid var(--line); }
 .atab td:first-child { color: var(--dim); white-space: nowrap; }
