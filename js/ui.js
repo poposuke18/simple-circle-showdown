@@ -12,6 +12,8 @@ window.SCS = window.SCS || {};
   let seed = 12345;
   let battle = null;
   let autoTimer = null;
+  // ストーリーモード連携：敵の人格/ホームを外部指定、決着でコールバック、核軸をロック
+  let storyCpuChoices = null, storyCpuName = null, onBattleOver = null, lockedAxis = -1;
 
   const weaponStr = (u) => `${u.ranged.name}＋${u.melee.name}`;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), clamp01 = (v) => clamp(v, 0, 1);
@@ -77,10 +79,11 @@ window.SCS = window.SCS || {};
     else seed = parseInt($("seed").value, 10) || 1; // チェックを外せば seed 固定で同じ戦闘を再現
     const plr = SCS.derive.buildUnit("YOU", plrChoices);
     let cpuChoices, cpuName;
-    if (cpuPresetName === "ランダム") { cpuChoices = genRandomChoices(seed); cpuName = `ランダム#${seed}`; }
+    if (storyCpuChoices) { cpuChoices = storyCpuChoices; cpuName = storyCpuName; } // ストーリー：敵キャラを外部指定
+    else if (cpuPresetName === "ランダム") { cpuChoices = genRandomChoices(seed); cpuName = `ランダム#${seed}`; }
     else { cpuChoices = D.PRESETS[cpuPresetName]; cpuName = cpuPresetName; }
     const cpu = SCS.derive.buildUnit(cpuName, cpuChoices);
-    arenaName = $("arenaSel").value; modName = $("modSel").value;
+    if (!storyCpuChoices) { arenaName = $("arenaSel").value; modName = $("modSel").value; } // ストーリーはホーム固定（外部指定）
     battle = SCS.makeBattle(plr, cpu, seed, arenaName, modName);
     $("arenaChip").textContent = battle.arena.name;
     const mc = $("modChip");
@@ -97,7 +100,7 @@ window.SCS = window.SCS || {};
 
   // 戦闘進行中（turn≥1かつ未決着）は人格・CPU・seedをロック
   function setConfigEnabled(enabled) {
-    document.querySelectorAll("#plrParams select").forEach((s) => (s.disabled = !enabled));
+    document.querySelectorAll("#plrParams select").forEach((s, i) => (s.disabled = !enabled || i === lockedAxis));
     $("cpuPreset").disabled = !enabled;
     $("arenaSel").disabled = !enabled;
     $("modSel").disabled = !enabled;
@@ -105,6 +108,7 @@ window.SCS = window.SCS || {};
     $("config").classList.toggle("locked", !enabled);
     $("cfgLock").textContent = enabled ? "" : "🔒 戦闘中：性格はロック（決着後 or 新規対戦で解除）";
   }
+  function applyLockUI() { document.querySelectorAll("#plrParams select").forEach((s, i) => { const lk = i === lockedAxis; if (lk) s.disabled = true; s.classList.toggle("locked-axis", lk); }); }
   function updateConfigLock() {
     const locked = !!battle && battle.turn >= 1 && !battle.over;
     setConfigEnabled(!locked);
@@ -162,7 +166,7 @@ window.SCS = window.SCS || {};
     r.lines.forEach((l) => appendRaw(l.text, l.cls));
     render();
     updateConfigLock();
-    if (r.over) { stopAuto(); $("paramsWrap").classList.remove("hidden"); renderParams(); } // 決着→総括(戦闘分析)を自動表示。決着演出はシム側のログに含まれる
+    if (r.over) { stopAuto(); $("paramsWrap").classList.remove("hidden"); renderParams(); if (onBattleOver) onBattleOver(battle.result); } // 決着→総括(戦闘分析)を自動表示＋ストーリーへ通知
     else if (!$("paramsWrap").classList.contains("hidden")) renderParams(); // 分析を開いている間は毎ターン更新
   }
 
@@ -216,6 +220,17 @@ window.SCS = window.SCS || {};
   }
 
   function toggleParams() { const w = $("paramsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderParams(); }
+
+  // ストーリーモードが呼ぶ最小API（人格の読み書き・核ロック・敵指定の戦闘起動）
+  SCS.ui = {
+    setPlrChoices(c) { plrChoices = c.slice(); document.querySelectorAll("#plrParams select").forEach((s, i) => { if (plrChoices[i] != null) s.value = plrChoices[i]; }); },
+    getPlrChoices() { return plrChoices.slice(); },
+    lockAxis(idx) { lockedAxis = idx; applyLockUI(); },
+    launchStoryBattle(opts) { storyCpuChoices = opts.cpuChoices; storyCpuName = opts.cpuName; arenaName = opts.arena; modName = opts.mod; onBattleOver = opts.onOver || null; newBattle(); },
+    clearStory() { storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; applyLockUI(); },
+    freeBattle() { storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; applyLockUI(); newBattle(); },
+    nextStep, auto,
+  };
 
   function init() {
     buildConfig();

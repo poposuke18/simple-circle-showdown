@@ -5,14 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#080b10" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0628j" />
+  <link rel="stylesheet" href="style.css?v=0628k" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0628j</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0628k</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
+
+    <nav class="mode-bar" id="modeBar">
+      <button id="tabFree" class="mtab active">自由対戦</button>
+      <button id="tabStory" class="mtab">ストーリー</button>
+    </nav>
+
+    <section id="storyHome" class="story hidden"></section>
+    <section id="storyScout" class="story hidden"></section>
 
     <section class="stage">
       <div class="stage-top">
@@ -70,10 +78,12 @@
       </div>
     </section>
 
+    <section id="storyResult" class="story hidden"></section>
+
     <section class="config" id="config">
       <h3>人格設計<span class="h3-sub">10軸 × 各4択で、あなたのAIを作る</span></h3>
       <div id="plrParams" class="macros"></div>
-      <div class="cfg-foot">
+      <div class="cfg-foot" id="freeFoot">
         <label class="fld">戦場<select id="arenaSel"></select></label>
         <label class="fld">戦況<select id="modSel"></select></label>
         <label class="fld">CPU<select id="cpuPreset"></select></label>
@@ -82,6 +92,7 @@
         <button id="btnNew" class="btn primary big">新規対戦</button>
         <span id="cfgLock" class="cfg-lock"></span>
       </div>
+      <div class="cfg-foot story-foot hidden" id="storyFoot"></div>
       <p class="hint">人格を選び「新規対戦」→「次の手」で1ターンずつ、または「自動実行」で連続観戦。「毎回ランダム」ONで毎回違う戦闘、OFF＋seed固定で同じ戦闘を再現できます。</p>
     </section>
 
@@ -91,10 +102,11 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0628j"></script>
-  <script src="js/data.js?v=0628j"></script>
-  <script src="js/derive.js?v=0628j"></script>
-  <script src="js/sim.js?v=0628j"></script>
-  <script src="js/ui.js?v=0628j"></script>
+  <script src="js/rng.js?v=0628k"></script>
+  <script src="js/data.js?v=0628k"></script>
+  <script src="js/derive.js?v=0628k"></script>
+  <script src="js/sim.js?v=0628k"></script>
+  <script src="js/ui.js?v=0628k"></script>
+  <script src="js/story.js?v=0628k"></script>
 </body>
 </html>
