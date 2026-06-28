@@ -126,7 +126,7 @@ window.SCS = window.SCS || {};
     { key: "plain", name: "開けた平原", flavor: "遮蔽ほぼ無し・長射程有利（近接は接近地獄）", w: 140, h: 60, base: "plains",
       obstacles: [{ x: 66, y: 26, w: 8, h: 8 }],
       terrain: [{ x: 30, y: 10, w: 18, h: 14, t: "forest" }, { x: 92, y: 36, w: 18, h: 14, t: "forest" }],
-      start: { p: { x: 12, y: 30 }, c: { x: 128, y: 30 } } },
+      start: { p: { x: 24, y: 30 }, c: { x: 116, y: 30 } } },
     { key: "ruins", name: "市街の廃墟", flavor: "遮蔽多・接近戦／側面取り有利", w: 100, h: 52, base: "plains",
       obstacles: [{ x: 30, y: 8, w: 10, h: 8 }, { x: 62, y: 34, w: 10, h: 9 }, { x: 46, y: 22, w: 6, h: 6 }],
       terrain: [{ x: 12, y: 18, w: 14, h: 16, t: "rubble" }, { x: 74, y: 18, w: 14, h: 16, t: "rubble" }],

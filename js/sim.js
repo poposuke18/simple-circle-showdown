@@ -380,6 +380,7 @@ window.SCS = window.SCS || {};
         v += planW * planBias(c, plan, self, predist);
         if (c.attack === "RANGED" && c.los2) { const hc = rangedHit(self.ranged, c.newPos, { x: s0[fo].x, y: s0[fo].y }, foe, c.d2, true, c.moved); const gate = clamp(self.micros.A5 * 0.6 - self.micros.A4 * 0.4, 0, 0.45); if (hc < gate) v -= (gate - hc) * 0.7; } // A5/A4: 命中見込み低なら撃たない/とにかく撃つ
         const isAtkType = c.attack === "MELEE" || c.attack === "RANGED" || c.attack === "CHARGE" || c.attack === "GRAB" || c.attack === "ULT";
+        if (self.charged && c.attack === "RANGED") v += 0.55; // 溜めた一撃は撃ち切る（チャージのコミット＝「次の一射に懸ける」を反故にしない）
         if (foe.opening > 0 && isAtkType) v += 0.28; // 相手の空振りの隙を咎める＝確定反撃の好機
         if ((self.combo || 0) > 0 && isAtkType) v += Math.min(self.combo, 4) * 0.05; // 畳みかけ：流れを切らさず攻め続ける
         v += riskAppetite * candVariance(c, self) * 0.5; // Wave2 リスク/EV：博打を好む/避ける（性格×戦況）
