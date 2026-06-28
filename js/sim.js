@@ -152,7 +152,9 @@ window.SCS = window.SCS || {};
 
     function genCandidates(state, side) {
       const self = stat(side), fp = state[other(side)], sp = state[side], out = [];
+      const hasCover = obstacles.some((o) => o.hp > 0); // 遮蔽が無い戦場ではCOVER行動を出さない（「遮蔽の陰へ」誤描写を防ぐ）
       for (const move of MOVES) {
+        if (move === "COVER" && !hasCover) continue;
         const newPos = applyMove(sp, self, fp, move), moved = move !== "HOLD", d2 = dist(newPos, fp), los2 = losClear(newPos, fp);
         out.push({ move, attack: "NONE", newPos, moved, d2, los2 });
         if (los2 && self.ammo > 0) out.push({ move, attack: "RANGED", newPos, moved, d2, los2 });
@@ -792,8 +794,8 @@ window.SCS = window.SCS || {};
       const cornerPre = attEv.corner && !flk ? px(["壁際に追い詰め、", "逃げ場を塞ぎ、"], slt + 4) : "";
       const punishPre = attEv.punish ? px(["好機を逃さず——確定反撃！", "隙を突き、"], slt + 6) : "";
       const comboPre = attEv.comboLevel >= 2 ? `${attEv.comboLevel}連撃——畳みかけ、` : "";
-      const critPre = (isUlt ? `気迫を解き放つ——${attEv.ultName}、` : "") + punishPre + comboPre + (crit ? px(["会心の一撃、", "渾身——！", "急所を捉え、"], slt + 3) : "");
-      const verb = isUlt ? "全霊の一撃を叩き込み" : attEv.charge ? `渾身の突進から${w.name}を叩き込み` : px(ATK_HIT[cat], slt + (crit ? 7 : 0)).replace("{w}", w.name);
+      const critPre = (isUlt ? "気迫を解き放つ——" : "") + punishPre + comboPre + (crit ? px(["会心の一撃、", "渾身——！", "急所を捉え、"], slt + 3) : "");
+      const verb = isUlt ? `${attEv.ultName}を${rn ? "放ち" : "叩き込み"}` : attEv.charge ? `渾身の突進から${w.name}を叩き込み` : px(ATK_HIT[cat], slt + (crit ? 7 : 0)).replace("{w}", w.name);
       const st = attEv.statusType ? statusApplyPhrase(attEv.statusType, slt) : "", kb = attEv.kb ? "・大きく弾き飛ばす" : "";
       const dd = exDem(defSide), cnt = defEv.counter ? ` ${dn}は見切りざま反撃を返し、${an}へ −${defEv.counter}！` : "";
       const moveClause = flk || (exMove(attSide, attDec) + "、"); // 側背面を取ったときは移動句の代わりにフランク描写を使う（「正面から…背後を取り」の矛盾回避）
@@ -824,10 +826,10 @@ window.SCS = window.SCS || {};
       if (ev.charging) return `${n}は${exDem(side)}${self.ranged.name}に狙いを溜める。次の一射に懸ける。`;
       if (ev.windup) return `${n}は${self.melee.name}を大きく振りかぶる。`;
       if (ev.empty) return `${n}は引き金を引くも——弾切れだ。`;
-      if (ev.negated) return `${n}は${exMove(side, dec)}撃つも、射線は遮蔽に阻まれる。`;
+      if (ev.negated) return `${n}は${exMove(side, dec)}${px(["撃つも、射線は遮蔽に阻まれる", "撃つが、弾は壁に阻まれて通らない", "放った弾は遮蔽に弾かれた"], sideSalt(self.side, 59))}。`;
       if (ev.dodge && !foeStruck) return `${gpre || ""}${n}は${exDem(side)}来ると読んで身構え、${exMove(side, dec)}。`;
       if (ev.guard && !foeStruck) return `${n}は受けを固め、様子を窺う。`;
-      return `${gpre || ""}${n}は${exDem(side)}${exTerr(side)}${exMove(side, dec)}、好機を窺う。`;
+      return `${gpre || ""}${n}は${exDem(side)}${exTerr(side)}${exMove(side, dec)}、${px(["好機を窺う", "出方を探る", "機を計る", "間合いを計り直す", "次の一手を窺う", "じっと隙を待つ"], sideSalt(self.side, 62))}。`;
     }
     function composeExchange(decP, evP, decC, evC, geP, geC) {
       const pStrike = isStrike(evP), cStrike = isStrike(evC);
@@ -844,19 +846,22 @@ window.SCS = window.SCS || {};
       const t = (d) => `${d.strat ? STRAT_JP[d.strat] : "—"}・${d.plan}/深${d.depth}${d.mc ? "+MC" : ""}`;
       return `〈<span class="np">YOU</span> ${t(decP)}　｜　<span class="nc">CPU</span> ${t(decC)}〉`;
     }
+    // 決着ターンも統合描写に：交戦は composeExchange が両者の同時行動＋実ダメージを描くので、
+    // ここでは倒れる側の「崩れ方」だけを添える（炎/状態異常での死は死因も。直撃/反撃/投げ/必殺は交戦描写で既出）。
+    const MUTUAL_FALL = ["——二つの攻撃が同じ刹那に交差し、二人は時を同じくして崩れ落ちた。相討ち——。", "——刃が交わり、どちらからともなく二人倒れ伏す。相討ち——。", "——互いの一撃が寸分違わず重なり、両者ともに膝をついた。相討ち——。"];
+    function fallClause(side, cause) {
+      const n = nameSpan(side), foe = stat(other(side)), slt = sideSalt(stat(side).side, 80), ko = px(FIN_KO, slt);
+      if (cause === "fire" || (cause && cause.indexOf("status:") === 0)) return `${finishCause(cause, foe)}、${n}は${ko}`;
+      return `${n}は${px(["こらえきれず", "糸が切れたように", "もはや立っていられず", "力尽き、"], slt + 1)}${ko}`;
+    }
     function narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC, ko) {
       const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100));
       const lines = [{ text: `【戦況】${situationLine(pre)}`, cls: "sit" }];
-      if (ko && (ko.p || ko.c)) { // 決着ターンは決め技/倒れ方の特殊描写を維持（既存）
-        let plrAct, cpuAct;
-        if (ko.p && ko.c) { const mf = mutualFinish(evP, evC); plrAct = mf.plr; cpuAct = mf.cpu; }
-        else { plrAct = ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP), evC); cpuAct = ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC), evP); }
-        lines.push({ text: `　▸ PLR（${plr.name}）　${plrAct}`, cls: "plr" });
-        lines.push({ text: `　▸ CPU（${cpu.name}）　${cpuAct}`, cls: "cpu" });
-      } else { // 通常ターン＝二人の相互作用を1場面に統合描写
-        lines.push({ text: `　${composeExchange(decP, evP, decC, evC, geP, geC)}`, cls: "ex" });
-        lines.push({ text: `　${tagLine(decP, decC)}`, cls: "tags" });
-      }
+      // 通常ターンも決着ターンも「二人の相互作用を1場面」に統合（決着は倒れ方を末尾に添える）
+      let ex = composeExchange(decP, evP, decC, evC, geP, geC);
+      if (ko && (ko.p || ko.c)) ex += " " + (ko.p && ko.c ? px(MUTUAL_FALL, 90) : fallClause(ko.p ? "p" : "c", ko.p ? ko.causeP : ko.causeC));
+      lines.push({ text: `　${ex}`, cls: "ex" });
+      lines.push({ text: `　${tagLine(decP, decC)}`, cls: "tags" });
       lines.push({ text: `　└ 結果：間合い ${pd}→${displayDist()}％／PLR ${hpP0}→${plr.hp}${hpWord(plr)}・CPU ${hpC0}→${cpu.hp}${hpWord(cpu)}`, cls: "dim" });
       for (const c of commentary(evP, evC, hpP0, hpC0)) lines.push(c);
       if (decP.stratChanged) lines.push({ text: `── ${nameSpan("p")}、構えを変えた——${STRAT_JP[decP.strat]}へ。`, cls: "cm" });
@@ -1153,7 +1158,7 @@ window.SCS = window.SCS || {};
       if (grabLine) lines.push({ text: grabLine, cls: "cm" });
       if (evP.ult) lines.push({ text: `── 気迫炸裂！PLR(${plr.name}) の必殺・${evP.ultName}${evP.whiff ? "——空を切った！" : "！"}`, cls: "cm" });
       if (evC.ult) lines.push({ text: `── 気迫炸裂！CPU(${cpu.name}) の必殺・${evC.ultName}${evC.whiff ? "——空を切った！" : "！"}`, cls: "cm" });
-      if (mod.sudden && turn === 12) lines.push({ text: "── サドンデス！ここからは一撃が重くのしかかる。", cls: "cm" });
+      if (mod.sudden && turn === 12 && plr.hp > 0 && cpu.hp > 0) lines.push({ text: "── サドンデス！ここからは一撃が重くのしかかる。", cls: "cm" });
       result = finishCheck();
       if (result) { over = true; for (const fl of finishNarration(result)) lines.push(fl); }
       return { turn, lines, dist: displayDist(), over, result };
