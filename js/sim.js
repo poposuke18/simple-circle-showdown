@@ -1183,6 +1183,6 @@ window.SCS = window.SCS || {};
       return { turn, lines, dist: displayDist(), over, result };
     }
 
-    return { step, getAnalysis, get turn() { return turn; }, get over() { return over; }, get result() { return result; }, get plr() { return plr; }, get cpu() { return cpu; }, get arena() { return { name: arena.name, flavor: arena.flavor }; }, get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; }, displayDist, losClear, obstacles, field, maxDist };
+    return { step, getAnalysis, get turn() { return turn; }, get over() { return over; }, get result() { return result; }, get plr() { return plr; }, get cpu() { return cpu; }, get arena() { return { name: arena.name, flavor: arena.flavor }; }, get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; }, displayDist, losClear, obstacles, field, maxDist, terrain: arena.terrain, baseTerrainKey: arena.base, get hazards() { return hazards; } };
   };
 })();

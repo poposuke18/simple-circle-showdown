@@ -9,6 +9,9 @@ window.SCS = window.SCS || {};
   const disp = { px: 0, py: 0, cx: 0, cy: 0, init: false };
   let needSnap = false;
   const COL_P = "#5cc8ff", COL_C = "#ff5e5e";
+  // 地形ゾーンの色（テキストの「茂みに紛れ/瓦礫を盾に/高所/溶岩」と整合させる）
+  const TCOL = { forest: "rgba(60,150,90,.13)", rubble: "rgba(125,125,108,.16)", swamp: "rgba(95,112,55,.17)", highground: "rgba(120,170,210,.11)", lava: "rgba(255,105,35,.22)" };
+  const TSTROKE = { rubble: "rgba(150,150,132,.22)", highground: "rgba(140,190,220,.2)", lava: "rgba(255,140,60,.45)" };
 
   function sync(b) {
     battle = b;
@@ -42,6 +45,16 @@ window.SCS = window.SCS || {};
     const ox = Math.round((cssW - drawW) / 2), oy = Math.round((cssH - drawH) / 2);
     const SX = (x) => ox + (x / f.w) * drawW, SY = (y) => oy + (y / f.h) * drawH;
 
+    // 地形ゾーン（全域の床＋個別ゾーン。テキストの地形描写と整合）
+    const baseC = TCOL[battle.baseTerrainKey];
+    if (baseC) { ctx.fillStyle = baseC; ctx.fillRect(ox, oy, drawW, drawH); }
+    for (const z of battle.terrain || []) {
+      const c = TCOL[z.t]; if (!c) continue;
+      const x = SX(z.x), y = SY(z.y), w = z.w * scale, h = z.h * scale;
+      ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+      const sc = TSTROKE[z.t]; if (sc) { ctx.lineWidth = 1; ctx.strokeStyle = sc; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1); }
+    }
+
     // 走査線グリッド（淡・戦場枠内）
     ctx.lineWidth = 1; ctx.strokeStyle = "rgba(31,107,67,.22)";
     for (let gx = 1; gx < 6; gx++) { const x = ox + (drawW * gx) / 6; ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + drawH); ctx.stroke(); }
@@ -57,6 +70,13 @@ window.SCS = window.SCS || {};
       ctx.fillRect(x, y, w, h);
       ctx.lineWidth = 1; ctx.strokeStyle = "rgba(95,160,120," + (0.25 + 0.4 * fr) + ")";
       ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+    }
+
+    // 動的ハザード：燃え広がる炎（テキストの「業火に巻かれ」と整合・ゆらぐ）
+    const haz = battle.hazards || [];
+    if (haz.length) {
+      const fk = 0.5 + 0.5 * Math.abs(Math.sin((typeof performance !== "undefined" ? performance.now() : 0) / 170));
+      for (const h of haz) { if (h.turns <= 0) continue; ctx.fillStyle = "rgba(255,120,40," + (0.16 + 0.2 * fk) + ")"; ctx.fillRect(SX(h.x), SY(h.y), h.w * scale, h.h * scale); }
     }
 
     // 位置を補間（ターン間を滑らかに）
