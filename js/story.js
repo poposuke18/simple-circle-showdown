@@ -34,9 +34,10 @@ window.SCS = window.SCS || {};
     show("storyHome", story && v === "map");
     show("storyScout", story && v === "scout");
     show("storyResult", story && v === "result");
-    show("config", !story || v === "design" || v === "battle"); // 設計/戦闘は既存の人格設計を再利用
+    show("config", !story || v === "design"); // 人格設計は設計時のみ（戦闘中は観戦に集中）
     show("stage", !story || v === "design" || v === "battle" || v === "result"); // 結果では最終盤面を残す
     show("freeFoot", !story);
+    show("freeHint", !story);
     show("storyFoot", story && v === "design");
     if (story && (v === "map" || v === "scout" || v === "design")) $("paramsWrap").classList.add("hidden"); // 分析はbattle/result時のみ（ui.jsが決着で展開）
   }
