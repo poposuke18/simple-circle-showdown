@@ -133,7 +133,7 @@ window.SCS = window.SCS || {};
   function appendRaw(text, cls) {
     const div = document.createElement("div");
     div.className = "log-line " + (cls || "");
-    div.textContent = text;
+    div.innerHTML = text; // 描写は全て内部生成（ユーザー入力なし）。PLR/CPU名の色分けspanを反映
     $("log").appendChild(div);
     $("log").scrollTop = $("log").scrollHeight;
   }

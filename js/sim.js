@@ -658,23 +658,77 @@ window.SCS = window.SCS || {};
       if (bP && bC) { const cross = px(["二つの攻撃が同じ刹那に交差した——", "互いの一撃が寸分違わず重なる——", "刹那、両者の攻撃が交錯し——"], 90); return { plr: `${bP}。`, cpu: `時を同じくして${bC}。${cross}${fall}` }; }
       return { plr: bP ? `${bP}。` : `力尽きかける——`, cpu: `${bC ? `時を同じくして${bC}。` : "時を同じくして相手も崩れ、"}${fall}` };
     }
+    // ===== 統合描写（同時動作を1つの場面として・PLR/CPUを分けず相互作用を解決）=====
+    const nameSpan = (side) => (side === "p" ? `<span class="np">あなた</span>` : `<span class="nc">${cpu.name}</span>`);
+    const exDem = (side) => px(DEMEANOR[moodOf(stat(side))], sideSalt(stat(side).side, 11));
+    const exMove = (side, dec) => px(MV[dec.cand.move] || MV.HOLD, sideSalt(stat(side).side, 12));
+    const exTerr = (side) => { const t = terrainPhrase(terrainAt(stat(side))); return t ? t + "、" : ""; };
+    const isStrike = (ev) => (ev.attack === "RANGED" || ev.attack === "MELEE" || ev.attack === "CHARGE") && ev.shots > 0 && !ev.charging && !ev.windup;
+    // 攻撃イベント1件＝攻め手の動作＋一撃＋相手の反応(回避/受け/被弾)＋反撃。実ダメージを反映するので「かわした」と「被弾」が矛盾しない
+    function strikeClause(attSide, attEv, attDec, defSide, defEv, gpre) {
+      const an = nameSpan(attSide), dn = nameSpan(defSide), self = stat(attSide), foe = stat(defSide);
+      const rn = attEv.attack === "RANGED", w = rn ? self.ranged : self.melee, slt = sideSalt(self.side, rn ? 63 : 64), cat = weaponCat(w, rn);
+      const crit = attEv.crits > 0, dmg = attEv.dmg || 0;
+      const critPre = crit ? px(["会心の一撃、", "渾身——！", "急所を捉え、"], slt + 3) : "";
+      const verb = attEv.charge ? `渾身の突進から${w.name}を叩き込み` : px(ATK_HIT[cat], slt + (crit ? 7 : 0)).replace("{w}", w.name);
+      const st = attEv.statusType ? statusApplyPhrase(attEv.statusType, slt) : "", kb = attEv.kb ? "・大きく弾き飛ばす" : "";
+      const dd = exDem(defSide), cnt = defEv.counter ? ` ${dn}は見切りざま反撃を返し、${an}へ −${defEv.counter}！` : "";
+      const lead = `${gpre || ""}${an}は${exDem(attSide)}${exTerr(attSide)}${exMove(attSide, attDec)}、`;
+      if (defEv.dodge) return dmg <= 0
+        ? `${lead}${critPre}${verb}——${dd}${dn}は紙一重で見切ってかわす。${cnt}`
+        : `${lead}${critPre}${verb}。${dd}${dn}は身を翻すも掠られ −${dmg}${st}。${cnt}`;
+      if (defEv.guard) return dmg <= 0
+        ? `${lead}${critPre}${verb}——${dd}${dn}は受けに回り、完全に受け止める。`
+        : `${lead}${critPre}${verb}。${dd}${dn}は受けで威力を殺し、−${dmg} に抑える${st}。`;
+      if (dmg > 0) { const react = dmg >= 0.35 * foe.maxHp ? px(REACT_BIG, slt + 9) : px(REACT, slt + 9); return `${lead}${critPre}${verb}、${dn}へ −${dmg}${kb}${st}。${react}`; }
+      return `${lead}${px(ATK_MISS[cat], slt).replace("{w}", w.name)}。`;
+    }
+    // 攻撃していない側（移動/リロード/チャージ/弾切れ/麻痺/読みの構え 等）の一節
+    function standaloneClause(side, ev, dec, gpre, foeStruck) {
+      const n = nameSpan(side), self = stat(side);
+      if (dec.stunned) return `${n}は麻痺で動けず、その場で隙を晒す。`;
+      if (ev.reloading) return ev.emptyReload ? `${n}は弾切れ——慌てて弾倉を交換する。無防備な刹那だ。` : `${n}は弾を込め直す。`;
+      if (ev.jam) return `${n}は${self.ranged.name}が過熱しジャム——撃てず隙を晒す。`;
+      if (ev.charging) return `${n}は${exDem(side)}${self.ranged.name}に狙いを溜める。次の一射に懸ける。`;
+      if (ev.windup) return `${n}は${self.melee.name}を大きく振りかぶる。`;
+      if (ev.empty) return `${n}は引き金を引くも——弾切れだ。`;
+      if (ev.negated) return `${n}は${exMove(side, dec)}撃つも、射線は遮蔽に阻まれる。`;
+      if (ev.dodge && !foeStruck) return `${gpre || ""}${n}は${exDem(side)}来ると読んで身構え、${exMove(side, dec)}。`;
+      if (ev.guard && !foeStruck) return `${n}は受けを固め、様子を窺う。`;
+      return `${gpre || ""}${n}は${exDem(side)}${exTerr(side)}${exMove(side, dec)}、好機を窺う。`;
+    }
+    function composeExchange(decP, evP, decC, evC, geP, geC) {
+      const pStrike = isStrike(evP), cStrike = isStrike(evC);
+      const pCovered = pStrike || ((evP.dodge || evP.guard) && cStrike);
+      const cCovered = cStrike || ((evC.dodge || evC.guard) && pStrike);
+      const clauses = [];
+      if (pStrike) clauses.push(strikeClause("p", evP, decP, "c", evC, guilePrefix(geP)));
+      if (cStrike) clauses.push(strikeClause("c", evC, decC, "p", evP, guilePrefix(geC)));
+      if (!pCovered) clauses.push(standaloneClause("p", evP, decP, guilePrefix(geP), cStrike));
+      if (!cCovered) clauses.push(standaloneClause("c", evC, decC, guilePrefix(geC), pStrike));
+      return clauses.join(" ");
+    }
+    function tagLine(decP, decC) {
+      const t = (d) => `${d.strat ? STRAT_JP[d.strat] : "—"}・${d.plan}/深${d.depth}${d.mc ? "+MC" : ""}`;
+      return `〈<span class="np">YOU</span> ${t(decP)}　｜　<span class="nc">CPU</span> ${t(decC)}〉`;
+    }
     function narrateTurn(pre, decP, evP, decC, evC, hpP0, hpC0, geP, geC, ko) {
       const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100));
-      let plrAct, cpuAct;
-      if (ko && ko.p && ko.c) { const mf = mutualFinish(evP, evC); plrAct = mf.plr; cpuAct = mf.cpu; } // 相討ち＝特殊描写
-      else {
-        plrAct = ko && ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP), evC);
-        cpuAct = ko && ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC), evP);
+      const lines = [{ text: `【戦況】${situationLine(pre)}`, cls: "sit" }];
+      if (ko && (ko.p || ko.c)) { // 決着ターンは決め技/倒れ方の特殊描写を維持（既存）
+        let plrAct, cpuAct;
+        if (ko.p && ko.c) { const mf = mutualFinish(evP, evC); plrAct = mf.plr; cpuAct = mf.cpu; }
+        else { plrAct = ko.p ? composeFinish("p", decP, evP, ko.causeP) : composeAction("p", decP, evP, guilePrefix(geP), evC); cpuAct = ko.c ? composeFinish("c", decC, evC, ko.causeC) : composeAction("c", decC, evC, guilePrefix(geC), evP); }
+        lines.push({ text: `　▸ PLR（${plr.name}）　${plrAct}`, cls: "plr" });
+        lines.push({ text: `　▸ CPU（${cpu.name}）　${cpuAct}`, cls: "cpu" });
+      } else { // 通常ターン＝二人の相互作用を1場面に統合描写
+        lines.push({ text: `　${composeExchange(decP, evP, decC, evC, geP, geC)}`, cls: "ex" });
+        lines.push({ text: `　${tagLine(decP, decC)}`, cls: "tags" });
       }
-      const lines = [
-        { text: `【戦況】${situationLine(pre)}`, cls: "sit" },
-        { text: `　▸ PLR（${plr.name}）　${plrAct}`, cls: "plr" },
-        { text: `　▸ CPU（${cpu.name}）　${cpuAct}`, cls: "cpu" },
-        { text: `　└ 結果：間合い ${pd}→${displayDist()}％／PLR ${hpP0}→${plr.hp}${hpWord(plr)}・CPU ${hpC0}→${cpu.hp}${hpWord(cpu)}`, cls: "dim" },
-      ];
+      lines.push({ text: `　└ 結果：間合い ${pd}→${displayDist()}％／PLR ${hpP0}→${plr.hp}${hpWord(plr)}・CPU ${hpC0}→${cpu.hp}${hpWord(cpu)}`, cls: "dim" });
       for (const c of commentary(evP, evC, hpP0, hpC0)) lines.push(c);
-      if (decP.stratChanged) lines.push({ text: `── PLR(${plr.name})、構えを変えた——${STRAT_JP[decP.strat]}へ。`, cls: "cm" });
-      if (decC.stratChanged) lines.push({ text: `── CPU(${cpu.name})、構えを変えた——${STRAT_JP[decC.strat]}へ。`, cls: "cm" });
+      if (decP.stratChanged) lines.push({ text: `── ${nameSpan("p")}、構えを変えた——${STRAT_JP[decP.strat]}へ。`, cls: "cm" });
+      if (decC.stratChanged) lines.push({ text: `── ${nameSpan("c")}、構えを変えた——${STRAT_JP[decC.strat]}へ。`, cls: "cm" });
       return lines;
     }
     const FIN_KO = ["崩れ落ちた。", "ついに膝をついた。", "力尽きて倒れ込む。", "糸が切れたように沈黙した。", "もう立ち上がれない。"];
