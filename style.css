@@ -82,7 +82,6 @@ body::after {
 .track-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 11px; }
 .track-foot .lg.p { color: var(--plr); } .track-foot .lg.c { color: var(--cpu); }
 .track-foot .dist { color: var(--dim); }
-.track-foot .dist::before { content: "距離 "; }
 
 /* ── ユニットカード ── */
 .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
