@@ -1060,7 +1060,7 @@ window.SCS = window.SCS || {};
       const preBucket = Math.round(Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100)) / 10) * 10;
       const preDist = dist(pre.p, pre.c);
       // 向き：各ユニットはターン開始時に相手を見据える（背後を取られたら不利＝側背面の前提）
-      { const setFace = (u, fo) => { const dx = fo.x - u.x, dy = fo.y - u.y, l = Math.hypot(dx, dy) || 1; u.faceX = dx / l; u.faceY = dy / l; }; setFace(plr, cpu); setFace(cpu, plr); }
+      { const setFace = (u, fo) => { const dx = fo.x - u.x, dy = fo.y - u.y, l = Math.hypot(dx, dy); if (l > 0.001) { u.faceX = dx / l; u.faceY = dy / l; } }; setFace(plr, cpu); setFace(cpu, plr); } // 真上に重なった時は直前の向きを保持（向き0,0を防ぐ）
       const pStun = plr.stun > 0, cStun = cpu.stun > 0;
       const pFlinch0 = plr.flinch > 0, cFlinch0 = cpu.flinch > 0, pOpen0 = plr.opening > 0, cOpen0 = cpu.opening > 0; // Wave3：怯み/隙は前ターン由来（stun式）
       const pRes0 = plr.resolve || 0, cRes0 = cpu.resolve || 0; // 決断時点の気迫（必殺を撃てたか＝温存の判定用）
