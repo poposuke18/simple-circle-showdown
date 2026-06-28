@@ -74,7 +74,7 @@ window.SCS = window.SCS || {};
     battle = SCS.makeBattle(plr, cpu, seed, arenaName);
     $("arenaChip").textContent = battle.arena.name;
     $("log").innerHTML = "";
-    appendRaw(`⚔ 戦場：${battle.arena.name} — ${battle.arena.flavor}`, "arena");
+    appendRaw(`>> 戦場：${battle.arena.name} — ${battle.arena.flavor}`, "arena");
     appendRaw(`>> 対戦開始  PLR:${weaponStr(plr)} HP${plr.maxHp}  vs  CPU(${cpu.name}):${weaponStr(cpu)} HP${cpu.maxHp}`, "sys");
     appendRaw(`>> seed=${seed}（同じ人格＋同じseed → 必ず同じ戦闘）`, "dim");
     $("paramsWrap").classList.add("hidden"); // 新規対戦時は分析を畳む（決着で自動展開）
