@@ -1029,24 +1029,26 @@ window.SCS = window.SCS || {};
         else if (ultUnused) verdict = "切り札を抱えたまま競り負け";
         else verdict = "紙一重の競り負け";
         // ── 次の方向性（優先度順・行動で示す。括弧内は寄せる人格軸のヒント）──
+        // ④ 各助言に「寄せる軸(axis 0..9)＋方向(dir ±1)」を付与＝UIで押すと該当ダイヤルへ誘導＋1段ナッジ。axis=nullは誘導なし
+        const adv = (text, axis, dir) => advice.push({ text, axis: axis == null ? null : axis, dir: dir || 0 });
         if (won) {
-          advice.push("この方針は機能した。長所をさらに尖らせる余地がある。");
-          if (s.dmgTaken > u.maxHp * 0.6) advice.push("被弾はやや多め——守りを一段厚く（慎重さ・間合い管理）すると盤石に。");
-          if (ultUnused) advice.push("気迫を抱えたまま終えた——必殺を仕留めに使えばより楽に勝てる（非情さ・好機の食いつき）。");
-          if (missedPunish >= 2) advice.push(`相手の隙を${missedPunish}回見送った——確定反撃を拾えば完勝に近づく（好機の食いつき・相手読み）。`);
+          adv("この方針は機能した。長所をさらに尖らせる余地がある。", null);
+          if (s.dmgTaken > u.maxHp * 0.6) adv("被弾はやや多め——守りを一段厚く（闘争心↓）すると盤石に。", 0, -1);
+          if (ultUnused) adv("気迫を抱えたまま終えた——必殺を仕留めに使えばより楽に勝てる（非情さ↑）。", 7, +1);
+          if (missedPunish >= 2) adv(`相手の隙を${missedPunish}回見送った——確定反撃を拾えば完勝に近づく（順応性↑＝相手読み）。`, 5, +1);
         } else {
-          if (overDefensive && (outpaced || dmgEdge < 0)) advice.push("守勢に寄りすぎ——攻めへ振ると展開が動く（闘争心・攻めの早さ）。");
-          if (flankedHard) advice.push(`側背面を${s.wasFlanked}回取られた——回り込みへの警戒と動き直しを（順応性・冷静さ／間合い管理）。`);
-          if (missedPunish >= 2) advice.push(`相手の隙を${missedPunish}回見逃した——空振りを咎める確定反撃を狙いたい（好機の食いつき・相手読み）。`);
-          if (ultUnused) advice.push("気迫を溜めたのに必殺不発——仕留めの一撃に使う踏ん切りを（非情さ・リスク選好）。");
-          if (winded) advice.push("攻め急いで息切れ——緩急をつけて終盤に粘りたい（忍耐・冷静さ）。");
-          if (hitRate <= 42 && s.shots >= 6) advice.push("攻撃が当たっていない——当てる間合い・タイミングを選ぶ慎重さを（命中見込み・間合い管理）。");
-          if (rangedWpn && near > far) advice.push("遠武器なのに近づかれた——距離を保つと武器が活きる（間合い管理・カイト）。");
-          if (!rangedWpn && far > near) advice.push("近接武器なのに距離が空いた——接近重視に寄せたい（闘争心・近接傾倒）。");
-          if (s.grabs === 0 && hitRate <= 58 && s.shots >= 5) advice.push("相手の守りが固い——崩し（投げ）や側背面取りで破りたい（攻めの早さ・狡猾さ／機動・陣取り）。");
-          if (s.maxCombo < 2 && s.punishes === 0 && atk > 0 && !overDefensive) advice.push("攻めが単発で途切れがち——畳みかけ・確定反撃で流れを作りたい（攻めの早さ・好機の食いつき）。");
-          if (s.empties > 0) advice.push("弾切れが痛い——撃ち急がず弾を管理したい（規律）。");
-          if (!advice.length) advice.push("僅差——細部の詰めで勝てる位置にいる。");
+          if (overDefensive && (outpaced || dmgEdge < 0)) adv("守勢に寄りすぎ——攻めへ振ると展開が動く（闘争心↑）。", 0, +1);
+          if (flankedHard) adv(`側背面を${s.wasFlanked}回取られた——回り込みへの警戒と動き直しを（順応性↑）。`, 5, +1);
+          if (missedPunish >= 2) adv(`相手の隙を${missedPunish}回見逃した——空振りを咎める確定反撃を狙いたい（非情さ↑）。`, 7, +1);
+          if (ultUnused) adv("気迫を溜めたのに必殺不発——仕留めの一撃に使う踏ん切りを（リスク選好↑）。", 1, +1);
+          if (winded) adv("攻め急いで息切れ——緩急をつけて終盤に粘りたい（忍耐↑）。", 3, +1);
+          if (hitRate <= 42 && s.shots >= 6) adv("攻撃が当たっていない——当てる間合い・タイミングを選ぶ堅実さを（リスク選好↓）。", 1, -1);
+          if (rangedWpn && near > far) adv("遠武器なのに近づかれた——距離を保つと武器が活きる（忍耐↑＝間合い管理）。", 3, +1);
+          if (!rangedWpn && far > near) adv("近接武器なのに距離が空いた——接近重視に寄せたい（闘争心↑）。", 0, +1);
+          if (s.grabs === 0 && hitRate <= 58 && s.shots >= 5) adv("相手の守りが固い——崩しや側背面取りで破りたい（闘争心↑）。", 0, +1);
+          if (s.maxCombo < 2 && s.punishes === 0 && atk > 0 && !overDefensive) adv("攻めが単発で途切れがち——畳みかけ・確定反撃で流れを作りたい（好機の食いつき＝非情さ↑）。", 7, +1);
+          if (s.empties > 0) adv("弾切れが痛い——撃ち急がず弾を管理したい（規律↑）。", 4, +1);
+          if (!advice.length) adv("僅差——細部の詰めで勝てる位置にいる。", null);
         }
         return { name: u.name, side: u.side, hp: `${u.hp}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, hitRate, dmgDealt: s.dmgDealt, dmgTaken: s.dmgTaken, crits: s.crits, atkRatio, avgDist: Math.round(s.distSum / n), near, mid, far, wpnMix, status: statusSummary, guile: s.guile, biggest: s.biggest, biggestTurn: s.biggestTurn, verdict, notes, advice: advice.slice(0, 4), won };
       }
@@ -1054,7 +1056,7 @@ window.SCS = window.SCS || {};
     }
 
     function step() {
-      if (over) return { turn, lines: [], dist: displayDist(), over, result };
+      if (over) return { turn, lines: [], events: [], dist: displayDist(), over, result };
       turn++;
       const pre = snapshot(), hpP0 = plr.hp, hpC0 = cpu.hp;
       const preBucket = Math.round(Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100)) / 10) * 10;
@@ -1190,9 +1192,25 @@ window.SCS = window.SCS || {};
       if (evP.ult) lines.push({ text: `── 気迫炸裂！PLR(${plr.name}) の必殺・${evP.ultName}${evP.whiff ? "——空を切った！" : "！"}`, cls: "cm" });
       if (evC.ult) lines.push({ text: `── 気迫炸裂！CPU(${cpu.name}) の必殺・${evC.ultName}${evC.whiff ? "——空を切った！" : "！"}`, cls: "cm" });
       if (mod.sudden && turn === 12 && plr.hp > 0 && cpu.hp > 0) lines.push({ text: "── サドンデス！ここからは一撃が重くのしかかる。", cls: "cm" });
+      // ===== 描画専用イベント（mini.jsの戦闘可視化が読む。乱数非消費・状態非干渉＝決定論を壊さない）=====
+      // 最終位置(攻撃者from→相手to)＋既算のev/cntだけを写す。シム状態は一切変更しない。
+      const events = [];
+      const fxFor = (side, ev, cnt) => {
+        const self = side === "p" ? plr : cpu, foe = side === "p" ? cpu : plr;
+        const from = { x: self.x, y: self.y }, to = { x: foe.x, y: foe.y };
+        const meta = (extra) => Object.assign({ side, from, to, hits: ev.hits || 0, dmg: ev.dmg || 0, crit: (ev.crits || 0) > 0, kb: !!ev.kb, status: ev.statusType || null, flank: ev.flank || null }, extra);
+        if (ev.ult && (ev.shots || ev.whiff)) events.push(meta({ type: ev.ultRn ? "ult-ranged" : "ult-melee", whiff: !!ev.whiff }));
+        else if (ev.attack === "RANGED" && ev.shots > 0) events.push(meta({ type: "ranged", whiff: (ev.hits || 0) === 0 }));
+        else if ((ev.attack === "MELEE" || ev.attack === "CHARGE") && (ev.shots > 0 || (ev.charge && ev.whiff))) events.push(meta({ type: "melee", whiff: (ev.hits || 0) === 0 }));
+        if (ev.dodge) events.push({ side, from, to, type: "dodge" });
+        if (ev.guard) events.push({ side, from, to, type: "guard" });
+        if (ev.grabHit || ev.clinch) events.push({ side, from, to, type: "grab", dmg: ev.dmg || 0 });
+        if (cnt > 0) events.push({ side, from, to, type: "counter", hits: 1, dmg: cnt, crit: false });
+      };
+      fxFor("p", evP, cntP); fxFor("c", evC, cntC);
       result = finishCheck();
       if (result) { over = true; for (const fl of finishNarration(result)) lines.push(fl); }
-      return { turn, lines, dist: displayDist(), over, result };
+      return { turn, lines, events, dist: displayDist(), over, result };
     }
 
     return { step, getAnalysis, get turn() { return turn; }, get over() { return over; }, get result() { return result; }, get plr() { return plr; }, get cpu() { return cpu; }, get arena() { return { name: arena.name, flavor: arena.flavor }; }, get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; }, displayDist, losClear, obstacles, field, maxDist, terrain: arena.terrain, baseTerrainKey: arena.base, get hazards() { return hazards; } };

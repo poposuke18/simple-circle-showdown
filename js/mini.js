@@ -8,7 +8,9 @@ window.SCS = window.SCS || {};
   let cv = null, ctx = null, battle = null, raf = null, running = false;
   const disp = { px: 0, py: 0, cx: 0, cy: 0, init: false };
   let needSnap = false;
+  let fx = []; // ③ 戦闘エフェクト（寿命付き・描画専用）。step()のevents由来＝決定論を壊さない
   const COL_P = "#5cc8ff", COL_C = "#ff5e5e";
+  const perfNow = () => (typeof performance !== "undefined" ? performance.now() : 0);
   // 地形ゾーンの色（テキストの「茂みに紛れ/瓦礫を盾に/高所/溶岩」と整合させる）
   const TCOL = { forest: "rgba(60,150,90,.13)", rubble: "rgba(125,125,108,.16)", swamp: "rgba(95,112,55,.17)", highground: "rgba(120,170,210,.11)", lava: "rgba(255,105,35,.22)" };
   const TSTROKE = { rubble: "rgba(150,150,132,.22)", highground: "rgba(140,190,220,.2)", lava: "rgba(255,140,60,.45)" };
@@ -18,7 +20,28 @@ window.SCS = window.SCS || {};
     if (b && (needSnap || !disp.init)) { disp.px = b.plr.x; disp.py = b.plr.y; disp.cx = b.cpu.x; disp.cy = b.cpu.y; disp.init = true; needSnap = false; }
     start();
   }
-  function reset() { needSnap = true; } // 新規対戦：次のsyncで位置をスナップ
+  function reset() { needSnap = true; fx = []; } // 新規対戦：次のsyncで位置をスナップ＋エフェクト消去
+
+  // ③ step()の描画専用eventsを寿命付きエフェクトに変換（field座標で保持→描画時にSX/SYで投影）
+  function pushFx(events) {
+    if (!events || !events.length) return;
+    const now = perfNow();
+    for (const e of events) {
+      const f = e.from || {}, t = e.to || {};
+      const base = { side: e.side, t0: now, ax: f.x || 0, ay: f.y || 0, bx: t.x || 0, by: t.y || 0, hit: (e.hits || 0) > 0, crit: !!e.crit, whiff: !!e.whiff, dmg: e.dmg || 0, status: e.status || null };
+      if (e.type === "ranged") fx.push(Object.assign({}, base, { kind: "tracer", dur: 340 }));
+      else if (e.type === "melee") fx.push(Object.assign({}, base, { kind: "slash", dur: 320 }));
+      else if (e.type === "ult-ranged") fx.push(Object.assign({}, base, { kind: "beam", dur: 540 }));
+      else if (e.type === "ult-melee") fx.push(Object.assign({}, base, { kind: "burst", dur: 540 }));
+      else if (e.type === "dodge") fx.push(Object.assign({}, base, { kind: "dodge", dur: 380 }));
+      else if (e.type === "guard") fx.push(Object.assign({}, base, { kind: "guard", dur: 340 }));
+      else if (e.type === "grab") fx.push(Object.assign({}, base, { kind: "grab", dur: 420 }));
+      else if (e.type === "counter") fx.push(Object.assign({}, base, { kind: "counter", dur: 400 }));
+      if (base.hit && (e.type === "ranged" || e.type === "melee" || e.type === "ult-ranged" || e.type === "ult-melee" || e.type === "counter" || e.type === "grab")) fx.push(Object.assign({}, base, { kind: "impact", dur: 300 }));
+    }
+    if (fx.length > 64) fx.splice(0, fx.length - 64); // 暴走防止
+    start();
+  }
   function start() { if (running || typeof requestAnimationFrame === "undefined") return; running = true; loop(); }
   function loop() { raf = requestAnimationFrame(loop); try { draw(); } catch (e) {} }
 
@@ -95,9 +118,75 @@ window.SCS = window.SCS || {};
     ctx.setLineDash([]);
     if (near) { const mx = (px + cx) / 2, my = (py + cy) / 2; ctx.fillStyle = "rgba(255,207,92,.5)"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0; }
 
+    drawFx(SX, SY, scale); // ③ 撃ち合いの可視化（トレーサー/斬撃/ビーム/回避残像/着弾）
     drawUnit(px, py, battle.plr, COL_P);
     drawUnit(cx, cy, battle.cpu, COL_C);
   }
+
+  // ③ 寿命付きエフェクトを減衰描画。座標はfield系で持ち、ここでSX/SYへ投影（レターボックス追従）
+  function drawFx(SX, SY, scale) {
+    if (!fx.length) return;
+    const now = perfNow();
+    const next = [];
+    for (const e of fx) {
+      const p = (now - e.t0) / e.dur; // 0→1
+      if (p >= 1) continue;
+      next.push(e);
+      const a = 1 - p, col = e.side === "p" ? COL_P : COL_C;
+      const ax = SX(e.ax), ay = SY(e.ay), bx = SX(e.bx), by = SY(e.by);
+      ctx.save();
+      if (e.kind === "tracer") {
+        if (e.whiff) { // 逸れる：着弾点を法線方向へずらす
+          const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, off = 7;
+          ctx.globalAlpha = a * 0.5; ctx.lineWidth = 1; ctx.strokeStyle = col;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx + nx * off, by + ny * off); ctx.stroke();
+        } else {
+          ctx.globalAlpha = a; ctx.lineWidth = e.crit ? 2.2 : 1.4; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = e.crit ? 10 : 5;
+          ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+          if (e.crit) { ctx.shadowBlur = 0; ctx.globalAlpha = a; ctx.fillStyle = "#ffcf5c"; spark(bx, by, 4, a); }
+        }
+      } else if (e.kind === "slash") {
+        const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux, r = e.hit ? 9 : 6;
+        ctx.globalAlpha = e.hit ? a : a * 0.5; ctx.lineWidth = e.crit ? 2.4 : 1.6; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = e.hit ? 8 : 3;
+        ctx.beginPath(); ctx.moveTo(bx - ux * 3 + nx * r, by - uy * 3 + ny * r); ctx.quadraticCurveTo(bx + ux * 4, by + uy * 4, bx - ux * 3 - nx * r, by - uy * 3 - ny * r); ctx.stroke();
+        if (e.crit && e.hit) { ctx.shadowBlur = 0; ctx.fillStyle = "#ffcf5c"; spark(bx, by, 4, a); }
+      } else if (e.kind === "beam") {
+        ctx.globalAlpha = a; ctx.lineWidth = (e.hit ? 4 : 2.5) * (0.5 + a * 0.5); ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ring(bx, by, 4 + (1 - a) * 16, a, col);
+      } else if (e.kind === "burst") {
+        ring(bx, by, 3 + (1 - a) * 20, a, col);
+        ctx.globalAlpha = a * 0.8; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.lineWidth = 2;
+        for (let k = 0; k < 6; k++) { const ang = (k / 6) * 6.2832, rr = 5 + (1 - a) * 14; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + Math.cos(ang) * rr, by + Math.sin(ang) * rr); ctx.stroke(); }
+      } else if (e.kind === "dodge") { // 残像：相手方向の法線へ流れる薄い輪
+        const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, sl = (1 - a) * 10;
+        ctx.globalAlpha = a * 0.55; ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+        for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(ax + nx * sl * s, ay + ny * sl * s, 3, 0, 6.2832); ctx.stroke(); }
+      } else if (e.kind === "guard") { // 盾フリック：相手方向に小さな弧
+        const dx = bx - ax, dy = by - ay, ang = Math.atan2(dy, dx);
+        ctx.globalAlpha = a * 0.8; ctx.strokeStyle = "#bfe9ff"; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(ax, ay, 8, ang - 0.7, ang + 0.7); ctx.stroke();
+      } else if (e.kind === "grab") {
+        ctx.globalAlpha = a; ctx.strokeStyle = "#ffcf5c"; ctx.lineWidth = 2; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+        ring(bx, by, 4 + (1 - a) * 9, a, "#ffcf5c");
+      } else if (e.kind === "counter") {
+        ctx.globalAlpha = a; ctx.lineWidth = 2; ctx.strokeStyle = "#ffe08a"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 9;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.fillStyle = "#ffe08a"; spark(bx, by, 4, a);
+      } else if (e.kind === "impact") {
+        const r = 3 + Math.min(14, e.dmg * 0.5) * (1 - a);
+        ctx.globalAlpha = a * 0.9; ctx.fillStyle = "#ffffff"; ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(bx, by, Math.max(1.5, r * 0.4), 0, 6.2832); ctx.fill();
+        ctx.shadowBlur = 0; ctx.globalAlpha = a * 0.6; ctx.lineWidth = 1.4; ctx.strokeStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(bx, by, r, 0, 6.2832); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    fx = next;
+  }
+  function spark(x, y, r, a) { ctx.globalAlpha = a; for (let k = 0; k < 4; k++) { const ang = k * 1.5708 + 0.6; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(ang) * r, y + Math.sin(ang) * r); ctx.lineWidth = 1; ctx.strokeStyle = "#ffcf5c"; ctx.stroke(); } }
+  function ring(x, y, r, a, col) { ctx.globalAlpha = a * 0.8; ctx.lineWidth = 1.6; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.stroke(); ctx.shadowBlur = 0; }
 
   function drawUnit(x, y, u, color) {
     const fx = u.faceX || 0, fy = u.faceY || 0, fl = Math.hypot(fx, fy) || 1, ux = fx / fl, uy = fy / fl;
@@ -115,5 +204,5 @@ window.SCS = window.SCS || {};
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
   }
 
-  SCS.mini = { sync, reset };
+  SCS.mini = { sync, reset, pushFx };
 })();

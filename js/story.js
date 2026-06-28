@@ -120,6 +120,7 @@ window.SCS = window.SCS || {};
     curEnemy = k; const e = enemyByKey(k);
     SCS.ui.setPlrChoices(st.choices);   // 前回の設計を叩き台に
     SCS.ui.lockAxis(st.core.axis);      // 核をロック
+    SCS.ui.setPredictContext({ cpuChoices: enemyChoices(e), cpuName: enemyDisplayName(e), arena: e.arena, mod: e.mod }); // ② 試算の相手＝この敵のホーム固定
     const coreMac = D.MACROS[st.core.axis];
     $("storyFoot").innerHTML =
       `<div class="sf-info">対 <b>${enemyDisplayName(e)}</b> ／ ホーム <b>${e.arena}・${e.mod}</b> ／ 核 <b>${coreMac.name}「${coreMac.poles[st.core.value]}」</b>（固定）</div>` +
@@ -139,13 +140,15 @@ window.SCS = window.SCS || {};
   }
 
   // ---- 決着 ----
-  function onOver(result) {
+  function onOver(result, analysis) {
     const e = enemyByKey(curEnemy), won = result && result.type === "win" && result.winner === "PLR";
     if (won) {
       if (st.cleared.indexOf(curEnemy) < 0) st.cleared.push(curEnemy);
       st.lastWin = st.choices.slice(); // 鏡用：直近の勝利ビルド
       save();
     }
+    st.lastRun = analysis ? { choices: st.choices.slice(), won, hitRate: analysis.plr.hitRate, dmgDealt: analysis.plr.dmgDealt, dmgTaken: analysis.plr.dmgTaken, atkRatio: analysis.plr.atkRatio, enemy: curEnemy } : null; // 前回差分の土台
+    save();
     const nxt = nextEnemy();
     let html = `<div class="story-card story-result ${won ? "win" : "lose"}">`;
     html += won ? `<div class="res-banner win">勝　利</div>` : `<div class="res-banner lose">${result && result.type === "draw" ? "引き分け" : "敗　北"}</div>`;
