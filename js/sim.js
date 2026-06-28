@@ -69,6 +69,18 @@ window.SCS = window.SCS || {};
     function hazardAt(p) { let d = 0; for (const h of hazards) if (h.turns > 0 && ptInRect(p, h)) d += h.dmg; return d; } // 立っている地点の炎ダメージ
     const displayDist = () => Math.round(clamp((dist(plr, cpu) / maxDist) * 100, 0, 100));
     const cx = (x) => clamp(x, 0, field.w), cy = (y) => clamp(y, 0, field.h);
+    // 障害物との当たり判定：遮蔽の中に入れない（一番近い辺へ押し出す）＝壁抜け防止。回り込みが物理的に必要になる
+    function pushOutObstacle(x, y) {
+      for (const o of obstacles) {
+        if (o.hp <= 0) continue;
+        if (x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) {
+          const dl = x - o.x, dr = o.x + o.w - x, dt = y - o.y, db = o.y + o.h - y, m = Math.min(dl, dr, dt, db);
+          if (m === dl) x = o.x - 0.02; else if (m === dr) x = o.x + o.w + 0.02; else if (m === dt) y = o.y - 0.02; else y = o.y + o.h + 0.02;
+        }
+      }
+      return { x: cx(x), y: cy(y) };
+    }
+    const clampUnit = (u) => { const q = pushOutObstacle(u.x, u.y); u.x = q.x; u.y = q.y; };
     function terrainAt(p) { for (const z of arena.terrain) if (ptInRect(p, z)) return T[z.t]; return baseTerrain; }
     const terrainDmg = (p) => terrainAt(p).dmg || 0; // 溶岩など、立つと毎ターン被弾する地形
     const stepLen = (u, p) => S.baseStep * (0.6 + 0.8 * u.micros.B5) * terrainAt(p).move * slowOf(u) * (0.78 + 0.22 * clamp(u.stamina, 0, 1)); // 息切れで足が止まる
@@ -83,7 +95,7 @@ window.SCS = window.SCS || {};
       else if (move === "STRAFE_L") { nx += -uy * st; ny += ux * st; }
       else if (move === "STRAFE_R") { nx += uy * st; ny += -ux * st; }
       else if (move === "COVER") { const o = nearestObstacle(sp); if (o) { const ox = o.x - sp.x, oy = o.y - sp.y, ol = Math.hypot(ox, oy) || 1; nx += (ox / ol) * st; ny += (oy / ol) * st; } }
-      return { x: cx(nx), y: cy(ny) };
+      return pushOutObstacle(nx, ny); // 障害物の中で止まらない（押し出し）
     }
 
     // 命中・期待ダメージ（地形：防御側の回避/被ダメ減・攻撃側の高所命中）
@@ -147,7 +159,7 @@ window.SCS = window.SCS || {};
       return e;
     }
     const falseMove = (mv) => MOVES[(MOVES.indexOf(mv) + 1 + (turn % 4)) % MOVES.length];
-    function baitNudge(self, foe) { const dx = foe.x - self.x, dy = foe.y - self.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, step = clamp(self.prefRange - len, -3, 3); foe.x = cx(self.x + ux * (len + step)); foe.y = cy(self.y + uy * (len + step)); }
+    function baitNudge(self, foe) { const dx = foe.x - self.x, dy = foe.y - self.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, step = clamp(self.prefRange - len, -3, 3); foe.x = cx(self.x + ux * (len + step)); foe.y = cy(self.y + uy * (len + step)); clampUnit(foe); }
     function guilePrefix(ge) { const p = []; if (ge.feint) p.push("牽制で揺さぶり"); if (ge.exploit) p.push("相手の隙を突き"); if (ge.bait) p.push("誘い込み"); if (ge.disinfo) p.push("気配を断ち"); if (ge.outwit) p.push("機先を制し"); return p.length ? p.slice(0, 2).join("、") + "、" : ""; }
 
     function genCandidates(state, side) {
@@ -395,14 +407,14 @@ window.SCS = window.SCS || {};
     }
 
     function moveUnit(side, cand) { const s = stat(side); s.x = cand.newPos.x; s.y = cand.newPos.y; }
-    function knockback(att, tgt) { const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1; tgt.x = cx(tgt.x + (dx / len) * att.melee.knockback); tgt.y = cy(tgt.y + (dy / len) * att.melee.knockback); }
+    function knockback(att, tgt) { const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1; tgt.x = cx(tgt.x + (dx / len) * att.melee.knockback); tgt.y = cy(tgt.y + (dy / len) * att.melee.knockback); clampUnit(tgt); }
     // 崩しが通った：受け不能の投げ。ダメージ＋叩きつけ（引き離し）＋怯み・隙・気力削り
     function applyThrow(att, tgt, ev) {
       const dmg = Math.round(grabDamage(att) * vulnOf(tgt) * dmgMod());
       tgt.hp = Math.max(0, tgt.hp - dmg);
       ev.grabHit = true; ev.dmg = (ev.dmg || 0) + dmg;
       const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1, thr = 7;
-      tgt.x = cx(tgt.x + (dx / len) * thr); tgt.y = cy(tgt.y + (dy / len) * thr);
+      tgt.x = cx(tgt.x + (dx / len) * thr); tgt.y = cy(tgt.y + (dy / len) * thr); clampUnit(tgt);
       // 環境叩きつけ：投げ先が溶岩/炎なら焼き込み、壁際なら叩きつけで追加ダメージ
       let bonus = 0;
       if (terrainDmg(tgt) > 0 || hazardAt(tgt) > 0) { bonus = 6; ev.envThrow = true; }
@@ -1060,7 +1072,7 @@ window.SCS = window.SCS || {};
       if (geP.bait) baitNudge(plr, cpu); if (geC.bait) baitNudge(cpu, plr); // 誘い込み：間合いを少し操作
       if (noDamageTurns >= 4) { // 長い膠着＝場が狭まるように両者を引き寄せ、否応なく接触させる（大アリーナでのカイト無限ループ対策）
         const mx = (plr.x + cpu.x) / 2, my = (plr.y + cpu.y) / 2, pull = Math.min((noDamageTurns - 3) * 2, 10);
-        const drawIn = (u) => { const dx = mx - u.x, dy = my - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l); u.x = cx(u.x + (dx / l) * st); u.y = cy(u.y + (dy / l) * st); };
+        const drawIn = (u) => { const dx = mx - u.x, dy = my - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l); u.x = cx(u.x + (dx / l) * st); u.y = cy(u.y + (dy / l) * st); clampUnit(u); };
         drawIn(plr); drawIn(cpu);
       }
       const edgeP = 1 + (geP.exploit ? 0.12 : 0) + (geP.outwit ? 0.1 : 0) + (cOpen0 ? 0.25 : 0), edgeC = 1 + (geC.exploit ? 0.12 : 0) + (geC.outwit ? 0.1 : 0) + (pOpen0 ? 0.25 : 0); // 相手の隙(OPENING)を突くと命中↑
