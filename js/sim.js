@@ -110,7 +110,7 @@ window.SCS = window.SCS || {};
     const grabReachOK = (att, def) => dist(att, def) <= att.melee.reach + 3; // 組み付きが届く間合い
     // ===== Wave6：壁際の追い込み＝逃げ場が無く回避が効かない／必殺＝気迫を解き放つ一撃必殺 =====
     const cornered = (u) => Math.min(u.x, field.w - u.x, u.y, field.h - u.y) < 7; // 場の端7以内＝追い詰められ
-    const ULT_NAME = { precise: "零距離の一射", auto: "弾幕の嵐", shotgun: "至近の一掃", mlt: "嵐の連撃", hvy: "全霊の一撃", bal: "会心の一閃" };
+    const ULT_NAME = { precise: "零距離の一射", auto: "弾幕の嵐", shotgun: "至近の一掃", flame: "業火の渦", mlt: "嵐の連撃", hvy: "全霊の一撃", bal: "会心の一閃" };
     function expEx(atk, def, atkPos, defPos, d, los) {
       let dmg = 0;
       if (los) dmg += atk.ranged.fireRate * rangedHit(atk.ranged, atkPos, defPos, def, d, los, false) * atk.ranged.damage * defMult(defPos);
@@ -154,7 +154,7 @@ window.SCS = window.SCS || {};
       const self = stat(side), fp = state[other(side)], sp = state[side], out = [];
       const hasCover = obstacles.some((o) => o.hp > 0); // 遮蔽が無い戦場ではCOVER行動を出さない（「遮蔽の陰へ」誤描写を防ぐ）
       for (const move of MOVES) {
-        if (move === "COVER" && !hasCover) continue;
+        if (move === "COVER" && (!hasCover || noDamageTurns >= 3)) continue; // 膠着中は遮蔽に隠れない（自分の射線を自分で塞ぐ愚を防ぐ）
         const newPos = applyMove(sp, self, fp, move), moved = move !== "HOLD", d2 = dist(newPos, fp), los2 = losClear(newPos, fp);
         out.push({ move, attack: "NONE", newPos, moved, d2, los2 });
         if (los2 && self.ammo > 0) out.push({ move, attack: "RANGED", newPos, moved, d2, los2 });
@@ -225,9 +225,10 @@ window.SCS = window.SCS || {};
       // アンチストールは戦略より後＝最優先（守り戦略/受け回避が増えても膠着・時間切れを防ぐ）
       const stall = Math.min(1, noDamageTurns / 3);
       if (stall > 0) {
-        w.engage += stall * 0.9; w.winRange += stall * 0.4; w.threat *= 1 - stall * 0.7; w.cover *= 1 - stall * 0.7; w.danger *= 1 - stall * 0.4;
+        w.engage += stall * 0.9; w.winRange += stall * 0.4; w.threat *= 1 - stall * 0.7; w.cover *= 1 - stall * 0.7; w.terrain *= 1 - stall * 0.6; w.danger *= 1 - stall * 0.4; // 膠着時は茂み/遮蔽に居座らず交戦へ
         const pT = Math.max(self.melee.reach, self.prefRange - stall * 30); // 膠着が深いほど近接へ寄せて強制接触
         f.winRange = 1 - clamp(Math.abs(d - pT) / (55 - m.B4 * 25), 0, 1.4);
+        if (!los && d > self.melee.reach) f.engage = Math.min(f.engage, -0.5 * stall); // 射線も通らず近接も届かない位置（自分の遮蔽裏で撃てない等）＝膠着の元、強く避け射線を取りに動く
       }
       if (mod.ring && turn >= 5) w.pos += 0.7; // 戦況「狭まる戦場」＝中央を死守する
       let v = 0; for (const k in f) v += f[k] * w[k];
@@ -324,8 +325,13 @@ window.SCS = window.SCS || {};
       cands.sort((a, b) => b.q - a.q);
       cands = cands.slice(0, cog.breadth);
       // 回避(DODGE)を常に候補へ：相手の脅威が高い時のみ価値が出る（B3回避巧者＋気力＋読みD1/D6で反撃EV）
-      { const fpos = { x: s0[fo].x, y: s0[fo].y }, dpos = applyMove(s0[side], self, fpos, "STRAFE_R"); cands.push({ move: "STRAFE_R", attack: "DODGE", newPos: dpos, moved: true, d2: dist(dpos, fpos), los2: losClear(dpos, fpos) });
-        cands.push({ move: "HOLD", attack: "GUARD", newPos: { x: s0[side].x, y: s0[side].y }, moved: false, d2: dist(s0[side], fpos), los2: losClear(s0[side], fpos) }); // 受け
+      { const fpos = { x: s0[fo].x, y: s0[fo].y };
+        const foeThreatNow = expEx(foe, self, fpos, { x: s0[side].x, y: s0[side].y }, predist, losClear(self, foe)); // 相手の見込み出力
+        if (foeThreatNow > 3) { // 脅威がある時だけ回避/受けを候補に（遠間で無意味に守らない＝棒立ちの「受けを固め」乱発を防ぐ）
+          const dpos = applyMove(s0[side], self, fpos, "STRAFE_R");
+          cands.push({ move: "STRAFE_R", attack: "DODGE", newPos: dpos, moved: true, d2: dist(dpos, fpos), los2: losClear(dpos, fpos) });
+          cands.push({ move: "HOLD", attack: "GUARD", newPos: { x: s0[side].x, y: s0[side].y }, moved: false, d2: dist(s0[side], fpos), los2: losClear(s0[side], fpos) });
+        }
         const cpos = applyMove(s0[side], self, fpos, "ADVANCE"), cd = dist(cpos, fpos); // 突進＝踏み込んで強打（間合い外→内へ）
         if (predist > self.melee.reach && cd <= self.melee.reach + 3) cands.push({ move: "ADVANCE", attack: "CHARGE", newPos: cpos, moved: true, d2: cd, los2: losClear(cpos, fpos) });
         // 崩し（GRAB/投げ）：至近で組み付く。受け不能でガード/棒立ちに通るが、攻撃を合わされると潰れる
@@ -619,13 +625,14 @@ window.SCS = window.SCS || {};
       return "";
     }
     function weaponCat(w, ranged) {
-      if (ranged) return w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
+      if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
       return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
     }
     const ATK_HIT = {
       precise: ["{w}で狙い澄まして撃ち抜き", "{w}の一発を急所へ吸い込ませ", "{w}で精確に射貫き", "{w}の照準を寸分違わず合わせ"],
       auto: ["{w}の弾雨を浴びせ", "{w}を掃射して縫い止め", "{w}でなぎ払うように撃ち込み", "{w}の連射を叩き込み"],
       shotgun: ["至近から{w}を叩き込み", "{w}の散弾を抉り込ませ", "{w}を顔面へ撃ち込み"],
+      flame: ["{w}で業火を浴びせ", "{w}の炎を吹き付け", "{w}で火炎を噴き上げ", "{w}で猛火を浴びせかけ"],
       mlt: ["{w}で目にも留まらぬ連撃を浴びせ", "{w}を閃かせて刻みつけ", "{w}の乱舞で切り裂き"],
       hvy: ["{w}を渾身で振り下ろし", "{w}の一撃を全身で叩きつけ", "唸りを上げる{w}を振り抜き"],
       bal: ["{w}を鋭く振り抜き", "{w}で間合いを断ち切り", "{w}を一閃させ", "{w}の刃を滑り込ませ"],
@@ -634,11 +641,13 @@ window.SCS = window.SCS || {};
       precise: ["{w}を放つも、紙一重で逸れる", "{w}の一発は虚しく宙を裂いた", "狙いはわずかに甘く、{w}は空を切る"],
       auto: ["{w}をばら撒くも捉えきれず", "{w}の連射は空を縫うばかり", "{w}を浴びせるが、すべて逸れる"],
       shotgun: ["{w}の散弾は届かず散る", "{w}を撃つも間合いが遠い"],
+      flame: ["{w}の炎は届かず宙を舐める", "{w}を噴くも間合いが遠い", "{w}の火は虚しく空を焦がす"],
       mlt: ["{w}を閃かせるも空を切る", "{w}の連撃はかすりもしない"],
       hvy: ["{w}を振るうも大きく空振り", "{w}は虚しく地を叩いた"],
       bal: ["{w}を振り抜くも捉え損ね", "{w}の一閃は空を裂くのみ"],
     };
     const REACT = ["確かな手応え。", "鈍い衝撃が走った。", "血飛沫が舞う。", "効いている。", "深い傷を刻んだ。", "たまらず体勢が崩れる。", "苦痛の声が漏れた。", "重い一撃が通った。", "相手がぐらりとよろめく。", "確実に削った。", "顔をしかめ、後ずさる。", "息を呑む音が聞こえた。"];
+    const REACT_LITE = ["かすかな手応え。", "わずかに削った。", "浅手を負わせた。", "軽い手傷。", "効きは薄いが、確かに当てた。"];
     const REACT_BIG = ["致命的な一撃だ！", "戦況を変える痛打！", "骨まで断つ一撃——！", "完全に捉えた！"];
 
     function statusApplyPhrase(type, slt) {
@@ -728,12 +737,11 @@ window.SCS = window.SCS || {};
       return out;
     }
     function situationLine(pre) {
-      const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100)), los = losClear(pre.p, pre.c);
+      const pd = Math.round(clamp((dist(pre.p, pre.c) / maxDist) * 100, 0, 100));
       const dfeel = pd < 15 ? px(["息のかかる至近距離", "刃が触れ合う間合い"], 41) : pd < 35 ? px(["互いの表情も見える近間", "踏み込めば届く距離"], 42) : pd < 60 ? px(["射撃を交わす中距離", "睨み合う中間合い"], 43) : px(["遠く隔てた間合い", "遠間での睨み合い"], 44);
-      const ln = los ? px(["射線は通っている", "視界はクリア"], 46) : px(["遮蔽が射線を断つ", "障害物が間に立ち塞がる"], 47);
-      const fd = plr.hp / plr.maxHp - cpu.hp / cpu.maxHp;
-      const mom = fd > 0.2 ? "PLRが圧倒する流れ" : fd > 0.08 ? "ややPLRに分がある" : fd < -0.2 ? "CPUが押し込む展開" : fd < -0.08 ? "ややCPU優勢" : "互角の睨み合い";
-      return `${dfeel}（${pd}％）、${arena.name}。${ln}。${mom}。`;
+      const fd = pre.p.hp / plr.maxHp - pre.c.hp / cpu.maxHp; // ★ターン開始時のHPで形勢を判定（被弾適用後のhpを使うとラベルが逆転する）
+      const mom = fd > 0.2 ? "あなたが圧倒する流れ" : fd > 0.08 ? "ややあなたに分がある" : fd < -0.2 ? `${cpu.name}が押し込む展開` : fd < -0.08 ? `やや${cpu.name}優勢` : "互角の睨み合い";
+      return `${dfeel}（${pd}％）、${arena.name}。${mom}。`;
     }
     // ★決着ターン専用：倒れる側の「最後の行動（〜しようとした）＋死因＋崩れ方」を一文に（同時動作を保ったまま自然に）
     const FIN_MV = {
@@ -783,7 +791,7 @@ window.SCS = window.SCS || {};
     const nameSpan = (side) => (side === "p" ? `<span class="np">あなた</span>` : `<span class="nc">${cpu.name}</span>`);
     const exDem = (side) => px(DEMEANOR[moodOf(stat(side))], sideSalt(stat(side).side, 11));
     const exMove = (side, dec) => px(MV[dec.cand.move] || MV.HOLD, sideSalt(stat(side).side, 12));
-    const exTerr = (side) => { const t = terrainPhrase(terrainAt(stat(side))); return t ? t + "、" : ""; };
+    const exTerr = (side) => { const t = terrainPhrase(terrainAt(stat(side))); return t && hsh(sideSalt(stat(side).side, 77)) % 3 === 0 ? t + "、" : ""; }; // 地形語は毎ターンでなく時々（全域同一地形での連呼を防ぐ）
     const isStrike = (ev) => (ev.attack === "RANGED" || ev.attack === "MELEE" || ev.attack === "CHARGE" || ev.attack === "ULT") && ev.shots > 0 && !ev.charging && !ev.windup;
     // 攻撃イベント1件＝攻め手の動作＋一撃＋相手の反応(回避/受け/被弾)＋反撃。実ダメージを反映するので「かわした」と「被弾」が矛盾しない
     function strikeClause(attSide, attEv, attDec, defSide, defEv, gpre) {
@@ -792,22 +800,25 @@ window.SCS = window.SCS || {};
       const crit = attEv.crits > 0, dmg = attEv.dmg || 0;
       const flk = attEv.flank === "rear" ? px(["背後を取り、", "死角に回り込みざま、"], slt + 1) : attEv.flank === "side" ? px(["側面から、", "横合いを突いて、"], slt + 1) : "";
       const cornerPre = attEv.corner && !flk ? px(["壁際に追い詰め、", "逃げ場を塞ぎ、"], slt + 4) : "";
-      const punishPre = attEv.punish ? px(["好機を逃さず——確定反撃！", "隙を突き、"], slt + 6) : "";
+      const punishPre = attEv.punish ? px(["好機を逃さず——がら空きへ叩き込む！", "隙を突き、", "晒した隙を咎め、"], slt + 6) : "";
       const comboPre = attEv.comboLevel >= 2 ? `${attEv.comboLevel}連撃——畳みかけ、` : "";
       const critPre = (isUlt ? "気迫を解き放つ——" : "") + punishPre + comboPre + (crit ? px(["会心の一撃、", "渾身——！", "急所を捉え、"], slt + 3) : "");
       const verb = isUlt ? `${attEv.ultName}を${rn ? "放ち" : "叩き込み"}` : attEv.charge ? `渾身の突進から${w.name}を叩き込み` : px(ATK_HIT[cat], slt + (crit ? 7 : 0)).replace("{w}", w.name);
-      const st = attEv.statusType ? statusApplyPhrase(attEv.statusType, slt) : "", kb = attEv.kb ? "・大きく弾き飛ばす" : "";
+      const st = attEv.statusType ? statusApplyPhrase(attEv.statusType, slt) : "", kb = attEv.kb && dmg >= 12 ? "・大きく弾き飛ばす" : ""; // 弾き飛ばしは十分なダメージ時のみ描写
       const dd = exDem(defSide), cnt = defEv.counter ? ` ${dn}は見切りざま反撃を返し、${an}へ −${defEv.counter}！` : "";
       const moveClause = flk || (exMove(attSide, attDec) + "、"); // 側背面を取ったときは移動句の代わりにフランク描写を使う（「正面から…背後を取り」の矛盾回避）
       const lead = `${gpre || ""}${an}は${exDem(attSide)}${exTerr(attSide)}${moveClause}${cornerPre}`;
       if (isUlt && dmg <= 0 && !defEv.dodge && !defEv.guard) return `${lead}${attEv.ultName}を放つも——空を切った！大きな隙を晒す。`;
-      if (defEv.dodge) return dmg <= 0
-        ? `${lead}${critPre}${verb}——${dd}${dn}は紙一重で見切ってかわす。${cnt}`
-        : `${lead}${critPre}${verb}。${dd}${dn}は身を翻すも掠られ −${dmg}${st}。${cnt}`;
+      if (defEv.dodge) {
+        if (dmg <= 0) return `${lead}${critPre}${verb}——${dd}${dn}は紙一重で見切ってかわす。${cnt}`;
+        return dmg < 0.15 * foe.maxHp // 小ダメージ＝掠り／大ダメージ＝かわしきれず（「掠られ −100」の矛盾を回避）
+          ? `${lead}${critPre}${verb}——${dd}${dn}は身を翻すも掠られ −${dmg}${st}。${cnt}`
+          : `${lead}${critPre}${verb}——${dd}${dn}はかわしきれず、まともに浴びる −${dmg}${st}。${cnt}`;
+      }
       if (defEv.guard) return dmg <= 0
         ? `${lead}${critPre}${verb}——${dd}${dn}は受けに回り、完全に受け止める。`
-        : `${lead}${critPre}${verb}。${dd}${dn}は受けで威力を殺し、−${dmg} に抑える${st}。`;
-      if (dmg > 0) { const react = dmg >= 0.35 * foe.maxHp ? px(REACT_BIG, slt + 9) : px(REACT, slt + 9); return `${lead}${critPre}${verb}、${dn}へ −${dmg}${kb}${st}。${react}`; }
+        : `${lead}${critPre}${verb}——${dd}${dn}は受けで威力を殺し、−${dmg} に抑える${st}。`;
+      if (dmg > 0) { const react = dmg >= 0.35 * foe.maxHp ? px(REACT_BIG, slt + 9) : dmg < 0.08 * foe.maxHp ? px(REACT_LITE, slt + 9) : px(REACT, slt + 9); return `${lead}${critPre}${verb}、${dn}へ −${dmg}${kb}${st}。${react}`; }
       return `${lead}${px(ATK_MISS[cat], slt).replace("{w}", w.name)}。`;
     }
     // 攻撃していない側（移動/リロード/チャージ/弾切れ/麻痺/読みの構え 等）の一節
@@ -820,15 +831,16 @@ window.SCS = window.SCS || {};
         if (ev.grabWhiff) return `${n}は組み付こうと手を伸ばすが、相手は間合いの外。空を掴んで泳ぐ。`;
         return `${n}は組み付きを狙う。`;
       }
+      const isFlame = self.ranged.key === "flamethrower"; // 火炎放射器は弾倉でなく燃料
       if (dec.stunned) return `${n}は麻痺で動けず、その場で隙を晒す。`;
-      if (ev.reloading) return ev.emptyReload ? `${n}は弾切れ——慌てて弾倉を交換する。無防備な刹那だ。` : `${n}は弾を込め直す。`;
-      if (ev.jam) return `${n}は${self.ranged.name}が過熱しジャム——撃てず隙を晒す。`;
+      if (ev.reloading) return ev.emptyReload ? `${n}は${isFlame ? "燃料が尽き——慌てて補充する" : "弾切れ——慌てて弾倉を交換する"}。無防備な刹那だ。` : `${n}は${isFlame ? "燃料を補充する" : "弾を込め直す"}。`;
+      if (ev.jam) return `${n}は${self.ranged.name}が過熱し${isFlame ? "噴射が詰まる" : "ジャム"}——撃てず隙を晒す。`;
       if (ev.charging) return `${n}は${exDem(side)}${self.ranged.name}に狙いを溜める。次の一射に懸ける。`;
       if (ev.windup) return `${n}は${self.melee.name}を大きく振りかぶる。`;
-      if (ev.empty) return `${n}は引き金を引くも——弾切れだ。`;
-      if (ev.negated) return `${n}は${exMove(side, dec)}${px(["撃つも、射線は遮蔽に阻まれる", "撃つが、弾は壁に阻まれて通らない", "放った弾は遮蔽に弾かれた"], sideSalt(self.side, 59))}。`;
-      if (ev.dodge && !foeStruck) return `${gpre || ""}${n}は${exDem(side)}来ると読んで身構え、${exMove(side, dec)}。`;
-      if (ev.guard && !foeStruck) return `${n}は受けを固め、様子を窺う。`;
+      if (ev.empty) return `${n}は${isFlame ? "噴射しようとするも——燃料切れだ" : "引き金を引くも——弾切れだ"}。`;
+      if (ev.negated) return `${n}は${exMove(side, dec)}${isFlame ? px(["放つも、炎は遮蔽に阻まれる", "噴くが、火は壁に阻まれて届かない"], sideSalt(self.side, 59)) : px(["撃つも、射線は遮蔽に阻まれる", "撃つが、弾は壁に阻まれて通らない", "放った弾は遮蔽に弾かれた"], sideSalt(self.side, 59))}。`;
+      if (ev.dodge && !foeStruck) return `${gpre || ""}${n}は${exDem(side)}${px(["来ると読んで身構え", "仕掛けを警戒し", "いつでも動ける体勢を取り", "誘いと見て半身に構え"], sideSalt(self.side, 68))}、${exMove(side, dec)}。`;
+      if (ev.guard && !foeStruck) return `${n}は${px(["受けを固め、様子を窺う", "ガードを上げ、機を窺う", "守りを固めて出方を探る", "構えを崩さず間合いを計る"], sideSalt(self.side, 70))}。`;
       return `${gpre || ""}${n}は${exDem(side)}${exTerr(side)}${exMove(side, dec)}、${px(["好機を窺う", "出方を探る", "機を計る", "間合いを計り直す", "次の一手を窺う", "じっと隙を待つ"], sideSalt(self.side, 62))}。`;
     }
     function composeExchange(decP, evP, decC, evC, geP, geC) {
@@ -871,16 +883,17 @@ window.SCS = window.SCS || {};
     const FIN_KO = ["崩れ落ちた。", "ついに膝をついた。", "力尽きて倒れ込む。", "糸が切れたように沈黙した。", "もう立ち上がれない。"];
     function winFlavor(win) {
       if (win.hp / win.maxHp < 0.18) return px(["満身創痍、執念がもぎ取った勝利だった。", "倒れる寸前——気力だけで勝ち切った。", "紙一重、勝負はまさに薄氷の上にあった。"], 82);
-      const rn = win.winDist > 25, w = rn ? win.ranged : win.melee, cat = weaponCat(w, rn);
+      const ws = stats[win.side === "PLR" ? "p" : "c"], rn = (ws.ranged || 0) >= (ws.melee || 0), w = rn ? win.ranged : win.melee, cat = weaponCat(w, rn); // 実際に多く使った間合いで締めの言い回しを選ぶ（近接で倒したのに「一射が」を防ぐ）
       const pool = {
         precise: ["精緻な一射が、勝敗を断ち切った。", "狙い澄ました弾が、すべてを終わらせた。"],
         auto: ["浴びせ続けた弾幕が、相手をねじ伏せた。", "途切れぬ連射が、地力で押し切った。"],
         shotgun: ["至近の一撃が、勝負を吹き飛ばした。", "間合いを支配した者の、圧倒的な決着。"],
+        flame: ["焼き尽くす炎が、勝敗を決した。", "燃え盛る業火が、すべてを呑み込んだ。"],
         mlt: ["疾風の連撃が、急所を捉え切った。", "目にも留まらぬ刃が、勝敗を刻んだ。"],
         hvy: ["渾身の一撃が、すべてを叩き伏せた。", "重き刃の一振りが、決着を告げた。"],
         bal: ["冴え渡る一閃が、勝負を決めた。", "間合いを制した刃が、見事に断ち切った。"],
       };
-      return px(pool[cat], 83);
+      return px(pool[cat] || pool.bal, 83);
     }
     function finishNarration(res) {
       const out = [{ text: "═══════════════  決　着  ═══════════════", cls: "result" }];
@@ -1044,6 +1057,11 @@ window.SCS = window.SCS || {};
       const geC = guileEvents("c", { foeAttacks: decP.cand.attack, selfAttacks: decC.cand.attack, foeReads: plr.cog.oppModelWeight, dist: dd0 });
       moveUnit("p", decP.cand); moveUnit("c", decC.cand);   // 同時移動
       if (geP.bait) baitNudge(plr, cpu); if (geC.bait) baitNudge(cpu, plr); // 誘い込み：間合いを少し操作
+      if (noDamageTurns >= 4) { // 長い膠着＝場が狭まるように両者を引き寄せ、否応なく接触させる（大アリーナでのカイト無限ループ対策）
+        const mx = (plr.x + cpu.x) / 2, my = (plr.y + cpu.y) / 2, pull = Math.min((noDamageTurns - 3) * 2, 10);
+        const drawIn = (u) => { const dx = mx - u.x, dy = my - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l); u.x = cx(u.x + (dx / l) * st); u.y = cy(u.y + (dy / l) * st); };
+        drawIn(plr); drawIn(cpu);
+      }
       const edgeP = 1 + (geP.exploit ? 0.12 : 0) + (geP.outwit ? 0.1 : 0) + (cOpen0 ? 0.25 : 0), edgeC = 1 + (geC.exploit ? 0.12 : 0) + (geC.outwit ? 0.1 : 0) + (pOpen0 ? 0.25 : 0); // 相手の隙(OPENING)を突くと命中↑
       const defC = defenseOf(decC.cand, cpu), defP = defenseOf(decP.cand, plr); // 回避側の被弾減
       const evP = resolveAttack("p", decP.cand, geC.feint, edgeP, defC), evC = resolveAttack("c", decC.cand, geP.feint, edgeC, defP); // 同時解決（揺さぶり/隙突き＋相手の回避を反映）
