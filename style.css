@@ -362,6 +362,37 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .ob-spot { position: relative; z-index: 10002; outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; box-shadow: 0 0 22px rgba(255, 207, 92, .35); animation: obspot 1.4s ease-in-out infinite; } /* 暗幕(10001)より前面＝強調要素が沈まない */
 @keyframes obspot { 0%, 100% { outline-color: rgba(255, 207, 92, .55); } 50% { outline-color: rgba(255, 207, 92, 1); } }
 
+/* ── 分隊戦 ── */
+.sq-roster { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.sq-rmini { flex: 1 1 30%; min-width: 150px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-left: 3px solid var(--dim2); background: rgba(7, 21, 13, .35); border-radius: 3px; padding: 6px 9px; cursor: pointer; }
+.sq-rmini.active { border-left-color: var(--plr); background: rgba(92, 200, 255, .07); }
+.sq-rmini:hover { border-color: var(--line2); }
+.sqr-n { color: var(--plr); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+.sqr-role { color: var(--amber); font-size: 11.5px; }
+.sqr-w { color: var(--green2); font-size: 10.5px; }
+.sqr-hp { color: var(--dim); font-size: 10.5px; }
+.sq-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.sq-tab { flex: 1; background: #061b10; color: var(--dim); border: 1px solid var(--line); padding: 6px 8px; font-family: var(--mono); font-size: 12px; letter-spacing: 1px; cursor: pointer; border-radius: 2px; }
+.sq-tab:hover { color: var(--green); border-color: var(--line2); }
+.sq-tab.active { color: var(--plr); border-color: var(--plr); box-shadow: 0 0 8px rgba(92, 200, 255, .2); }
+/* 戦闘HUD（両軍ロスター） */
+.sq-hud { display: flex; align-items: stretch; gap: 8px; margin: 10px 0; }
+.sqh-team { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.sqh-vs { align-self: center; color: var(--dim); font-size: 11px; letter-spacing: 1px; }
+.sqh-u { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.sqh-u.down { opacity: .4; }
+.sqh-u.down .sqh-n { text-decoration: line-through; }
+.sqh-team.plr .sqh-n { color: var(--plr); } .sqh-team.cpu .sqh-n { color: var(--cpu); }
+.sqh-team.cpu { align-items: flex-end; }
+.sqh-team.cpu .sqh-u { flex-direction: row-reverse; }
+.sqh-n { width: 3em; flex-shrink: 0; }
+.sqh-bar { flex: 1; height: 9px; background: #07150d; border: 1px solid var(--line2); overflow: hidden; min-width: 40px; }
+.sqh-bar i { display: block; height: 100%; transition: width .25s ease; }
+.sqh-team.plr .sqh-bar i { background: var(--plr); box-shadow: 0 0 7px var(--plr); }
+.sqh-team.cpu .sqh-bar i { background: var(--cpu); box-shadow: 0 0 7px var(--cpu); }
+.sqh-hp { width: 2.4em; flex-shrink: 0; color: var(--dim); text-align: right; }
+.sqc-role { color: var(--amber); font-size: 10px; margin-left: 6px; }
+
 /* ── モバイル ── */
 @media (max-width: 600px) {
   .res-banner { font-size: 21px; letter-spacing: 6px; }

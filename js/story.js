@@ -31,6 +31,7 @@ window.SCS = window.SCS || {};
   function show(id, on) { const el = $(id); if (el) el.classList.toggle("hidden", !on); }
   function setView(v) {
     const story = mode === "story";
+    show("squad", false); // 分隊戦セクションは分隊モードのみ（free/storyでは隠す）
     show("storyHome", story && v === "map");
     show("storyScout", story && v === "scout");
     show("storyResult", story && v === "result");
@@ -42,11 +43,20 @@ window.SCS = window.SCS || {};
     if (story && (v === "map" || v === "scout" || v === "design")) $("paramsWrap").classList.add("hidden"); // 分析はbattle/result時のみ（ui.jsが決着で展開）
   }
 
-  // ---- モード切替 ----
+  // ---- モード切替（自由対戦 / ストーリー / 分隊戦）----
   function setMode(m) {
     mode = m;
     $("tabFree").classList.toggle("active", m === "free");
     $("tabStory").classList.toggle("active", m === "story");
+    const sq = $("tabSquad"); if (sq) sq.classList.toggle("active", m === "squad");
+    if (m === "squad") { // 分隊戦：1v1系を全て隠し #squad を表示
+      SCS.ui.clearStory();
+      ["storyHome", "storyScout", "storyResult", "stage", "config", "paramsWrap"].forEach((id) => show(id, false));
+      show("squad", true);
+      if (SCS.squad) SCS.squad.enter();
+      return;
+    }
+    if (SCS.squad) SCS.squad.leave();
     if (m === "free") { SCS.ui.clearStory(); setView("free"); }
     else { SCS.ui.clearStory(); curEnemy = null; renderHome(); }
   }
@@ -176,6 +186,7 @@ window.SCS = window.SCS || {};
     load();
     $("tabFree").addEventListener("click", () => setMode("free"));
     $("tabStory").addEventListener("click", () => setMode("story"));
+    { const sq = $("tabSquad"); if (sq) sq.addEventListener("click", () => setMode("squad")); }
     setMode("free"); // 既定は自由対戦（従来通り）
   }
   document.addEventListener("DOMContentLoaded", init);

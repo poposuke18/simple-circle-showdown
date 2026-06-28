@@ -5,10 +5,11 @@
 window.SCS = window.SCS || {};
 
 (function () {
-  let cv = null, ctx = null, battle = null, raf = null, running = false;
+  let cv = null, ctx = null, battle = null, raf = null, running = false, cvId = "mini";
   const disp = { px: 0, py: 0, cx: 0, cy: 0, init: false };
   let needSnap = false;
   let fx = []; // ③ 戦闘エフェクト（寿命付き・描画専用）。step()のevents由来＝決定論を壊さない
+  let squadMode = false; const sdisp = new Map(); // 分隊戦：ユニット別の補間位置
   const COL_P = "#5cc8ff", COL_C = "#ff5e5e";
   const perfNow = () => (typeof performance !== "undefined" ? performance.now() : 0);
   // 地形ゾーンの色（テキストの「茂みに紛れ/瓦礫を盾に/高所/溶岩」と整合させる）
@@ -16,11 +17,18 @@ window.SCS = window.SCS || {};
   const TSTROKE = { rubble: "rgba(150,150,132,.22)", highground: "rgba(140,190,220,.2)", lava: "rgba(255,140,60,.45)" };
 
   function sync(b) {
-    battle = b;
+    squadMode = false; cvId = "mini"; battle = b;
     if (b && (needSnap || !disp.init)) { disp.px = b.plr.x; disp.py = b.plr.y; disp.cx = b.cpu.x; disp.cy = b.cpu.y; disp.init = true; needSnap = false; }
     start();
   }
-  function reset() { needSnap = true; fx = []; } // 新規対戦：次のsyncで位置をスナップ＋エフェクト消去
+  function syncSquad(b, canvasId) { // 分隊戦：N体レーダー（専用キャンバス）
+    squadMode = true; cvId = canvasId || "miniSquad"; battle = b;
+    const units = b.teams.P.concat(b.teams.C);
+    if (needSnap) { sdisp.clear(); needSnap = false; }
+    for (const u of units) if (!sdisp.has(u)) sdisp.set(u, { x: u.x, y: u.y });
+    start();
+  }
+  function reset() { needSnap = true; fx = []; sdisp.clear(); } // 新規対戦：次のsyncで位置をスナップ＋エフェクト消去
 
   // ③ step()の描画専用eventsを寿命付きエフェクトに変換（field座標で保持→描画時にSX/SYで投影）
   function pushFx(events) {
@@ -47,7 +55,7 @@ window.SCS = window.SCS || {};
   function loop() { let more = false; try { more = draw(); } catch (e) { more = false; } if (more) raf = requestAnimationFrame(loop); else running = false; }
 
   function draw() {
-    if (!cv) cv = document.getElementById("mini");
+    cv = document.getElementById(cvId); // モードで対象キャンバスが変わる（1v1=mini／分隊=miniSquad）
     if (!cv || !battle) return false;
     const cssW = cv.clientWidth;
     if (!cssW) return false; // 非表示（ストーリーのマップ/スカウト等）＝ループ停止（再表示時にsyncで再開）
@@ -103,6 +111,8 @@ window.SCS = window.SCS || {};
       for (const h of haz) { if (h.turns <= 0) continue; ctx.fillStyle = "rgba(255,120,40," + (0.16 + 0.2 * fk) + ")"; ctx.fillRect(SX(h.x), SY(h.y), h.w * scale, h.h * scale); }
     }
 
+    if (squadMode) return drawSquad(SX, SY, f, haz); // 分隊戦：N体レーダー（別経路）
+
     // 位置を補間（ターン間を滑らかに）
     const k = 0.3;
     disp.px += (battle.plr.x - disp.px) * k; disp.py += (battle.plr.y - disp.py) * k;
@@ -119,7 +129,7 @@ window.SCS = window.SCS || {};
     ctx.setLineDash([]);
     if (near) { const mx = (px + cx) / 2, my = (py + cy) / 2; ctx.fillStyle = "rgba(255,207,92,.5)"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(mx, my, 2.5, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0; }
 
-    drawFx(SX, SY); // ③ 撃ち合いの可視化（トレーサー/斬撃/ビーム/回避残像/着弾）
+    drawFx((e) => { const aX = e.side === "p" ? disp.px : disp.cx, aY = e.side === "p" ? disp.py : disp.cy, tX = e.side === "p" ? disp.cx : disp.px, tY = e.side === "p" ? disp.cy : disp.py; return [SX(aX), SY(aY), SX(tX), SY(tY)]; }); // ③ 撃ち合いの可視化
     drawUnit(px, py, battle.plr, COL_P);
     drawUnit(cx, cy, battle.cpu, COL_C);
     // 動くものが残っているか（位置補間中／エフェクト残／瀕死脈動／延焼）＝無ければループを畳む
@@ -128,8 +138,41 @@ window.SCS = window.SCS || {};
     return fx.length > 0 || !conv || (!battle.over && (lowHp || haz.some((h) => h.turns > 0)));
   }
 
-  // ③ 寿命付きエフェクトを減衰描画。始点=攻め手・終点=相手の【補間後dist座標】で結ぶ＝本体ドットから線が外れない
-  function drawFx(SX, SY) {
+  // 分隊戦：N体レーダー（ターゲット線＝誰が誰を狙うか＝集中砲火が一目）
+  const PSHADE = ["#5cc8ff", "#86d4ff", "#3f9fd6", "#aee2ff"], CSHADE = ["#ff5e5e", "#ffa07a", "#d23f3f", "#ffc0a8"];
+  const ushade = (u) => (u.team === "P" ? PSHADE : CSHADE)[u.idx % 4];
+  function drawSquad(SX, SY, f, haz) {
+    const k = 0.3, units = battle.teams.P.concat(battle.teams.C);
+    for (const u of units) { let d = sdisp.get(u); if (!d) { d = { x: u.x, y: u.y }; sdisp.set(u, d); } d.x += (u.x - d.x) * k; d.y += (u.y - d.y) * k; }
+    // ターゲット線（生存→自target・射線が切れれば破線）
+    ctx.lineWidth = 1;
+    for (const u of units) {
+      if (!u.alive || !u.target || !u.target.alive) continue;
+      const d = sdisp.get(u), td = sdisp.get(u.target); if (!d || !td) continue;
+      const los = battle.losClear ? battle.losClear({ x: u.x, y: u.y }, { x: u.target.x, y: u.target.y }) : true;
+      ctx.strokeStyle = u.team === "P" ? "rgba(92,200,255,.17)" : "rgba(255,94,94,.15)";
+      ctx.setLineDash(los ? [] : [2, 4]);
+      ctx.beginPath(); ctx.moveTo(SX(d.x), SY(d.y)); ctx.lineTo(SX(td.x), SY(td.y)); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    drawFx((e) => [SX(e.ax), SY(e.ay), SX(e.bx), SY(e.by)]); // 分隊fxは保存field座標で
+    for (const u of units) { const d = sdisp.get(u); drawSquadUnit(SX(d.x), SY(d.y), u); }
+    let conv = true; for (const u of units) { const d = sdisp.get(u); if (Math.abs(u.x - d.x) + Math.abs(u.y - d.y) > 0.1) { conv = false; break; } }
+    const lowHp = units.some((u) => u.alive && u.hp / u.maxHp < 0.3);
+    return fx.length > 0 || !conv || (!battle.over && (lowHp || haz.some((h) => h.turns > 0)));
+  }
+  function drawSquadUnit(x, y, u) {
+    const col = ushade(u);
+    if (u.hp <= 0) { ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x - 3.5, y - 3.5); ctx.lineTo(x + 3.5, y + 3.5); ctx.moveTo(x + 3.5, y - 3.5); ctx.lineTo(x - 3.5, y + 3.5); ctx.stroke(); ctx.globalAlpha = 1; return; }
+    const fl = Math.hypot(u.faceX, u.faceY) || 1, ux = u.faceX / fl, uy = u.faceY / fl;
+    ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9, y + uy * 9); ctx.stroke();
+    const low = u.hp / u.maxHp < 0.3, t = perfNow() / 1000, r = low ? 3.6 + Math.sin(t * 6) * 1.1 : 3.4;
+    ctx.shadowColor = col; ctx.shadowBlur = 9; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.fillStyle = "#03060a"; ctx.font = "bold 6px " + (typeof window !== "undefined" ? "monospace" : "monospace"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.5);
+  }
+
+  // ③ 寿命付きエフェクトを減衰描画。座標は coordFn(e)→[ax,ay,bx,by]（1v1=補間後dist／分隊=保存field座標）で解決
+  function drawFx(coordFn) {
     if (!fx.length) return;
     const now = perfNow();
     const next = [];
@@ -138,10 +181,7 @@ window.SCS = window.SCS || {};
       if (p >= 1) continue;
       next.push(e);
       const a = 1 - p, col = e.side === "p" ? COL_P : COL_C;
-      // 攻め手(side)と相手の現在の補間位置で投影＝スライド中もドットと線が一致
-      const aX = e.side === "p" ? disp.px : disp.cx, aY = e.side === "p" ? disp.py : disp.cy;
-      const tX = e.side === "p" ? disp.cx : disp.px, tY = e.side === "p" ? disp.cy : disp.py;
-      const ax = SX(aX), ay = SY(aY), bx = SX(tX), by = SY(tY);
+      const cc = coordFn(e), ax = cc[0], ay = cc[1], bx = cc[2], by = cc[3];
       ctx.save();
       if (e.kind === "tracer") {
         if (e.whiff) { // 逸れる：着弾点を法線方向へずらす
@@ -222,5 +262,5 @@ window.SCS = window.SCS || {};
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
   }
 
-  SCS.mini = { sync, reset, pushFx };
+  SCS.mini = { sync, syncSquad, reset, pushFx };
 })();

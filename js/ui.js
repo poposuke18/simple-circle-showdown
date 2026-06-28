@@ -204,22 +204,20 @@ window.SCS = window.SCS || {};
     const st = w.status ? `<em class="wtag ${w.status.type}">${D.STATUS_JP[w.status.type] || w.status.type}</em>` : "";
     return `<span class="wslot"><span class="ws-lbl">${lbl}</span><b>${w.name}</b>${st}</span>`;
   }
-  function renderBuildCard() {
-    const el = $("buildCard"); if (!el) return;
-    const u = SCS.derive.buildUnit("YOU", plrChoices);
-    const sty = styleLabel(u, plrChoices);
+  // 任意 choices からカルテHTMLを生成（分隊戦UIからも再利用）
+  function buildCardHtml(choices) {
+    const u = SCS.derive.buildUnit("U", choices), sty = styleLabel(u, choices);
     const hpPct = Math.round(((u.maxHp - 70) / 60) * 92 + 8);
-    // 際立つ気質：プレイヤーが極（0/3）に振った軸を優先順で最大3つ
     const ex = [];
-    for (const i of TRAIT_PRIORITY) { if (plrChoices[i] === 0 || plrChoices[i] === 3) ex.push(`<span class="bc-trait">${D.MACROS[i].poles[plrChoices[i]]}</span>`); if (ex.length >= 3) break; }
+    for (const i of TRAIT_PRIORITY) { if (choices[i] === 0 || choices[i] === 3) ex.push(`<span class="bc-trait">${D.MACROS[i].poles[choices[i]]}</span>`); if (ex.length >= 3) break; }
     const traits = ex.length ? ex.join("") : `<span class="bc-trait neutral">中庸（突出した気質なし）</span>`;
-    el.innerHTML =
-      `<div class="bc-head"><span class="bc-tag ${sty.k}">${sty.tag}</span>` +
+    return `<div class="bc-head"><span class="bc-tag ${sty.k}">${sty.tag}</span>` +
       `<span class="bc-hp"><span class="bc-lbl">HP</span><span class="bc-hpbar"><i style="width:${hpPct}%"></i></span><b>${u.maxHp}</b></span></div>` +
       `<div class="bc-weap">${wslot("射撃", u.ranged)}${wslot("近接", u.melee)}</div>` +
       `<div class="bc-traits">${traits}</div>` +
       `<div class="bc-trade">${TRADEOFF[sty.k]}</div>`;
   }
+  function renderBuildCard() { const el = $("buildCard"); if (el) el.innerHTML = buildCardHtml(plrChoices); }
 
   // ===== ② 決定論バッチ勝率エンジン＋A/B差分 =====
   // 固定seed群でフル精度の実戦を多数回し、勝率/決着T/KO率を集計。観戦する実戦と一致させる（先読み/MCを削らない）。
@@ -388,6 +386,9 @@ window.SCS = window.SCS || {};
     clearStory() { stopAuto(); storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; predictCtx = null; markPredictStale(); applyLockUI(); }, // stopAuto＝モード切替で旧バトルの自動進行を裏で走らせない
     freeBattle() { storyCpuChoices = null; storyCpuName = null; onBattleOver = null; lockedAxis = -1; predictCtx = null; applyLockUI(); newBattle(); },
     setPredictContext(ctx) { predictCtx = ctx; markPredictStale(); }, // ② ストーリー設計時：試算の相手＝この敵のホーム
+    buildCardHtml: (choices) => buildCardHtml(choices), // 分隊戦UIが各体のカルテに使う
+    styleOf: (u) => styleLabel(u, u.choices).tag,        // 分隊分析の役割ラベル
+    macroHint: (i) => MACRO_HINT[i] || "",
     nextStep, auto,
   };
 
