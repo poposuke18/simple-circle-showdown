@@ -122,7 +122,7 @@ window.SCS = window.SCS || {};
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, presence, hold, tank, _focusCount: 0, _wardRef: null,
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
@@ -232,6 +232,34 @@ window.SCS = window.SCS || {};
       for (const a of alliesOf(u)) { if (a === u || !a.alive) continue; const d = dist(pos, a); if (d < 8) p += (8 - d) * 1.6; }
       return p;
     }
+    // 局所兵力比：u周辺（半径R）で実際に交戦している味方/敵を近いほど重く数える（>1＝局所優勢・<1＝寡兵）。B-③でも再利用。
+    //   ★近くに敵がいなければ局所戦闘なし＝中立1を返す（開幕や離れた局面で「味方が固まり敵が遠い」を優勢と誤認しない）。
+    function localForce(u) {
+      const R = 42; let foe = 0;
+      for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < R) foe += 1 - (d / R) * 0.6; }
+      if (foe < 0.25) return 1; // 交戦圏内に敵なし＝中立
+      let ally = 1;
+      for (const a of alliesOf(u)) { if (!a.alive || a === u) continue; const d = dist(u, a); if (d < R) ally += 1 - (d / R) * 0.6; }
+      return ally / Math.max(0.5, foe);
+    }
+    // ===== 交戦状態機械（OODA：様子見→コミット→撤退）=====
+    //   いつ飛び込み・いつ引くかの上位判断。局所兵力比・HP・気迫・標的の手負い・人格で遷移。乱数非消費＝決定論。
+    //   粗いアンチストール（無条件前進）を質の良い形へ＝有利なら攻勢・不利かつ手負いなら退いて立て直す。
+    function updateEngage(u) {
+      const hpFrac = clamp(u.hp / u.maxHp, 0, 1);
+      const adv = localForce(u) * (0.75 + u.micros.C4 * 0.5) - 1; // 知覚した優位（>0優勢・<0寡兵）。C4強気は有利に見える＝拙速
+      const tgtLow = u.target ? (1 - clamp(u.target.hp / u.target.maxHp, 0, 1)) : 0;
+      // コミット圧：優位×勝負師 ＋ 仕留め機会 ＋ 気迫満ちる ＋ 近接志向。手負いは抑える
+      let commit = adv * (0.8 + u.micros.C2 * 0.8) + tgtLow * (0.3 + u.micros.A6 * 0.4)
+        + (u.resolve > 0.7 ? 0.3 : 0) + (1 - u.micros.A1) * 0.18 - (1 - hpFrac) * 0.3;
+      // 撤退圧：手負い×逃げ癖 ＋ 寡兵。背水C6/気迫が打ち消す（手負いでも退かず特攻）
+      let retreat = (1 - hpFrac) * (0.5 + u.micros.C1 * 0.9) + Math.max(0, -adv) * 0.5
+        - u.micros.C6 * (hpFrac < 0.35 ? 1.0 : 0.4) - u.resolve * 0.2 - 0.05;
+      const stick = 0.12 + u.micros.B4 * 0.18;                                          // ヒステリシス（規律で状態を保つ・固着しすぎない程度）
+      if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
+      if ((u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;                   // 強制コミット安全弁＝膠着を攻めへ
+      u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
+    }
 
     // ===== 攻撃チャンネル選択 =====
     function chooseAttack(u, tgt, pos, d2, los2) {
@@ -251,10 +279,18 @@ window.SCS = window.SCS || {};
     function decide(u) {
       const tgt = u.target;
       if (!tgt) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null };
-      const fp = { x: tgt.x, y: tgt.y }, pref = prefRangeOf(u);
+      const fp = { x: tgt.x, y: tgt.y };
+      let pref = prefRangeOf(u);
       // 攻め圧：与ダメが続かない体ほど焦って攻撃価値↑・脅威回避↓（遊兵化＝撃たない超防御型を戦線に引き戻す）
       const desp = Math.min((u.idleTurns || 0) / 6, 1);
-      const wAtk = (0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2) * (1 + desp * 0.9), wDef = (0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35) * (1 - desp * 0.55);
+      let wAtk = (0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2) * (1 + desp * 0.9), wDef = (0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35) * (1 - desp * 0.55);
+      // 交戦状態（OODA）で重みを傾ける：攻勢は肉薄・撤退は退いて味方と立て直す
+      let regroupTo = null;
+      if (u.engage === "commit") { wAtk *= 1.35; wDef *= 0.65; pref = Math.max(4, pref - 10); }
+      else if (u.engage === "retreat") {
+        wAtk *= 0.55; wDef *= 1.6; pref = Math.min(maxDist, pref + 18);
+        let bd = Infinity; for (const a of alliesOf(u)) { if (a.alive && a !== u) { const d = dist(u, a); if (d < bd) { bd = d; regroupTo = a; } } } // 最寄り味方へ寄って再集結
+      }
       // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）
       const ward = isFrontline(u) ? findWard(u) : null;
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
@@ -271,7 +307,8 @@ window.SCS = window.SCS || {};
         const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
         const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
         const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * guardScale : 0; // 割り込み位置に近いほど良い（実距離）
-        const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + (mv === "HOLD" ? 0.2 : 0);
+        const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0; // 撤退時＝味方へ寄る再集結
+        const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + (mv === "HOLD" ? 0.2 : 0);
         if (!best || v > best.v) best = { v, move: mv, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2 };
       }
       // 実際に割り込み位置へ寄った時だけ guarding（ラベルの誤表示を防ぐ＝据え置き/自target攻撃なら かばう表示しない）
@@ -350,11 +387,13 @@ window.SCS = window.SCS || {};
       if (isShielding(u)) return "盾"; // 高ヘイト＝敵2体以上の火力を吸い受け太刀している
       if (u.peeling) return "剝がし";
       if ((u._focusCount || 0) >= 2 && ev && (ev.hits || 0) > 0) return "集中";
+      if (u.engage === "retreat") return "立て直し"; // 退く体は退くと読めるよう攻撃句より上位
       if (ev && ev.flank === "rear") return "背後";
       if (ev && ev.flank === "side") return "側面";
       if (dec && dec.attack === "RELOAD") return "装填";
       if (ev && ev.attack === "RANGED" && (ev.shots || 0) > 0) return "射撃";
       if (ev && ev.attack === "MELEE" && (ev.shots || 0) > 0) return "斬";
+      if (u.engage === "commit") return "攻勢";
       if (dec && dec.move === "RETREAT") return "退避";
       if (dec && dec.move === "ADVANCE") return "詰め";
       return "様子見";
@@ -369,6 +408,8 @@ window.SCS = window.SCS || {};
       for (const u of ALL) if (u.alive) u.target = pickTarget(u);
       // 集中度を一括集計（各敵の被ターゲット数）＝ラベル『集中』とレーダーのリングを同基準(>=2)に揃える
       { const tc = new Map(); for (const u of ALL) if (u.alive && u.target) tc.set(u.target, (tc.get(u.target) || 0) + 1); for (const u of ALL) u._focusCount = (u.alive && u.target) ? (tc.get(u.target) || 0) : 0; }
+      // 1.5) 交戦状態（OODA）更新：有利なら攻勢・不利かつ手負いなら撤退（decideの重みを傾ける）
+      for (const u of ALL) if (u.alive) updateEngage(u);
       // 2) 意思決定
       const decs = new Map();
       for (const u of ALL) if (u.alive) decs.set(u, decide(u));
