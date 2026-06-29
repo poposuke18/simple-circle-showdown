@@ -391,6 +391,8 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .sqh-team.plr .sqh-bar i { background: var(--plr); box-shadow: 0 0 7px var(--plr); }
 .sqh-team.cpu .sqh-bar i { background: var(--cpu); box-shadow: 0 0 7px var(--cpu); }
 .sqh-hp { width: 2.4em; flex-shrink: 0; color: var(--dim); text-align: right; }
+.sqh-lbl { width: 3.2em; flex-shrink: 0; color: var(--amber); font-size: 10px; text-align: center; letter-spacing: .3px; }
+.sqh-u.down .sqh-lbl { color: var(--dim2); }
 .sqc-role { color: var(--amber); font-size: 10px; margin-left: 6px; }
 
 /* ── モバイル ── */

@@ -155,6 +155,16 @@ window.SCS = window.SCS || {};
       ctx.beginPath(); ctx.moveTo(SX(d.x), SY(d.y)); ctx.lineTo(SX(td.x), SY(td.y)); ctx.stroke();
     }
     ctx.setLineDash([]);
+    // 集中砲火の的：2体以上に狙われている敵にリング＝キルオーダーが一目（意図テレグラフ）
+    const focusN = new Map();
+    for (const u of units) { if (u.alive && u.target && u.target.alive) focusN.set(u.target, (focusN.get(u.target) || 0) + 1); }
+    for (const [tu, n] of focusN) {
+      if (n < 2) continue;
+      const d = sdisp.get(tu); if (!d) continue;
+      const t = perfNow() / 1000, r = 7 + Math.sin(t * 4) * 1.2, col = tu.team === "P" ? COL_P : COL_C;
+      ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = "#ffcf5c"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 7;
+      ctx.beginPath(); ctx.arc(SX(d.x), SY(d.y), r, 0, 6.2832); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+    }
     drawFx((e) => [SX(e.ax), SY(e.ay), SX(e.bx), SY(e.by)]); // 分隊fxは保存field座標で
     for (const u of units) { const d = sdisp.get(u); drawSquadUnit(SX(d.x), SY(d.y), u); }
     let conv = true; for (const u of units) { const d = sdisp.get(u); if (Math.abs(u.x - d.x) + Math.abs(u.y - d.y) > 0.1) { conv = false; break; } }
