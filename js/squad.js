@@ -18,6 +18,30 @@ window.SCS = window.SCS || {};
   }
   const MOVES = ["ADVANCE", "RETREAT", "STRAFE_L", "STRAFE_R", "COVER", "HOLD"];
   const ULT_NAME = { precise: "零距離の一射", auto: "弾幕の嵐", shotgun: "至近の一掃", flame: "業火の渦", mlt: "嵐の連撃", hvy: "全霊の一撃", bal: "会心の一閃" };
+
+  // ===== 描写の語彙（武器カテゴリ別）＋決定論ハッシュ（乱数非消費＝seed/turnで一意に多彩化）=====
+  function hsh(a, b, c, d, e) { let h = 2166136261 >>> 0; const ks = [a | 0, b | 0, c | 0, d | 0, e | 0]; for (const k of ks) { h ^= k; h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+  function vary(pool, a, b, c, d, e) { return pool[hsh(a, b, c, d, e) % pool.length]; }
+  const HIT_VERB = {
+    precise: ["を撃ち抜く", "に狙い澄ました一射を見舞う", "に風穴を開ける", "を正確に射抜く"],
+    auto: ["に弾幕を浴びせる", "を掃射で削る", "を射すくめる", "へ雨あられと撃ち込む"],
+    shotgun: ["を至近で薙ぎ払う", "に散弾を叩き込む", "を吹き飛ばす"],
+    flame: ["を業火で包む", "に炎を吹きつける", "を火達磨にする"],
+    mlt: ["を切り刻む", "に刺突を連ねる", "を斬り立てる"],
+    hvy: ["に渾身の一撃を見舞う", "を叩き伏せる", "を打ち砕く"],
+    bal: ["へ斬り込む", "を鋭く突く", "を薙ぎ払う"],
+  };
+  const KO_VERB = {
+    precise: ["を撃ち倒した", "の急所を撃ち抜いた", "を沈黙させた"],
+    auto: ["を弾幕で薙ぎ倒した", "を撃ち伏せた", "を蜂の巣にした"],
+    shotgun: ["を至近で吹き飛ばした", "を散弾で薙ぎ倒した"],
+    flame: ["を業火に呑んだ", "を焼き尽くした"],
+    mlt: ["を斬り刻んで倒した", "の急所を貫いた"],
+    hvy: ["を一撃のもとに叩き伏せた", "を打ち砕いた"],
+    bal: ["を斬り伏せた", "を討ち取った", "を一刀のもとに倒した"],
+  };
+  const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる"];
+  const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。"];
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
     return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
@@ -505,21 +529,51 @@ window.SCS = window.SCS || {};
       const evByAtt = new Map(); for (const ev of evs) if (!evByAtt.has(ev.att)) evByAtt.set(ev.att, ev);
       for (const u of ALL) u.label = dynLabel(u, evByAtt.get(u), decs.get(u));
 
-      // ===== 描写フィード（注目イベントを拾う）=====
+      // ===== 描写フィード（注目イベントを拾い、武器/側背面/状態/戦術を活写。決定論ハッシュで多彩化）=====
       const npc = (u) => `<span class="${u.team === 'P' ? 'np' : 'nc'}">${u.name}</span>`;
-      // KO
-      for (const ev of evs) if (ev._killed) lines.push({ text: `── ${npc(ev.att)} が ${npc(ev._killed)} を撃破！${ev.ult ? `（必殺・${ev.ultName}）` : ev.flank === "rear" ? "（背後から）" : ""}`, cls: "cm" });
-      for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)} 力尽きる。`, cls: "cm" });
+      const armyOf = (u) => (u.team === "P" ? "あなたの分隊" : "敵分隊");
+      const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
+      const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
+      const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
+      // KO（武器カテゴリ別の決め技・側背面・必殺）
+      for (const ev of evs) if (ev._killed) {
+        const verb = vary(KO_VERB[evCat(ev)] || KO_VERB.bal, seed, turn, ev.att.idx * 7 + ev.def.idx);
+        const txt = ev.ult ? `── 必殺・${ev.ultName}が炸裂——${npc(ev.att)} が ${npc(ev._killed)}${verb}！`
+          : `── ${npc(ev.att)}、${flankPre(ev)}${npc(ev._killed)}${verb}！`;
+        lines.push({ text: txt, cls: "cm" });
+      }
+      for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)}、力尽きて崩れ落ちる。`, cls: "cm" });
       // 必殺（撃破に紐づかなかったもの）
-      for (const ev of evs) if (ev.ult && !ev._killed) lines.push({ text: `── 気迫炸裂！${npc(ev.att)} の必殺・${ev.ultName}${ev.whiff ? "——空を切った！" : `、${npc(ev.def)}へ −${ev.dmg}！`}`, cls: "cm" });
-      // かばう（ボディブロックで肩代わり・notable のみ）
-      { let topG = null; for (const ev of evs) if (ev.guardedBy && (ev.guardCut || 0) >= 10 && (!topG || ev.guardCut > topG.guardCut)) topG = ev; if (topG) lines.push({ text: `── ${npc(topG.guardedBy)} が ${npc(topG.def)} をかばい、${topG.guardCut} を肩代わりした。`, cls: "cm" }); }
-      // 大ヒット（上位2件・KO/必殺以外）
-      const bigs = evs.filter((ev) => (ev.dmg || 0) > 0 && !ev._killed && !ev.ult).sort((a, b) => b.dmg - a.dmg).slice(0, 2);
-      for (const ev of bigs) if (ev.dmg >= 0.14 * ev.def.maxHp || ev.crit || ev.flank) lines.push({ text: `${npc(ev.att)} が ${npc(ev.def)} を${ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面から" : ""}捉える${ev.crit ? "——会心！" : ""} −${ev.dmg}`, cls: ev.att.team === "P" ? "ex" : "ex" });
-      // その他サマリ
+      for (const ev of evs) if (ev.ult && !ev._killed) lines.push({ text: `── 気迫炸裂！${npc(ev.att)} の必殺・${ev.ultName}${ev.whiff ? "——惜しくも空を切る！" : `が ${npc(ev.def)} を捉える −${ev.dmg}！`}`, cls: "cm" });
+      // 戦術ハイライト（盾/集中砲火/かばう/剝がし/立て直しから最大2件を顕著な順に・决定論選択）
+      const covered = new Set(); // 集中砲火で言及した標的は個別大ヒット行を抑制（二重計上回避）
+      {
+        const tac = [];
+        // 盾：火力を受け止めた高ヘイト前衛
+        for (const u of ALL) if (u.alive && u.label === "盾") { const a = acc.get(u); if (a && a.dmg >= 8) { tac.push({ pri: 5, dmg: a.dmg, text: `── ${npc(u)} が盾となり、降りかかる火力を受け止める。` }); break; } }
+        // かばう（ボディブロックで肩代わり）
+        { let topG = null; for (const ev of evs) if (ev.guardedBy && (ev.guardCut || 0) >= 8 && (!topG || ev.guardCut > topG.guardCut)) topG = ev; if (topG) tac.push({ pri: 4, dmg: topG.guardCut, text: `── ${npc(topG.guardedBy)} が身を挺して ${npc(topG.def)} をかばい、${topG.guardCut} を引き受けた。` }); }
+        // 集中砲火：2体以上が実ダメージを与え かつ 総被ダメが大（真の集中・個別大ヒットは抑制）
+        { let topF = null; for (const [tgt, a] of acc) { if (a.dmg < 0.25 * tgt.maxHp) continue; const atkN = evs.filter((ev) => ev.def === tgt && (ev.dmg || 0) > 0).length; if (atkN >= 2 && (!topF || a.dmg > topF.dmg)) topF = { tgt, dmg: a.dmg }; } if (topF) { const atkArmy = topF.tgt.team === "P" ? "敵分隊" : "あなたの分隊", shown = Math.min(topF.dmg, topF.tgt.maxHp); tac.push({ pri: 6, dmg: topF.dmg, text: `── ${atkArmy}が ${npc(topF.tgt)} へ集中砲火！ 一斉射が突き刺さる（計 −${shown}）` }); covered.add(topF.tgt); } }
+        // 剝がし（ピール）
+        for (const u of ALL) if (u.alive && u.label === "剝がし" && u.target) { tac.push({ pri: 3, dmg: 0, text: `── ${npc(u)} が後衛に食らいつく ${npc(u.target)} を引き剝がしにかかる。` }); break; }
+        // 立て直し（手負いの撤退）
+        for (const u of ALL) if (u.alive && u.engage === "retreat" && u.hp / u.maxHp < 0.4) { tac.push({ pri: 2, dmg: 0, text: `── 手負いの ${npc(u)}、深追いを避けて隊列へ退く。` }); break; }
+        tac.sort((a, b) => b.pri - a.pri || b.dmg - a.dmg);
+        for (const t of tac.slice(0, 2)) lines.push({ text: t.text, cls: "cm" });
+      }
+      // 大ヒット（上位2件・KO/必殺/集中砲火済の標的を除く）＝武器カテゴリ別の手応え＋会心/状態異常
+      const bigs = evs.filter((ev) => (ev.dmg || 0) > 0 && !ev._killed && !ev.ult && !covered.has(ev.def)).sort((a, b) => b.dmg - a.dmg).slice(0, 2);
+      for (const ev of bigs) if (ev.dmg >= 0.14 * ev.def.maxHp || ev.crit || ev.flank) {
+        const verb = vary(HIT_VERB[evCat(ev)] || HIT_VERB.bal, seed, turn, ev.att.idx * 11 + ev.def.idx + ev.dmg);
+        lines.push({ text: `${npc(ev.att)} が ${flankPre(ev)}${npc(ev.def)}${verb}${ev.crit ? "——会心！" : ""} −${ev.dmg}${stTag(ev)}`, cls: "ex" });
+      }
+      // 瀕死ドラマ（このターンで瀕死域に踏み込んだ体・1件）
+      { let dying = null; for (const ev of evs) if (ev.dmg > 0 && ev.def.alive && ev.def.hp / ev.def.maxHp < 0.22 && (ev.def.hp + ev.dmg) / ev.def.maxHp >= 0.22) { dying = ev.def; break; } if (dying) lines.push({ text: `　${npc(dying)} 満身創痍——なお踏みとどまる。`, cls: "dim" }); }
+      // その他サマリ（多彩化）／静かなターンは機動フレーバーで埋める
       const hitN = evs.filter((ev) => (ev.hits || 0) > 0).length, shown = lines.filter((l) => l.cls === "cm" || l.cls === "ex").length;
-      if (hitN > shown) lines.push({ text: `　…両軍が各所で交戦（命中 ${hitN} 件）`, cls: "dim" });
+      if (hitN > shown) lines.push({ text: `　…${vary(SKIRMISH, seed, turn, hitN)}（命中 ${hitN} 件）`, cls: "dim" });
+      else if (hitN === 0 && shown === 0) lines.push({ text: `　${vary(MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" });
       lines.push({ text: `　└ 残存 PLR ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・CPU ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
 
       // 9) 勝敗
@@ -537,9 +591,17 @@ window.SCS = window.SCS || {};
       return null;
     }
     function finishNarration(r) {
-      if (r.type === "draw") return [{ text: `══ 決着：${r.text}。両分隊、相果てる。 ══`, cls: "turnhdr" }];
-      const win = r.winner === "PLR" ? "あなたの分隊" : "敵分隊";
-      return [{ text: `══ 決着：${r.text}！ ${win}が戦場を制した。 ══`, cls: "turnhdr" }];
+      if (r.type === "draw") return [{ text: `══ 決着：${r.text}。両分隊、刺し違えて相果てる。 ══`, cls: "turnhdr" }];
+      const winTeam = r.winner === "PLR" ? "P" : "C", win = r.winner === "PLR" ? "あなたの分隊" : "敵分隊";
+      const surv = aliveCount(winTeam), n = (winTeam === "P" ? P : C).length, hp = Math.round(teamHpFrac(winTeam) * 100);
+      const out = [{ text: `══ 決着：${r.text}！ ${win}が戦場を制した。 ══`, cls: "turnhdr" }];
+      // 勝ち方のフレーバー（残存数で物語を変える）
+      let flav;
+      if (surv >= n) flav = `${n}体を一人も欠かず——完勝。`;
+      else if (surv === 1) flav = `最後に立っていたのは ただ一騎。辛くも勝ち残った（残HP${hp}％）。`;
+      else flav = `${surv}/${n} が生き残り、競り勝った（残HP${hp}％）。`;
+      out.push({ text: `　${flav}`, cls: "dim" });
+      return out;
     }
 
     // ===== 分析（分隊サマリ＋各体）=====
