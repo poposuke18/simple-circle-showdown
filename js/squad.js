@@ -147,7 +147,7 @@ window.SCS = window.SCS || {};
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
       Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, _focusCount: 0, _wardRef: null,
-        ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0,
+        ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
     }
@@ -296,11 +296,26 @@ window.SCS = window.SCS || {};
       return bd === Infinity ? maxDist : bd;
     }
 
+    // ===== 必殺の打ち時（温存経済）：即撃ちでなく仕留め確/側背面/窮地でここぞと切る。死蔵防止に強制解放弁 =====
+    function ultReady(u, tgt, pos, d2) {
+      const meleeOk = d2 <= u.melee.reach, rn = !meleeOk, w = meleeOk ? u.melee : u.ranged;
+      const desperate = u.hp / u.maxHp < 0.28;
+      // ★無駄撃ち抑制（overkill回避）：通常攻撃で仕留まる相手に必殺は切らない（窮地を除く）＝切り札を取っておく
+      const normalEst = meleeOk ? u.melee.rate * 0.9 * u.melee.damage : u.ranged.fireRate * u.ranged.accuracy * u.ranged.damage;
+      if (tgt.hp <= normalEst && !desperate && (u._ultHold || 0) < 4) return false;       // 通常で落ちる＝温存（強制解放と窮地は除く）
+      const ultEst = w.damage * (rn ? 2.0 : 1.9) * 1.3;                                   // 必殺の推定ダメ（≈2倍＋会心込み）
+      const killShot = tgt.hp <= ultEst * 1.05 && tgt.hp > normalEst;                     // 必殺でしか落とせない仕留め確＝理想の打ち時
+      const flank = flankOf(pos, tgt).tier !== "front";
+      const losing = aliveCount(u.team) < aliveCount(u.team === "P" ? "C" : "P");
+      const opp = (killShot ? 1.0 : 0) + (flank ? 0.45 : 0) + (desperate ? 0.7 : 0) + (losing ? 0.3 : 0);
+      const patience = clamp(0.45 + u.micros.C5 * 0.5 + u.micros.B4 * 0.4 - u.micros.A6 * 0.7 - u.micros.C2 * 0.35, 0, 1); // 冷静/規律=温存・非情/リスク=即撃ち
+      return (u._ultHold || 0) >= 4 || desperate || opp >= patience * 0.95;               // 抱え込み4Tで強制解放
+    }
     // ===== 攻撃チャンネル選択 =====
     function chooseAttack(u, tgt, pos, d2, los2) {
       if (u.reloadLeft > 0) return { attack: "RELOAD" };
       const meleeOk = d2 <= u.melee.reach, rangedOk = los2 && u.ammo > 0 && d2 <= u.ranged.effRange + u.ranged.falloff;
-      if (u.resolve >= 1) { // 必殺：気迫満タンで好機なら解放（攻め/非情ほど即撃ち）
+      if (u.resolve >= 1 && ultReady(u, tgt, pos, d2)) { // 必殺：好機なら解放／好機でなければ温存して通常攻撃を続ける
         if (meleeOk) return { attack: "ULT", ultKind: "melee" };
         if (los2 && u.ammo > 0) return { attack: "ULT", ultKind: "ranged" };
       }
@@ -425,6 +440,7 @@ window.SCS = window.SCS || {};
       if (u.engage === "retreat") return "立て直し"; // 退く体は退くと読めるよう攻撃句より上位
       if (ev && ev.flank === "rear") return "背後";
       if (ev && ev.flank === "side") return "側面";
+      if (u.resolve >= 1 && !(ev && ev.ult)) return "温存"; // 気迫満タンを抱え好機を待つ（ult-economy）
       if (dec && dec.attack === "RELOAD") return "装填";
       if (ev && ev.attack === "RANGED" && (ev.shots || 0) > 0) return "射撃";
       if (ev && ev.attack === "MELEE" && (ev.shots || 0) > 0) return "斬";
@@ -538,6 +554,8 @@ window.SCS = window.SCS || {};
       for (const u of ALL) if (u.alive) u.idleTurns = (dealtNow.get(u) || 0) > 0 ? 0 : u.idleTurns + 1; // 個体の遊兵化検知（攻め圧の累積）
       // 動的ラベル（今ターンの役割行動を1語で・HUD/レーダー用）
       const evByAtt = new Map(); for (const ev of evs) if (!evByAtt.has(ev.att)) evByAtt.set(ev.att, ev);
+      // 必殺の抱え込みターン数（温存経済・死蔵防止の強制解放弁に使う）：撃ったら0・満タンで温存中は加算
+      for (const u of ALL) { if (!u.alive) { u._ultHold = 0; continue; } const evU = evByAtt.get(u); if (evU && evU.ult) u._ultHold = 0; else if (u.resolve >= 1) u._ultHold = (u._ultHold || 0) + 1; else u._ultHold = 0; }
       for (const u of ALL) u.label = dynLabel(u, evByAtt.get(u), decs.get(u));
 
       // ===== 描写フィード（注目イベントを拾い、武器/側背面/状態/戦術を活写。決定論ハッシュで多彩化）=====
