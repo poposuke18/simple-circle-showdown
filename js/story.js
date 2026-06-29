@@ -187,7 +187,7 @@ window.SCS = window.SCS || {};
     $("tabFree").addEventListener("click", () => setMode("free"));
     $("tabStory").addEventListener("click", () => setMode("story"));
     { const sq = $("tabSquad"); if (sq) sq.addEventListener("click", () => setMode("squad")); }
-    setMode("free"); // 既定は自由対戦（従来通り）
+    setMode("squad"); // 既定＝分隊戦（メインモード）。1v1は自由対戦/ストーリータブから
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -106,7 +106,7 @@ window.SCS = window.SCS || {};
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0,
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
@@ -117,6 +117,8 @@ window.SCS = window.SCS || {};
     const enemiesOf = (u) => (u.team === "P" ? C : P);
     const alliesOf = (u) => (u.team === "P" ? P : C);
     for (const u of ALL) { const e0 = enemiesOf(u)[0]; u.winDist = winDistOf(u, e0); }
+    // 役割で前後に配置：近接寄り(winDist小)は前線へ・遠距離寄り(winDist大)は後方へ＝後衛(射手)が前衛に守られる編成が成立
+    for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.x = q.x; u.y = q.y; }
 
     const liveEnemies = (u) => enemiesOf(u).filter((e) => e.alive);
     function nearestLiveEnemy(u) { let best = null, bd = Infinity; for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
@@ -137,7 +139,7 @@ window.SCS = window.SCS || {};
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
         v += focus * (0.18 + u.micros.B4 * 0.22 + u.micros.D2 * 0.22); // 集中砲火（規律/順応で連携）
         v -= (e.hp / e.maxHp) * (1 - u.micros.C2) * 0.35;            // 強敵を避ける（慎重/弱気）
-        if (u.target === e && e.alive) v += 0.25 + u.micros.B4 * 0.3; // ヒステリシス（規律）
+        if (u.target === e && e.alive) v += 0.42 + u.micros.B4 * 0.35; // ヒステリシス（規律）＝狙いを定めた的をコロコロ変えない（射手の照準が無駄にならない）
         if (v > bv) { bv = v; best = e; }
       }
       return best;
@@ -184,12 +186,15 @@ window.SCS = window.SCS || {};
       const tgt = u.target;
       if (!tgt) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null };
       const fp = { x: tgt.x, y: tgt.y }, pref = prefRangeOf(u);
-      const wAtk = 0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2, wDef = 0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35;
+      // 攻め圧：与ダメが続かない体ほど焦って攻撃価値↑・脅威回避↓（遊兵化＝撃たない超防御型を戦線に引き戻す）
+      const desp = Math.min((u.idleTurns || 0) / 6, 1);
+      const wAtk = (0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2) * (1 + desp * 0.9), wDef = (0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35) * (1 - desp * 0.55);
       let best = null;
       for (const mv of MOVES) {
         const np = applyMove(u, fp, mv), d2 = dist(np, fp), los2 = losClear(np, fp);
         const atk = chooseAttack(u, tgt, np, d2, los2);
-        const offense = expEx(u, tgt, np, fp, d2, los2);
+        let offense = expEx(u, tgt, np, fp, d2, los2);
+        if (mv !== "HOLD" && los2 && atk.attack === "RANGED") offense *= u.ranged.moveAccuracy; // 移動射撃は命中が落ちる＝据え置いて撃つ価値を評価に反映（射手が動き撃ちで当て損なう停滞を解消）
         const threat = threatAt(u, np);
         const rangeFit = -(Math.abs(d2 - pref) / maxDist) * 22;
         const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
@@ -274,10 +279,18 @@ window.SCS = window.SCS || {};
       for (const u of ALL) if (u.alive) decs.set(u, decide(u));
       // 3) 同時移動
       for (const u of ALL) if (u.alive) { const d = decs.get(u); u.x = d.newPos.x; u.y = d.newPos.y; }
-      // 3.5) アンチストール：膠着（無ダメージ累積）したら、各体を最寄りの生存敵へ引き寄せ強制接触（慎重な近接が詰めない停滞を解消）
+      // 3.5) アンチストール：膠着したら【交戦圏外の体だけ】を最寄り敵へ引き寄せ強制接触。
+      //      ★既に射程＆射線で交戦できている射手は引き寄せない＝後衛が前に引きずり出されて溶ける現象を防ぐ
       if (noDmgTurns >= 3) {
         const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
-        for (const u of ALL) { if (!u.alive) continue; const e = nearestLiveEnemy(u); if (!e) continue; const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l); const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y; }
+        for (const u of ALL) {
+          if (!u.alive) continue;
+          const e = nearestLiveEnemy(u); if (!e) continue;
+          const d = dist(u, e), reach = Math.max(u.melee.reach, u.ranged.effRange);
+          if (d <= reach && losClear(u, e)) continue; // 交戦圏内（当てられる距離＋射線）なら据え置き
+          const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
+          const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
+        }
       }
       // 4) 向き（自targetを見据える）
       for (const u of ALL) if (u.alive && u.target) { const dx = u.target.x - u.x, dy = u.target.y - u.y, l = Math.hypot(dx, dy); if (l > 0.001) { u.faceX = dx / l; u.faceY = dy / l; } }
@@ -344,6 +357,7 @@ window.SCS = window.SCS || {};
         u.resolve = clamp(u.resolve + (d + tk) / u.maxHp * 0.5, 0, 1);
       }
       noDmgTurns = directDmg + envDmg > 0 ? 0 : noDmgTurns + 1; // 膠着検知（次ターンのアンチストール引き寄せに使う）
+      for (const u of ALL) if (u.alive) u.idleTurns = (dealtNow.get(u) || 0) > 0 ? 0 : u.idleTurns + 1; // 個体の遊兵化検知（攻め圧の累積）
 
       // ===== 描写フィード（注目イベントを拾う）=====
       const npc = (u) => `<span class="${u.team === 'P' ? 'np' : 'nc'}">${u.name}</span>`;
