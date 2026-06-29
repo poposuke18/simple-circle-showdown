@@ -89,6 +89,8 @@ window.SCS = window.SCS || {};
       return dmg * outFac(atk);
     }
     function winDistOf(self, foe) { let best = 18, bv = -Infinity; for (const d of [8, 18, 30, 45, 60, 80, 95]) { if (d > maxDist + 6) continue; const v = expEx0(self, foe, d, true) - expEx0(foe, self, d, true); if (v > bv) { bv = v; best = d; } } return best; }
+    // 勝てる間合いを敵【全体】に対して算出（先頭1体の偶然でロールがブレないように＝排他ロール判定の前提を安定化）
+    function winDistVsTeam(self, foes) { let best = 18, bv = -Infinity; for (const d of [8, 18, 30, 45, 60, 80, 95]) { if (d > maxDist + 6) continue; let v = 0; for (const f of foes) v += expEx0(self, f, d, true) - expEx0(f, self, d, true); if (v > bv) { bv = v; best = d; } } return best; }
     const prefRangeOf = (u) => clamp(u.winDist + (u.micros.A1 - 0.5) * 2 * 25, 4, maxDist);
 
     // ===== 状態異常 =====
@@ -106,7 +108,7 @@ window.SCS = window.SCS || {};
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, _focusCount: 0,
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
@@ -116,26 +118,26 @@ window.SCS = window.SCS || {};
     const ALL = P.concat(C);
     const enemiesOf = (u) => (u.team === "P" ? C : P);
     const alliesOf = (u) => (u.team === "P" ? P : C);
-    for (const u of ALL) { const e0 = enemiesOf(u)[0]; u.winDist = winDistOf(u, e0); }
+    for (const u of ALL) { u.winDist = winDistVsTeam(u, enemiesOf(u)); } // 敵全体に対する勝てる間合い＝ロール判定が編成順でブレない
     // 役割で前後に配置：近接寄り(winDist小)は前線へ・遠距離寄り(winDist大)は後方へ＝後衛(射手)が前衛に守られる編成が成立
     for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.x = q.x; u.y = q.y; }
 
     const liveEnemies = (u) => enemiesOf(u).filter((e) => e.alive);
     function nearestLiveEnemy(u) { let best = null, bd = Infinity; for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
-    // ===== 役割（人格→武器/winDistから自動分類。ラベル/トリニティ挙動に使う）=====
+    // ===== 役割（人格→武器/winDistから自動分類・★排他。ラベル/トリニティ挙動に使う）=====
     const isBackline = (u) => u.winDist >= 45;                                   // 後衛＝遠距離志向の射手（守られるべき）
-    const isFrontline = (u) => u.winDist < 35 || u.maxHp >= 108;                 // 前衛＝近接志向 or 高HPの壁
-    const hasControl = (u) => u.melee.knockback >= 5 || (u.melee.status && (u.melee.status.type === "slow" || u.melee.status.type === "stun")) || (u.ranged.status && u.ranged.status.type === "burn");
-    const isSupport = (u) => hasControl(u) && (u.micros.D1 >= 0.45 || u.micros.D2 >= 0.45); // 妨害武器＋相手読み＝ピール役
-    const enemyReach = (e) => Math.max(e.melee.reach, e.ranged.effRange);
-    // 守るべき後衛味方＋それを脅かす敵（かばう用）。最も差し迫った1組を返す
+    const isFrontline = (u) => !isBackline(u) && (u.winDist < 40 || u.maxHp >= 100); // 前衛＝近接志向 or 高HPの壁（後衛は高HPでも前衛にしない）
+    const hasControl = (u) => u.melee.knockback >= 6 || (u.melee.status && (u.melee.status.type === "slow" || u.melee.status.type === "stun")); // 妨害（鎖鎌/大槌/大剣等）
+    const isSupport = (u) => hasControl(u) && (u.micros.D1 >= 0.5 || u.micros.D2 >= 0.5) && u.micros.A2 < 0.85; // 妨害武器＋相手読み＋猪突でない＝ピール役
+    const imminentBand = (e) => Math.max(e.melee.reach + 18, 34);                // ★『迫る脅威』＝近接到達ベース（前衛が迎撃に動ける早さ・effRangeで全域発火するのは防ぐ）
+    // 守るべき後衛味方＋それを差し迫って脅かす敵（かばう用）。最も近接された1組を返す
     function findWard(u) {
       let best = null, bd = Infinity;
       for (const a of alliesOf(u)) {
         if (!a.alive || a === u || !isBackline(a)) continue;
         const foe = nearestLiveEnemy(a); if (!foe) continue;
         const d = dist(foe, a);
-        if (d < bd && d < enemyReach(foe) + 6) { bd = d; best = { ward: a, foe }; }
+        if (d < bd && d < imminentBand(foe)) { bd = d; best = { ward: a, foe }; }
       }
       return best;
     }
@@ -148,7 +150,8 @@ window.SCS = window.SCS || {};
       const live = liveEnemies(u);
       if (!live.length) { u._focusCount = 0; u.peeling = false; return null; }
       const iAmSupport = sup(u);
-      let best = null, bv = -Infinity, bestFocus = 0, bestPeel = false;
+      const myWard = isFrontline(u) ? findWard(u) : null; // 守る後衛がいれば、その後衛に迫る敵を迎撃対象に（前衛が自分の的を追って戦線を離れない＝かばうが成立する前提）
+      let best = null, bv = -Infinity, bestPeel = false;
       for (const e of live) {
         const d = dist(u, e), fl = flankOf(u, e);
         let v = -d / maxDist * 1.0;                                   // 近いほど良い
@@ -161,17 +164,21 @@ window.SCS = window.SCS || {};
         // ★集中砲火：味方が既に狙う敵に束ねる（規律B4/順応D2で連携↑）＝キルオーダー収束
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
         v += Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22);
-        // ★釣り出し耐性：その敵を追うと自分が複数敵の脅威下に晒される＝罠なら見送る（相手読みD1・慎重C2）
-        const chaseThreat = threatAt(u, { x: e.x, y: e.y });
+        // ★釣り出し耐性：その敵を追うと【他の】敵の脅威下に晒される＝罠なら見送る（標的自身は除外して二重計上を防ぐ）
+        const chaseThreat = threatAt(u, { x: e.x, y: e.y }, e);
         v -= clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3);
-        // ★ピール：サポート資質は後衛味方に張り付いた敵を最優先で剝がしに行く
+        // ★迎撃：守る後衛に張り付いた敵を最優先で狙う＝前衛が戦線を離れず割り込める（誇りC6で死守）
+        if (myWard && e === myWard.foe) v += 1.2 + u.micros.C6 * 0.5;
+        // ★タウント：味方をかばって割り込んでいる敵前衛は『邪魔』＝優先して狙う（前ターンのguardingフラグ）
+        if (e.guarding) v += 0.3 + u.micros.A2 * 0.2;
+        // ★ピール：サポート資質は後衛味方に近接で張り付いた敵を最優先で剝がしに行く
         let peel = false;
-        if (iAmSupport) { for (const a of alliesOf(u)) { if (a.alive && a !== u && isBackline(a) && dist(e, a) <= enemyReach(e) + 5) { peel = true; break; } } }
+        if (iAmSupport) { for (const a of alliesOf(u)) { if (a.alive && a !== u && isBackline(a) && dist(e, a) <= imminentBand(e)) { peel = true; break; } } }
         if (peel) v += 0.6 + u.micros.D1 * 0.4;
         if (u.target === e && e.alive) v += 0.4 + u.micros.B4 * 0.3; // ヒステリシス（規律）＝狙いを定めた的を無駄に変えない
-        if (v > bv) { bv = v; best = e; bestFocus = focus; bestPeel = peel; }
+        if (v > bv) { bv = v; best = e; bestPeel = peel; }
       }
-      u._focusCount = bestFocus; u.peeling = bestPeel; // ラベル用
+      u.peeling = bestPeel; // ラベル用（_focusCount は step でターゲット確定後に一括集計＝リングと同基準）
       return best;
     }
 
@@ -186,10 +193,17 @@ window.SCS = window.SCS || {};
       else if (move === "COVER") { const o = nearestObstacle(u); if (o) { const ox = o.x - u.x, oy = o.y - u.y, ol = Math.hypot(ox, oy) || 1; nx += (ox / ol) * st; ny += (oy / ol) * st; } }
       return pushOutObstacle(nx, ny);
     }
-    function threatAt(u, pos) { // 接近する全敵からの期待被ダメ合計（群戦の肝）
+    function threatAt(u, pos, except) { // 接近する全敵からの期待被ダメ合計（exceptを除外可＝釣り出し判定で標的自身を二重計上しない）
       let t = 0;
-      for (const e of liveEnemies(u)) { const d = dist(pos, e), los = losClear(e, pos); t += expEx(e, u, { x: e.x, y: e.y }, pos, d, los); }
+      for (const e of liveEnemies(u)) { if (e === except) continue; const d = dist(pos, e), los = losClear(e, pos); t += expEx(e, u, { x: e.x, y: e.y }, pos, d, los); }
       return t;
+    }
+    // 点pから線分ab（攻め手→ward）への最短距離＋射影位置t＝割り込み判定
+    function segDist(p, a, b) { const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy; if (l2 < 0.001) return { d: dist(p, a), t: 0 }; let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2; t = clamp(t, 0, 1); return { d: Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy)), t }; }
+    // ward(狙われた後衛)と攻め手attの【間に実際に割り込んでいる】味方前衛を返す＝ボディブロック対象
+    function guardOf(ward, att) {
+      for (const g of alliesOf(ward)) { if (g === ward || !g.alive || !g.guarding || g._wardRef !== ward) continue; const s = segDist(g, att, ward); if (s.d < 8 && s.t > 0.12 && s.t < 0.92) return g; }
+      return null;
     }
     function sepPenalty(u, pos) { // 味方と重ならない
       let p = 0;
@@ -219,11 +233,11 @@ window.SCS = window.SCS || {};
       // 攻め圧：与ダメが続かない体ほど焦って攻撃価値↑・脅威回避↓（遊兵化＝撃たない超防御型を戦線に引き戻す）
       const desp = Math.min((u.idleTurns || 0) / 6, 1);
       const wAtk = (0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2) * (1 + desp * 0.9), wDef = (0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35) * (1 - desp * 0.55);
-      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・隣接1組/1ターンに限定）
+      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）
       const ward = isFrontline(u) ? findWard(u) : null;
-      u.guarding = !!ward;
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
-      const guardW = ward ? 6 + u.micros.B6 * 5 + u.micros.C6 * 5 : 0;
+      const guardScale = ward ? 0.6 + u.micros.B6 * 0.45 + u.micros.C6 * 0.45 : 0; // 実距離ベース＝offenseと同オーダーで実際に割り込む
+      const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
       let best = null;
       for (const mv of MOVES) {
         const np = applyMove(u, fp, mv), d2 = dist(np, fp), los2 = losClear(np, fp);
@@ -234,10 +248,13 @@ window.SCS = window.SCS || {};
         const rangeFit = -(Math.abs(d2 - pref) / maxDist) * 22;
         const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
         const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
-        const interceptTerm = interpose ? -(Math.hypot(np.x - interpose.x, np.y - interpose.y) / maxDist) * guardW : 0; // 割り込み位置に近いほど良い
+        const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * guardScale : 0; // 割り込み位置に近いほど良い（実距離）
         const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + (mv === "HOLD" ? 0.2 : 0);
         if (!best || v > best.v) best = { v, move: mv, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2 };
       }
+      // 実際に割り込み位置へ寄った時だけ guarding（ラベルの誤表示を防ぐ＝据え置き/自target攻撃なら かばう表示しない）
+      u.guarding = !!interpose && Math.hypot(best.newPos.x - interpose.x, best.newPos.y - interpose.y) < holdInterDist - 0.5;
+      u._wardRef = u.guarding && ward ? ward.ward : null; // ボディブロックの守る相手
       best.target = tgt;
       return best;
     }
@@ -309,7 +326,7 @@ window.SCS = window.SCS || {};
       if (ev && ev.ult) return "必殺";
       if (u.guarding) return "かばう";
       if (u.peeling) return "剝がし";
-      if ((u._focusCount || 0) >= 1 && ev && (ev.hits || 0) > 0) return "集中";
+      if ((u._focusCount || 0) >= 2 && ev && (ev.hits || 0) > 0) return "集中";
       if (ev && ev.flank === "rear") return "背後";
       if (ev && ev.flank === "side") return "側面";
       if (dec && dec.attack === "RELOAD") return "装填";
@@ -327,6 +344,8 @@ window.SCS = window.SCS || {};
       const lines = [], events = [];
       // 1) ターゲット選定（固定順＝集中砲火の創発・決定論）
       for (const u of ALL) if (u.alive) u.target = pickTarget(u);
+      // 集中度を一括集計（各敵の被ターゲット数）＝ラベル『集中』とレーダーのリングを同基準(>=2)に揃える
+      { const tc = new Map(); for (const u of ALL) if (u.alive && u.target) tc.set(u.target, (tc.get(u.target) || 0) + 1); for (const u of ALL) u._focusCount = (u.alive && u.target) ? (tc.get(u.target) || 0) : 0; }
       // 2) 意思決定
       const decs = new Map();
       for (const u of ALL) if (u.alive) decs.set(u, decide(u));
@@ -355,6 +374,11 @@ window.SCS = window.SCS || {};
         const ev = resolveAttack(u, decs.get(u));
         if (!ev) continue;
         evs.push(ev);
+        // ★かばう＝ボディブロック：tgtを守る前衛が攻め手との間に割り込んでいれば被ダメの半分を肩代わり（前衛が後衛の盾に）
+        if ((ev.dmg || 0) > 0 && (ev.hits || 0) > 0 && ev.def) {
+          const g = guardOf(ev.def, u);
+          if (g && g !== u) { const cut = Math.round(ev.dmg * 0.5); ev.dmg -= cut; const ga = acc.get(g) || { dmg: 0, status: [], kbFrom: null }; ga.dmg += cut; acc.set(g, ga); ev.guardedBy = g; ev.guardCut = cut; }
+        }
         const tgt = ev.def;
         if (ev.dmg > 0 || ev.applyStatus || ev.kb) {
           const a = acc.get(tgt) || { dmg: 0, status: [], kbFrom: null };
@@ -422,6 +446,8 @@ window.SCS = window.SCS || {};
       for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)} 力尽きる。`, cls: "cm" });
       // 必殺（撃破に紐づかなかったもの）
       for (const ev of evs) if (ev.ult && !ev._killed) lines.push({ text: `── 気迫炸裂！${npc(ev.att)} の必殺・${ev.ultName}${ev.whiff ? "——空を切った！" : `、${npc(ev.def)}へ −${ev.dmg}！`}`, cls: "cm" });
+      // かばう（ボディブロックで肩代わり・notable のみ）
+      { let topG = null; for (const ev of evs) if (ev.guardedBy && (ev.guardCut || 0) >= 10 && (!topG || ev.guardCut > topG.guardCut)) topG = ev; if (topG) lines.push({ text: `── ${npc(topG.guardedBy)} が ${npc(topG.def)} をかばい、${topG.guardCut} を肩代わりした。`, cls: "cm" }); }
       // 大ヒット（上位2件・KO/必殺以外）
       const bigs = evs.filter((ev) => (ev.dmg || 0) > 0 && !ev._killed && !ev.ult).sort((a, b) => b.dmg - a.dmg).slice(0, 2);
       for (const ev of bigs) if (ev.dmg >= 0.14 * ev.def.maxHp || ev.crit || ev.flank) lines.push({ text: `${npc(ev.att)} が ${npc(ev.def)} を${ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面から" : ""}捉える${ev.crit ? "——会心！" : ""} −${ev.dmg}`, cls: ev.att.team === "P" ? "ex" : "ex" });

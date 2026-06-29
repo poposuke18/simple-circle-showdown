@@ -161,7 +161,7 @@ window.SCS = window.SCS || {};
     for (const [tu, n] of focusN) {
       if (n < 2) continue;
       const d = sdisp.get(tu); if (!d) continue;
-      const t = perfNow() / 1000, r = 7 + Math.sin(t * 4) * 1.2, col = tu.team === "P" ? COL_P : COL_C;
+      const t = perfNow() / 1000, r = 7 + Math.sin(t * 4) * 1.2; // アンバー単色＝キルオーダー警告（CRT一貫）
       ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = "#ffcf5c"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 7;
       ctx.beginPath(); ctx.arc(SX(d.x), SY(d.y), r, 0, 6.2832); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }

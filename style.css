@@ -403,6 +403,9 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
   .app { border-radius: 0; border-left: none; border-right: none; padding: 13px 11px 18px; min-height: 100vh; }
   .app-head h1 { font-size: 23px; letter-spacing: 4px; }
   .macros, .acols { grid-template-columns: 1fr; }
+  .sq-hud { flex-direction: column; gap: 8px; } /* 狭幅は2軍を縦積み＝ラベル列追加でも各行が潰れない */
+  .sqh-team.cpu { align-items: stretch; } .sqh-team.cpu .sqh-u { flex-direction: row; }
+  .sq-roster { flex-direction: column; } .sq-rmini { min-width: 0; }
   .log { height: 44vh; min-height: 230px; }
   .btn { min-width: 0; padding: 11px 8px; font-size: 13px; }
   .controls .btn.ghost { flex: 1 1 100%; min-width: 0; order: 3; } /* 分析ボタンのみ末尾全幅。.predict-bar/storyのghostへ漏らさない */
