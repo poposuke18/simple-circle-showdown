@@ -23,6 +23,19 @@ window.SCS = window.SCS || {};
     return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
   }
 
+  // ===== タンク度（ヘイト）＝目立つ(presence)×持ちこたえる(hold)。設計UIにも公開（盾を設計可能に）=====
+  //   人格システムは高HP前衛タンクを産まない（HP式の制約）ので、HPでなくアグロ＋受け太刀で「狙われる盾＝デコイ」を成立させる。
+  //   ★アグロ単体は脆い前衛(猪突HP70)を早死にさせ逆効果（勝率A/Bで判明）→ presence×hold を単一指標に。脆い体は吸引が弱まり早死にしない。
+  //   静的（人格由来）＝乱数非消費・決定論。数値は非公開、語『盾』のみ表示。
+  function basePresence(u) { // 注意を引く力：⑦誇り/⑨自信/B6中央志向で↑・C1早逃げ/弱気で↓
+    const pride = u.mv[6], conf = u.mv[8], central = u.micros.B6, retreat = u.micros.C1;
+    return clamp(0.4 + 0.3 * Math.max(0, pride) + 0.3 * Math.max(0, conf) + 0.4 * (central - 0.5) - 0.5 * (retreat - 0.5) - 0.3 * Math.max(0, -conf), 0, 1.2);
+  }
+  function holdFactor(u) { // 火力を持ちこたえる力：沈着C5・規律B4・HP（強めに依存）。低い体（脆く激情＝猪突HP70）はタンク度が大きく下がる
+    return clamp(0.15 + u.micros.C5 * 0.45 + u.micros.B4 * 0.25 + (u.maxHp - 80) / 80, 0.1, 1.0);
+  }
+  function tankRating(u) { return clamp(basePresence(u) * holdFactor(u), 0, 1.2); } // タンク度＝目立つ×持ちこたえる
+
   SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName) {
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
 
@@ -108,7 +121,8 @@ window.SCS = window.SCS || {};
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, _focusCount: 0, _wardRef: null,
+      const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, presence, hold, tank, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
@@ -129,6 +143,11 @@ window.SCS = window.SCS || {};
     const isFrontline = (u) => !isBackline(u) && (u.winDist < 40 || u.maxHp >= 100); // 前衛＝近接志向 or 高HPの壁（後衛は高HPでも前衛にしない）
     const hasControl = (u) => u.melee.knockback >= 6 || (u.melee.status && (u.melee.status.type === "slow" || u.melee.status.type === "stun")); // 妨害（鎖鎌/大槌/大剣等）
     const isSupport = (u) => hasControl(u) && (u.micros.D1 >= 0.5 || u.micros.D2 >= 0.5) && u.micros.A2 < 0.85; // 妨害武器＋相手読み＋猪突でない＝ピール役
+    // 盾状態＝タンク度が高く（presence×hold）敵2体以上の火力を吸っている（_focusCountは各ターンpickTarget後に確定）
+    const isShielding = (u) => (u.tank || 0) >= 0.40 && (u._focusCount || 0) >= 2;
+    // 受け太刀（bracing）：盾状態のとき被ダメ軽減＝吸った火力を効率よく受ける。タンク度（沈着/規律/HP込み）で↑。
+    //   アグロ単体は耐久不足の前衛を早死にさせ逆効果（勝率A/Bで判明）→ 軽減とセットで「狙われる盾」を成立させる。
+    const braceMult = (u) => isShielding(u) ? 1 - clamp(0.10 + u.tank * 0.30, 0, 0.35) : 1;
     const imminentBand = (e) => Math.max(e.melee.reach + 18, 34);                // ★『迫る脅威』＝近接到達ベース（前衛が迎撃に動ける早さ・effRangeで全域発火するのは防ぐ）
     // 守るべき後衛味方＋それを差し迫って脅かす敵（かばう用）。最も近接された1組を返す
     function findWard(u) {
@@ -164,6 +183,9 @@ window.SCS = window.SCS || {};
         // ★集中砲火：味方が既に狙う敵に束ねる（規律B4/順応D2で連携↑）＝キルオーダー収束
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
         v += Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22);
+        // ★ヘイト（脅威吸引）：タンク度の高い敵（目立つ×持ちこたえる）に火力が吸われる＝デコイ・タンク成立。
+        //   A3近接傾倒で釣られやすく・D1相手読みで釣られにくい（脅威eThreatが主・tankは従）。脆い体はtankが低く吸引も弱い＝早死にしない
+        v += clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3); // 床0.2＝タンク度の低い脆い体は吸引が立たない
         // ★釣り出し耐性：その敵を追うと【他の】敵の脅威下に晒される＝罠なら見送る（標的自身は除外して二重計上を防ぐ）
         const chaseThreat = threatAt(u, { x: e.x, y: e.y }, e);
         v -= clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3);
@@ -325,6 +347,7 @@ window.SCS = window.SCS || {};
       if (!u.alive) return "戦闘不能";
       if (ev && ev.ult) return "必殺";
       if (u.guarding) return "かばう";
+      if (isShielding(u)) return "盾"; // 高ヘイト＝敵2体以上の火力を吸い受け太刀している
       if (u.peeling) return "剝がし";
       if ((u._focusCount || 0) >= 2 && ev && (ev.hits || 0) > 0) return "集中";
       if (ev && ev.flank === "rear") return "背後";
@@ -374,6 +397,8 @@ window.SCS = window.SCS || {};
         const ev = resolveAttack(u, decs.get(u));
         if (!ev) continue;
         evs.push(ev);
+        // ★受け太刀（bracing）：盾状態の体は集中砲火を腰を据えて受ける＝被ダメ軽減（アグロを「機能する盾」にする）
+        if ((ev.dmg || 0) > 0 && ev.def) { const bm = braceMult(ev.def); if (bm < 1) { const after = Math.round(ev.dmg * bm); ev.braced = ev.dmg - after; ev.dmg = after; } }
         // ★かばう＝ボディブロック：tgtを守る前衛が攻め手との間に割り込んでいれば被ダメの半分を肩代わり（前衛が後衛の盾に）
         if ((ev.dmg || 0) > 0 && (ev.hits || 0) > 0 && ev.def) {
           const g = guardOf(ev.def, u);
@@ -511,5 +536,12 @@ window.SCS = window.SCS || {};
       field, obstacles, maxDist, losClear, terrain: arena.terrain, baseTerrainKey: arena.base, get hazards() { return hazards; },
       teamHpFrac, aliveCount,
     };
+  };
+
+  // 設計UI向け公開：choices からタンク度（0..1.2）と盾資質ラベルを返す（戦闘前に「盾を設計できる」可読化）
+  SCS.squadTank = function (choices) {
+    const u = SCS.derive.buildUnit("U", choices);
+    const tank = tankRating(u);
+    return { tank, presence: basePresence(u), hold: holdFactor(u), isTank: tank >= 0.45, isFront: tank >= 0.30 };
   };
 })();

@@ -369,6 +369,7 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .sq-rmini:hover { border-color: var(--line2); }
 .sqr-n { color: var(--plr); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
 .sqr-role { color: var(--amber); font-size: 11.5px; }
+.sqr-tank { align-self: flex-start; color: #0b1a10; background: var(--gold); font-size: 10px; font-weight: 700; letter-spacing: 1px; padding: 0 5px; border-radius: 2px; }
 .sqr-w { color: var(--green2); font-size: 10.5px; }
 .sqr-hp { color: var(--dim); font-size: 10.5px; }
 .sq-tabs { display: flex; gap: 6px; margin-bottom: 10px; }

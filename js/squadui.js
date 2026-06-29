@@ -51,8 +51,10 @@ window.SCS = window.SCS || {};
     const r = $("sqRoster"); if (!r) return; r.innerHTML = "";
     for (let i = 0; i < SIZE; i++) {
       const u = SCS.derive.buildUnit("P-" + (i + 1), squad[i]), role = SCS.ui.styleOf(u);
+      const tk = SCS.squadTank ? SCS.squadTank(squad[i]) : null; // 盾資質（目立つ×持ちこたえる）を設計時に可視化
+      const shield = tk && tk.isTank ? `<span class="sqr-tank">盾</span>` : "";
       const d = document.createElement("div"); d.className = "sq-rmini" + (i === active ? " active" : "");
-      d.innerHTML = `<span class="sqr-n">戦士${i + 1}</span><span class="sqr-role">${role}</span><span class="sqr-w">${u.ranged.name}＋${u.melee.name}</span><span class="sqr-hp">HP${u.maxHp}</span>`;
+      d.innerHTML = `<span class="sqr-n">戦士${i + 1}</span><span class="sqr-role">${role}</span>${shield}<span class="sqr-w">${u.ranged.name}＋${u.melee.name}</span><span class="sqr-hp">HP${u.maxHp}</span>`;
       d.onclick = () => { active = i; renderTabs(); renderDials(); renderRoster(); };
       r.appendChild(d);
     }
