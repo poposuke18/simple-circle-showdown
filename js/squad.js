@@ -210,6 +210,8 @@ window.SCS = window.SCS || {};
         // ★ヘイト（脅威吸引）：タンク度の高い敵（目立つ×持ちこたえる）に火力が吸われる＝デコイ・タンク成立。
         //   A3近接傾倒で釣られやすく・D1相手読みで釣られにくい（脅威eThreatが主・tankは従）。脆い体はtankが低く吸引も弱い＝早死にしない
         v += clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3); // 床0.2＝タンク度の低い脆い体は吸引が立たない
+        // ★各個撃破：味方から孤立した敵ほど狙う（囲んで飲みやすい・剝がされにくい）。順応D2/規律B4の連携で強まる
+        v += clamp(isolationOf(e) / 35, 0, 1) * (0.7 + u.micros.D2 * 0.5 + u.micros.B4 * 0.3);
         // ★釣り出し耐性：その敵を追うと【他の】敵の脅威下に晒される＝罠なら見送る（標的自身は除外して二重計上を防ぐ）
         const chaseThreat = threatAt(u, { x: e.x, y: e.y }, e);
         v -= clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3);
@@ -283,6 +285,15 @@ window.SCS = window.SCS || {};
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if ((u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;                   // 強制コミット安全弁＝膠着を攻めへ
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
+    }
+    // ===== 局所兵力比による分断機動（各個撃破 / defeat in detail）=====
+    //   ★発見：各個撃破は既にB-①集中砲火＋既存の脅威回避(threatAt×wDef＝敵集団＝高脅威を避ける＝劣勢ガード)から創発する。
+    //   候補位置の局所優勢を移動評価に足しても1手移動では候補間でほぼ不変＝無効（A/Bで確認）。よって移動項は採らず、
+    //   実効のある「孤立した敵を優先的に狙い飲む」ターゲティング項＋『各個撃破』の活写に絞る。
+    // 敵eの孤立度＝eから同チーム最寄り味方への距離（大＝孤立＝囲んで飲みやすい/剝がされにくい）
+    function isolationOf(e) {
+      let bd = Infinity; for (const a of alliesOf(e)) { if (!a.alive || a === e) continue; const d = dist(e, a); if (d < bd) bd = d; }
+      return bd === Infinity ? maxDist : bd;
     }
 
     // ===== 攻撃チャンネル選択 =====
@@ -554,7 +565,7 @@ window.SCS = window.SCS || {};
         // かばう（ボディブロックで肩代わり）
         { let topG = null; for (const ev of evs) if (ev.guardedBy && (ev.guardCut || 0) >= 8 && (!topG || ev.guardCut > topG.guardCut)) topG = ev; if (topG) tac.push({ pri: 4, dmg: topG.guardCut, text: `── ${npc(topG.guardedBy)} が身を挺して ${npc(topG.def)} をかばい、${topG.guardCut} を引き受けた。` }); }
         // 集中砲火：2体以上が実ダメージを与え かつ 総被ダメが大（真の集中・個別大ヒットは抑制）
-        { let topF = null; for (const [tgt, a] of acc) { if (a.dmg < 0.25 * tgt.maxHp) continue; const atkN = evs.filter((ev) => ev.def === tgt && (ev.dmg || 0) > 0).length; if (atkN >= 2 && (!topF || a.dmg > topF.dmg)) topF = { tgt, dmg: a.dmg }; } if (topF) { const atkArmy = topF.tgt.team === "P" ? "敵分隊" : "あなたの分隊", shown = Math.min(topF.dmg, topF.tgt.maxHp); tac.push({ pri: 6, dmg: topF.dmg, text: `── ${atkArmy}が ${npc(topF.tgt)} へ集中砲火！ 一斉射が突き刺さる（計 −${shown}）` }); covered.add(topF.tgt); } }
+        { let topF = null; for (const [tgt, a] of acc) { if (a.dmg < 0.25 * tgt.maxHp) continue; const atkN = evs.filter((ev) => ev.def === tgt && (ev.dmg || 0) > 0).length; if (atkN >= 2 && (!topF || a.dmg > topF.dmg)) topF = { tgt, dmg: a.dmg }; } if (topF) { const atkArmy = topF.tgt.team === "P" ? "敵分隊" : "あなたの分隊", shown = Math.min(topF.dmg, topF.tgt.maxHp); const txt = isolationOf(topF.tgt) > 45 ? `── 孤立した ${npc(topF.tgt)} を ${atkArmy}が囲んで各個撃破！（計 −${shown}）` : `── ${atkArmy}が ${npc(topF.tgt)} へ集中砲火！ 一斉射が突き刺さる（計 −${shown}）`; tac.push({ pri: 6, dmg: topF.dmg, text: txt }); covered.add(topF.tgt); } }
         // 剝がし（ピール）
         for (const u of ALL) if (u.alive && u.label === "剝がし" && u.target) { tac.push({ pri: 3, dmg: 0, text: `── ${npc(u)} が後衛に食らいつく ${npc(u.target)} を引き剝がしにかかる。` }); break; }
         // 立て直し（手負いの撤退）
