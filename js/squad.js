@@ -605,6 +605,9 @@ window.SCS = window.SCS || {};
       // 7) 死亡判定＋撃破帰属（倒れた敵に当てた攻撃者のうち最大ダメージへ）
       for (const u of ALL) { if (u.alive && u.hp <= 0) { u.alive = false; u.st.downTurn = turn; deadThisTurn.push(u); } }
       for (const u of deadThisTurn) { let best = null; for (const ev of evs) if (ev.def === u && (ev.dmg || 0) > 0) { if (!best || ev.dmg > best.dmg) best = ev; } if (best) { best._killed = u; best.att.st.kills++; } }
+      // 7.5) ★ターン終わりの再索敵：移動・戦闘・死亡を経た「最終位置」で視認し直す。
+      //      頭の索敵(=移動前)だけだと、移動後に明らかに敵の視界へ入った体が未発見表示になり、描写・ミニマップ(最終位置)とズレる。
+      updateDetection();
       // 8) リソース更新
       for (const u of ALL) {
         if (!u.alive) continue;
