@@ -112,6 +112,26 @@ window.SCS = window.SCS || {};
     }
     const meleeHit = (foeS, defPos) => clamp(0.9 * (1 - Math.min(0.6, foeS.micros.B3 * 0.4) * 0.7) * (1 - terrainAt(defPos).avoid) * modAcc, 0, 1);
     const defMult = (defPos) => 1 - terrainAt(defPos).def;
+    // ===== 回避・カウンター・崩し（1v1から移植＝個体テクスチャ。集中砲火/盾/側背面等のチーム解決は不変、その後段に乗せる）=====
+    let evadeMap = new Map();                                   // このターン回避を選んだ体→回避率（resolveAttackの命中に反映）
+    const dodgeEvade = (u) => clamp(0.45 + u.micros.B3 * 0.35, 0, 0.85) * clamp(u.stamina * 1.4, 0, 1); // B3回避巧者＋気力
+    const grabDamage = (u) => Math.round((9 + u.micros.A6 * 9 + u.micros.A2 * 6) * outFac(u)); // 投げの威力（受け不能＝盾の軽減を無視）
+    const grabReachOK = (att, def) => dist(att, def) <= att.melee.reach + 3;
+    function counterStrike(def, atk) {                          // 回避成功×読み(D1/D6/B3)＝反撃の一閃
+      const read = clamp(0.12 + def.micros.D1 * 0.4 + def.micros.D6 * 0.25 + def.micros.B3 * 0.2, 0, 0.85);
+      if (!rng.chance(read)) return 0;
+      const d2 = dist(def, atk), dmg = d2 <= def.melee.reach ? def.melee.damage * 1.1 : def.ammo > 0 ? def.ranged.damage * 0.8 : def.melee.damage * 0.5;
+      return Math.round(dmg * outFac(def) * vulnOf(atk) * dmgMod());
+    }
+    function applyThrow(att, tgt, ev) {                         // 崩しが通った：受け不能の投げ。直接ダメージ＋引き離し＋怯み（盾/受けを貫通）
+      let dmg = Math.round(grabDamage(att) * vulnOf(tgt) * dmgMod());
+      const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1, thr = 7;
+      const q = pushOutObstacle(cx(tgt.x + (dx / len) * thr), cy(tgt.y + (dy / len) * thr)); tgt.x = q.x; tgt.y = q.y;
+      if (terrainDmg(tgt) > 0) { dmg += Math.round(6 * dmgMod()); ev.envThrow = true; }      // 溶岩/炎へ叩き込む
+      else if (cornered(tgt)) { dmg += Math.round(4 * dmgMod()); ev.wallThrow = true; }       // 壁際へ叩きつける
+      tgt.flinch = 1; tgt.stamina = clamp(tgt.stamina - 0.18, 0, 1);
+      ev.grabHit = true; ev.dmg = (ev.dmg || 0) + dmg; return dmg;
+    }
     function flankOf(att, def) {
       const dx = att.x - def.x, dy = att.y - def.y, l = Math.hypot(dx, dy) || 1, dot = (def.faceX * dx + def.faceY * dy) / l;
       if (dot > 0.45) return { tier: "front", acc: 1, crit: 0, dmg: 1, defMul: 1 };
@@ -432,6 +452,29 @@ window.SCS = window.SCS || {};
         const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + (mv === "HOLD" ? 0.2 : 0);
         if (!best || v > best.v) best = { v, move: mv, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2 };
       }
+      // ＝＝個体テクスチャの追加候補（チーム評価の後段に乗せる・既存の集中砲火/盾/かばうは不変）＝＝
+      // 回避：攻撃を捨てて見切る。★強い回避型(B3)が、実際にこのターン殴られる距離にいて、攻撃より明確に得な時だけ＝稀な個体テクスチャ。
+      {
+        const evd = dodgeEvade(u);
+        const canBeHit = u.micros.B3 > 0.6 && evd > 0.5 && knownEnemies(u).some((e) => { const dd = dist(u, e); return dd <= e.melee.reach || (e.ammo > 0 && dd <= e.ranged.effRange + e.ranged.falloff && losClear(e, u)); }); // ★回避巧者(B3)だけが見切る＝性格テクスチャ
+        if (canBeHit) {
+          const dp = { x: u.x, y: u.y }, d2d = dist(dp, fp), los2d = losClear(dp, fp);
+          const incoming = threatAt(u, dp);                                                       // 実際の被ダメ見込み
+          const counterEV = (0.12 + u.micros.D1 * 0.4 + u.micros.D6 * 0.25 + u.micros.B3 * 0.2) * (d2d <= u.melee.reach ? u.melee.damage : u.ranged.damage * 0.8) * 0.4;
+          const vD = -incoming * (1 - evd) * wDef + counterEV - sepPenalty(u, dp) - (hazardAt(dp) + terrainDmg(dp) * 1.5) * 1.2 - (1 - u.stamina) * 3;
+          if (vD > best.v + 3) best = { v: vD, move: "HOLD", attack: "DODGE", newPos: dp, d2: d2d, los2: los2d }; // 攻撃よりはっきり得な時だけ見切る＝稀
+        }
+      }
+      // 崩し（投げ）：盾/受け型に受け不能の投げ＝固い相手を割る手段（チーム戦の核＝盾と噛み合う）。盾でない相手には基本選ばない。
+      if (grabReachOK(u, fp) && u.stamina > 0.3 && (tgt.tank || 0) > 0.35) {
+        const gp = applyMove(u, fp, "ADVANCE"), d2g = dist(gp, fp);
+        if (d2g <= u.melee.reach + 3) {
+          const want = 0.6 + u.micros.A2 * 0.3 + u.micros.A6 * 0.3 + u.micros.D4 * 0.2;            // 崩しを好む性格（攻め/非情/狡猾）
+          const offG = grabDamage(u) * (0.5 + clamp((tgt.tank || 0) * 1.1, 0, 1.1));               // 受け不能＝盾ほど刺さる
+          const vG = offG * wAtk * want - threatAt(u, gp) * wDef - sepPenalty(u, gp) - (hazardAt(gp) + terrainDmg(gp) * 1.5) * 1.2;
+          if (vG > best.v) best = { v: vG, move: "ADVANCE", attack: "GRAB", newPos: gp, d2: d2g, los2: true };
+        }
+      }
       // 実際に割り込み位置へ寄った時だけ guarding（ラベルの誤表示を防ぐ＝据え置き/自target攻撃なら かばう表示しない）
       u.guarding = !!interpose && Math.hypot(best.newPos.x - interpose.x, best.newPos.y - interpose.y) < holdInterDist - 0.5;
       u._wardRef = u.guarding && ward ? ward.ward : null; // ボディブロックの守る相手
@@ -447,6 +490,9 @@ window.SCS = window.SCS || {};
       const fp = { x: tgt.x, y: tgt.y }, d2 = dist(u, tgt), los2 = losClear(u, tgt);
       const fl = flankOf(u, tgt), corner = cornered(tgt) ? 1 : 0, fdEvMul = fl.defMul * (corner ? 0.72 : 1);
       const precise = clamp(u.micros.A5 * 0.5 + u.micros.B4 * 0.3 - u.micros.A4 * 0.4, 0, 1);
+      const evd = evadeMap.get(tgt) || 0;                       // 標的が回避中なら命中が落ちる（このターン分）
+      if (dec.attack === "DODGE") { ev.dodge = true; u.st.dodges = (u.st.dodges || 0) + 1; return ev; }
+      if (dec.attack === "GRAB") { ev.grab = true; u.st.grabs = (u.st.grabs || 0) + 1; return ev; } // 受け不能の投げ（step側で三すくみ解決）
       if (dec.attack === "RELOAD") { if (u.reloadLeft === 0) u.reloadLeft = u.ranged.reloadTurns; u.reloadLeft--; u.spread = 0; if (u.reloadLeft <= 0) u.ammo = u.ranged.mag; ev.reloading = true; return ev; }
       if (dec.attack === "ULT") {
         u.resolve = 0; u.st.ults++;
@@ -456,7 +502,7 @@ window.SCS = window.SCS || {};
         if (!reachOK) { ev.whiff = true; return ev; }
         if (rn) u.ammo = Math.max(0, u.ammo - Math.ceil(w.fireRate));
         const hcBase = rn ? rangedHit(w, u, fp, tgt, d2, true, dec.move !== "HOLD") : meleeHit(tgt, fp);
-        const hc = Math.min(1, hcBase * fl.acc * (1 + corner * 0.1) + 0.18);
+        const hc = Math.min(1, (hcBase * fl.acc * (1 + corner * 0.1) + 0.18) * (1 - evd));
         if (rng.chance(hc)) { let dd = w.damage * (rn ? 2.0 : 1.9); if (rng.chance(clamp(0.3 + fl.crit, 0, 0.55))) { dd *= w.critMult || 1.8; ev.crit = true; } ev.dmg = Math.round(dd * defMult(fp) * vulnOf(tgt) * outFac(u) * fl.dmg * dmgMod()); ev.hits = 1; ev.kb = true; if (w.status) ev.applyStatus = w.status; }
         else ev.whiff = true;
         if (ev.hits && fl.tier !== "front") { ev.flank = fl.tier; u.st.flanks++; }
@@ -467,7 +513,7 @@ window.SCS = window.SCS || {};
         if (u.ammo <= 0) { ev.empty = true; return ev; }
         if (!los2) { ev.negated = true; return ev; }
         u.ammo -= 1; u.charged = false; ev.snap = true;
-        const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * SNAP_ACC);
+        const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * SNAP_ACC * (1 - evd));
         let hits = 0, dmg = 0, crits = 0;
         if (rng.chance(hc)) { hits = 1; let dd = rw.damage; if (rng.chance(clamp(rw.crit + modCrit + fl.crit, 0, 0.6))) { dd *= rw.critMult; crits = 1; } dmg += dd * defMult(fp) * vulnOf(tgt); }
         u.st.shots += 1; u.st.hits += hits; u.st.crits += crits;
@@ -485,7 +531,7 @@ window.SCS = window.SCS || {};
         if (precise > 0.55 && rw.mode !== "charge") shots = Math.max(1, Math.round(shots * (1 - precise * 0.5)));
         shots = Math.min(shots, u.ammo); u.ammo -= shots; if (rw.mode === "charge") u.charged = false;
         const critChance = clamp(rw.crit + precise * 0.2 + modCrit + fl.crit, 0, 0.78); // ★チャージは命中(狙い)を上げる行為＝威力(会心)は上げない。会心は武器固有値(スナイパー0.30/×2.5)が担う
-        const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * (1 + corner * 0.05));
+        const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * (1 + corner * 0.05) * (1 - evd));
         let hits = 0, dmg = 0, crits = 0;
         for (let i = 0; i < shots; i++) if (rng.chance(hc)) { hits++; let dd = rw.damage; if (rng.chance(critChance)) { dd *= rw.critMult; crits++; } dmg += dd * defMult(fp) * vulnOf(tgt); }
         u.st.shots += shots; u.st.hits += hits; u.st.crits += crits;
@@ -501,7 +547,7 @@ window.SCS = window.SCS || {};
         let swings = mw.pattern === "heavy" ? 1 : shotsFor(mw.rate, rng);
         if (precise > 0.55 && mw.pattern === "multi") swings = Math.max(1, Math.round(swings * (1 - precise * 0.4)));
         const critChance = clamp(mw.crit + precise * 0.2 + modCrit + fl.crit, 0, 0.68);
-        const hc = Math.min(1, meleeHit(tgt, fp) * fl.acc * (1 + corner * 0.05));
+        const hc = Math.min(1, meleeHit(tgt, fp) * fl.acc * (1 + corner * 0.05) * (1 - evd));
         let hits = 0, dmg = 0, crits = 0;
         for (let i = 0; i < swings; i++) if (rng.chance(hc)) { hits++; let dd = mw.damage; if (rng.chance(critChance)) { dd *= mw.critMult; crits++; } dmg += dd * defMult(fp) * vulnOf(tgt); }
         u.st.shots += swings; u.st.hits += hits; u.st.crits += crits;
@@ -544,6 +590,7 @@ window.SCS = window.SCS || {};
       turn++;
       const lines = [], events = [], envLines = [];
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive }); // ターン開始時(=前状況)の位置/HPを保存＝盤面スナップショット用
+      for (const u of ALL) u._counter = null; // 回避カウンターの当ターン限定フラグをリセット
       // 0) 索敵：各体のビジョンコーンで敵を視認→チーム共有（即時）＋鮮度減衰。発見/ロストのフィードはこの差分から。
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
@@ -580,6 +627,8 @@ window.SCS = window.SCS || {};
         const l = Math.hypot(fx, fy); if (l > 0.001) { u.faceX = fx / l; u.faceY = fy / l; }
       }
       // 5) 同時解決（ダメージ等は accに溜めて後で適用）
+      evadeMap = new Map(); // このターン回避を選んだ体→回避率（攻め手の命中に反映）
+      for (const u of ALL) if (u.alive) { const d = decs.get(u); if (d && d.attack === "DODGE") evadeMap.set(u, dodgeEvade(u)); }
       const acc = new Map(); // tgt -> { dmg, kbFrom, status[] }
       const evs = [];
       for (const u of ALL) {
@@ -608,6 +657,25 @@ window.SCS = window.SCS || {};
         else if (ev.attack === "RANGED" && ev.shots > 0) events.push({ side, team: u.team, type: "ranged", from, to, hits: ev.hits || 0, dmg: ev.dmg || 0, crit: !!ev.crit, whiff: (ev.hits || 0) === 0, status: ev.applyStatus ? ev.applyStatus.type : null });
         else if (ev.attack === "MELEE" && ev.shots > 0) events.push({ side, team: u.team, type: "melee", from, to, hits: ev.hits || 0, dmg: ev.dmg || 0, crit: !!ev.crit, whiff: (ev.hits || 0) === 0 });
       }
+      // 5.5) 崩し三すくみ解決：受け不能だが、標的が①回避した②自分を殴って当てた③相互崩し(組み合い)だと潰れる。盾/棒立ち/リロードには通る。
+      const grabDone = new Set();
+      const addAcc = (tgt, dmg, from) => { const a = acc.get(tgt) || { dmg: 0, status: [], kbFrom: null }; a.dmg += dmg; if (from) a.kbFrom = a.kbFrom || from; acc.set(tgt, a); };
+      for (const ev of evs) {
+        if (ev.attack !== "GRAB" || grabDone.has(ev.att)) continue;
+        const u = ev.att, t = ev.def, tDec = decs.get(t), tev = evs.find((e) => e.att === t);
+        if (!grabReachOK(u, t)) { ev.grabWhiff = true; continue; }
+        const tGrabsU = tDec && tDec.attack === "GRAB" && tDec.target === u && tev;
+        const tDodged = tDec && tDec.attack === "DODGE";
+        const tHitU = evs.some((e) => e.att === t && e.def === u && (e.hits || 0) > 0); // 標的が自分を殴って当てた
+        if (tGrabsU) { // 組み合い＝力比べ（気力＋流れ＋非情さ＋運）。ペアにつき1回だけ解決
+          grabDone.add(u); grabDone.add(t);
+          const pu = u.stamina + u.momentum * 0.5 + u.micros.A6 * 0.3 + rng.range(0, 0.7);
+          const pt = t.stamina + t.momentum * 0.5 + t.micros.A6 * 0.3 + rng.range(0, 0.7);
+          const winU = pu >= pt; const wev = winU ? ev : tev, lev = winU ? tev : ev, win = winU ? u : t, los = winU ? t : u;
+          addAcc(los, applyThrow(win, los, wev)); lev.grabFail = true; ev.clinch = tev.clinch = true;
+        } else if (tDodged || tHitU) { ev.grabFail = true; }          // 回避された/殴られて潰れた＝隙
+        else { addAcc(t, applyThrow(u, t, ev)); }                       // ガード/盾/棒立ち/リロードに通る
+      }
       // 6) 適用（同時＝相討ちあり）
       const deadThisTurn = [];
       for (const [tgt, a] of acc) {
@@ -616,6 +684,14 @@ window.SCS = window.SCS || {};
         tgt.st.taken += Math.min(before, a.dmg);
         for (const s of a.status) { const ty = addStatus(tgt, s); if (ty === "burn") igniteFire(tgt.x, tgt.y); }
         if (a.kbFrom) knockback(a.kbFrom, tgt);
+      }
+      // 6.5) 回避カウンター：見切った体が生存していて、自分を殴って当てた敵を読み勝てば反撃の一閃（生存判定後＝相手も生存していれば）
+      for (const u of ALL) {
+        if (u.hp <= 0) continue; const d = decs.get(u); if (!d || d.attack !== "DODGE") continue;
+        const atkr = evs.find((e) => e.def === u && (e.hits || 0) > 0 && (e.attack === "MELEE" || e.attack === "RANGED" || e.attack === "SNAP") && e.att.hp > 0);
+        if (!atkr) continue;
+        const c = counterStrike(u, atkr.att);
+        if (c) { const before = atkr.att.hp; atkr.att.hp = Math.max(0, atkr.att.hp - c); atkr.att.st.taken += Math.min(before, c); u._counter = { dmg: c, on: atkr.att }; u.st.counters = (u.st.counters || 0) + 1; u.st.dealt += c; }
       }
       // 与ダメ記録（撃破は適用後に判定するので、ここで攻め手のdealtを反映）
       for (const ev of evs) if (ev.dmg > 0) ev.att.st.dealt += ev.dmg;
@@ -768,6 +844,11 @@ window.SCS = window.SCS || {};
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
         const actOf = (u) => {
           const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
+          if (u._counter) return `${t}の一撃を見切り、返す刃で反撃を叩き込んだ（${npc(u._counter.on)}へ −${u._counter.dmg}）`;
+          if (ev && ev.grabHit) { const env = ev.envThrow ? "——溶岩の只中へ叩き込む" : ev.wallThrow ? "——壁際へ叩きつける" : ""; return `${ev.clinch ? "組み合いを制し" : "受けの構えごと"}${t}を投げ飛ばした${env}（−${ev.dmg}）`; }
+          if (ev && ev.grabFail) return `${t}に組み付こうと踏み込むが、攻撃を合わされて潰された——隙を晒す`;
+          if (ev && ev.grabWhiff) return `${t}へ組み付こうと踏み込むも、空を切った`;
+          if (ev && ev.dodge) return `${t}の攻撃を見切り、紙一重で受け流した`;
           if (ev && ev.chargeBroke) return `狙いを定める間もなく踏み込まれ、照準が崩された`;
           if (ev && ev.snap) return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`;
           if (ev && ev.charging) return `息を整え、${t}に狙いを定める`;
@@ -789,11 +870,12 @@ window.SCS = window.SCS || {};
           if (!u.alive) continue; const ev = evByAtt.get(u);
           if (ev && ev._killed) continue;        // 撃破はKO行が描く
           if (focusAtts.has(u)) continue;        // 集中砲火に束ねた攻め手は個別に出さない
-          const dec = decs.get(u), attacked = ev && ((ev.shots || 0) > 0 || ev.ult || ev.charging || ev.chargeBroke), moved = dec && (dec.move === "ADVANCE" || dec.move === "RETREAT");
-          if (!(attacked || moved || u.guarding || u.peeling || isShielding(u))) continue; // 何もしていない（その場待機）体は語らない＝意図倒れの文を出さない
+          const dec = decs.get(u), acted = ev && ((ev.shots || 0) > 0 || ev.ult || ev.charging || ev.chargeBroke || ev.grab || ev.grabHit || ev.grabFail || ev.grabWhiff || ev.dodge), moved = dec && (dec.move === "ADVANCE" || dec.move === "RETREAT");
+          if (!(acted || moved || u.guarding || u.peeling || isShielding(u) || u._counter)) continue; // 何もしていない（その場待機）体は語らない＝意図倒れの文を出さない
           let sal = 0;
           if (u.guarding) sal += 6; if (isShielding(u)) sal += 5; if (u.peeling) sal += 5;
           if (ev && ev.crit) sal += 4; if (ev && ev.flank) sal += 3;
+          if (u._counter) sal += 5; if (ev && ev.grabHit) sal += 5; if (ev && (ev.grabFail || ev.grabWhiff)) sal += 3; if (ev && ev.dodge) sal += 2;
           if (ev && ev.chargeBroke) sal += 4; if (ev && ev.snap) sal += 2; if (ev && ev.charging) sal += 1;
           if (u.engage === "retreat") sal += 3; else if (u.engage === "commit") sal += 2;
           if (ev && (ev.dmg || 0) > 0) sal += Math.min(4, ev.dmg / 15);
