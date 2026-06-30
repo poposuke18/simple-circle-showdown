@@ -74,6 +74,31 @@ window.SCS = window.SCS || {};
     const r = SCS.makeRNG((seed ^ 0x1234567) >>> 0), names = Object.keys(D.PRESETS);
     return Array.from({ length: SIZE }, () => D.PRESETS[names[r.int(names.length)]]);
   }
+  // 戦場ブリーフィング：出撃時に戦場の状況を詳細に描写（遮蔽の性質・地形効果・戦況）＝戦う前に盤面が読める
+  const TERRAIN_DESC = {
+    forest: "茂み＝身を隠して被弾を減らし回避も上がる（動きは鈍る・遠距離に強い）",
+    rubble: "瓦礫＝被ダメを大きく減らす頑丈な盾（移動が重い）",
+    swamp: "沼地＝足を取られて移動が激減し避けにくい罠地帯",
+    highground: "高所＝見晴らしが良く命中が上がる、わずかに硬い好陣地",
+    lava: "溶岩＝立つと毎ターン焼かれる即死級の危険地帯",
+  };
+  function battlefieldBriefing(b) {
+    const out = [{ t: `>> 戦場：${b.arena.name} — ${b.arena.flavor}`, c: "arena" }];
+    const obs = b.obstacles || [];
+    if (!obs.length) out.push({ t: `　遮蔽物：なし。身を隠す壁は無く、開けた撃ち合いになる。`, c: "brief" });
+    else {
+      const big = obs.some((o) => Math.max(o.w, o.h) >= 14);
+      const head = big
+        ? `${obs.length}箇所（大きな壁あり）。人がすっぽり隠れ、間に入れば射線を完全に遮る`
+        : `${obs.length}箇所（小〜中）。間に入れば射線は完全に切れるが、角度を変えられると撃たれる`;
+      out.push({ t: `　遮蔽物：${head}。実体の壁＝通り抜け不可。撃ち込めば崩れ、壊れると射線が開く。`, c: "brief" });
+    }
+    if (b.baseTerrainKey && TERRAIN_DESC[b.baseTerrainKey]) out.push({ t: `　地形：全域が${TERRAIN_DESC[b.baseTerrainKey]}`, c: "brief" });
+    const seen = {};
+    for (const z of b.terrain || []) { if (z.t === b.baseTerrainKey || seen[z.t] || !TERRAIN_DESC[z.t]) continue; seen[z.t] = 1; out.push({ t: `　地形：${TERRAIN_DESC[z.t]}（局所的に点在）`, c: "brief" }); }
+    if (b.modifier) out.push({ t: `>> 戦況：${b.modifier.name} — ${b.modifier.flavor}`, c: "arena" });
+    return out;
+  }
   function sortie() {
     const seed = Math.floor(Math.random() * 0x7fffffff) >>> 0;
     const cpuChoices = cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]);
@@ -84,8 +109,7 @@ window.SCS = window.SCS || {};
     $("sqArenaChip").textContent = battle.arena.name;
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";
     $("sqLog").innerHTML = "";
-    append(`>> 戦場：${battle.arena.name} — ${battle.arena.flavor}`, "arena");
-    if (battle.modifier) append(`>> 戦況：${battle.modifier.name} — ${battle.modifier.flavor}`, "arena");
+    for (const l of battlefieldBriefing(battle)) append(l.t, l.c);
     append(`>> 分隊戦開始：あなた${SIZE}体 vs ${cpuName}（${SIZE}体）`, "sys");
     $("sqParamsWrap").classList.add("hidden");
     render();

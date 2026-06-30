@@ -154,6 +154,7 @@ body::after {
 .log-line.dim { color: var(--dim); font-size: 12px; }
 .log-line.sit { color: #6db38a; font-style: italic; }
 .log-line.arena { color: var(--amber); font-weight: bold; text-shadow: 0 0 8px rgba(255, 207, 92, .4); }
+.log-line.brief { color: var(--green2); font-size: 12.5px; padding-left: 4px; }
 .log-line.cm { color: var(--amber); font-style: italic; opacity: .92; }
 .log-line.sys { color: var(--green); }
 .log-line.result { color: #eafff3; font-weight: bold; text-align: center; margin: 4px 0; text-shadow: 0 0 12px rgba(109, 255, 160, .6); letter-spacing: 1px; }
