@@ -88,7 +88,7 @@ window.SCS = window.SCS || {};
     const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 }));
     const hazards = [];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
-    let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false, lastGap = null;
+    let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false, lastGap = null, everContact = false;
     const snapSeen = {};   // 前状況スナップショット：キー→{text,turn}。静的事実の連続反復を抑える（変化 or 3T経過で再掲）
 
     // ===== 幾何・地形・命中（1v1から移植）=====
@@ -834,6 +834,7 @@ window.SCS = window.SCS || {};
           // 各観測は sig（不変の中身署名）で連続反復を判定し、text（語り）は vary で多彩化。ord は読み順（情景→緊張）。
           // A) 間合いと推移（常時）。★距離は数値で語らない＝質的な「遠い/近い/鉢合わせ寸前」だけ（見えない敵まで歩数を測れる方が不自然）。
           const contact = (known.P.size + known.C.size) > 0;
+          if (contact) everContact = true;                                                        // 一度でも接敵したら以後「まだ」「開幕」表現は使わない
           let aText, aSig;
           if (contact) {
             const r = gap / (maxDist || gap);                                                    // 戦場の対角比で間合いを質的に表現
@@ -848,9 +849,14 @@ window.SCS = window.SCS || {};
             if (lastGap != null) { const d = gap - lastGap; if (d < -2) { trendC = vary(["じりと詰まりつつある", "差は急速に縮まっている", "間合いが潰されていく"], seed, turn, 8); ts = "-"; } else if (d > 2) { trendC = vary(["じわり開き直されていく", "距離が取り直されていく"], seed, turn, 8); ts = "+"; } }
             aText = vary(band, seed, turn, 1) + (trendC ? "、" + trendC + "。" : "。");
             aSig = "Ac" + bi + ts;                                                                // 同じバンド＋推移なら再掲しない（状況が動いた時だけ出る）
-          } else {
+          } else if (!everContact) {
+            // 開幕の索敵フェーズ（まだ一度も接敵していない）
             aText = vary(["彼我はなお視界の外、互いの位置を探り合う。", "両軍まだ敵影を捉えられず、気配だけが漂う。", "姿は見えず、広い戦場に睨み合いだけが続く。"], seed, turn, 7);
             aSig = "As";
+          } else {
+            // ★戦闘の最中に遮蔽等で互いを見失った（市街戦で頻発）＝「まだ」でなく「見失い」表現に（終盤に開幕文が出る不自然を解消）
+            aText = vary(["遮蔽に阻まれ、互いの姿を見失う。", "射線が切れ、敵影を探り直す。", "瓦礫の陰に紛れ、束の間の静寂。"], seed, turn, 7);
+            aSig = "Al";
           }
           obs.push({ ord: 0, force: true, key: "A", sig: aSig, text: aText });
           // B) 陣形（両軍の槍先を1行に）
