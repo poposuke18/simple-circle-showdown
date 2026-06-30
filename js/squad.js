@@ -165,6 +165,8 @@ window.SCS = window.SCS || {};
     // ===== 索敵・視界（ビジョンコーン）[[索敵・視界システム設計]] =====
     //   各体に視界扇型（前方FOV・距離Range）＋隠密。敵がコーン+射線に入れば発見。観戦者は全可視・AIだけ発見済みに反応。
     //   静的（人格＋アリーナ規模由来）＝乱数非消費・決定論。
+    // ★狭い部屋・回廊（吊り橋）は見渡せば相手がいる＝索敵フェーズ自体が不自然。霧なし＝開幕から相互発見済み。視界システムは中〜大アリーナだけ機能。
+    const fogless = maxDist < 95;       // 狭い闘技場(74)・吊り橋(82)のみ該当（次に小さい溶岩洞窟でも108）
     const baseSight = maxDist * 0.30;   // ★視界を締める：戦場のほぼ全域→一部だけ＝索敵が成立（即発見しない）。狙撃射程より短く＝先に撃たれる緊張も
     for (const u of ALL) {
       const m = u.micros;
@@ -177,6 +179,8 @@ window.SCS = window.SCS || {};
     const homeOf = { P: cen(C), C: cen(P) };          // 各チームの「敵の居た方向」＝索敵の漠然とした向き先（開幕位置）
     const known = { P: new Map(), C: new Map() };     // team → Map(敵 → {lastSeen, x, y})。即時共有＋鮮度減衰
     const DETECT_DECAY = 3;                            // 全員が見失ってこのターン超でロスト＝再索敵
+    if (fogless) for (const u of ALL) known[u.team === "P" ? "C" : "P"].set(u, { lastSeen: 0, x: u.x, y: u.y }); // 霧なし：開幕から各体を敵チームの発見済みに登録（索敵描写も発生しない）
+    function refreshFogless() { for (const tm of ["P", "C"]) { const km = known[tm]; for (const u of (tm === "P" ? C : P)) { if (u.alive) km.set(u, { lastSeen: turn, x: u.x, y: u.y }); else km.delete(u); } } }
 
     const liveEnemies = (u) => enemiesOf(u).filter((e) => e.alive);
     function nearestLiveEnemy(u) { let best = null, bd = Infinity; for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
@@ -193,6 +197,7 @@ window.SCS = window.SCS || {};
     }
     // チーム探知更新（即時共有＋鮮度減衰）。pickTarget前に毎ターン。
     function updateDetection() {
+      if (fogless) { refreshFogless(); return; }                                          // 霧なし：常に全敵発見済み（位置だけ更新）
       for (const u of ALL) { if (!u.alive) continue; const km = known[u.team]; for (const e of enemiesOf(u)) { if (e.alive && detects(u, e)) km.set(e, { lastSeen: turn, x: e.x, y: e.y }); } }
       for (const tm of ["P", "C"]) { const km = known[tm]; for (const [e, info] of km) if (!e.alive || turn - info.lastSeen > DETECT_DECAY) km.delete(e); }
     }
