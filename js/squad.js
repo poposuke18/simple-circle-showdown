@@ -45,6 +45,7 @@ window.SCS = window.SCS || {};
   const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める"]; // 個体の索敵動作（誰が、を明示）
   const INSTINCT_ACT = ["第六感で敵の気配を辿り、潜む方へ詰める", "勘を頼りに敵の潜伏点へ忍び寄る", "気配の揺らぎを嗅ぎ取り、そちらへ間合いを詰める", "研ぎ澄ました直感で敵の所在を探り当てにかかる"]; // 嗅覚(D1)が鋭い体の索敵（多彩化）
   const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
+  const SNAP_ACC = 0.30; // チャージ武器をノーチャージで即撃ちする時の命中倍率。チャージ＝狙いを定める＝命中を一気に上げる行為なので、溜め無しは圧倒的に当たらない（＝近距離なら近接武器を使う方が良い、という判断が自然に出る）
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
     return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
@@ -366,7 +367,15 @@ window.SCS = window.SCS || {};
         if (los2 && u.ammo > 0) return { attack: "ULT", ultKind: "ranged" };
       }
       if (meleeOk) return { attack: "MELEE" };
-      if (rangedOk) return { attack: "RANGED" };
+      if (rangedOk) {
+        // チャージ武器（スナイパー）：溜めている間に近接で踏み込まれる距離なら、溜めても中断される→ノーチャージ速射（低命中）で即撃ち。
+        //   安全（敵が一手で近接に届かない）なら通常チャージ。＝狭所では速射が外れがち＝近接に切替える判断が自然に出る。
+        if (u.ranged.mode === "charge" && !u.charged) {
+          let nd = Infinity; for (const e of enemiesOf(u)) if (e.alive) { const dd = dist(pos, e); if (dd < nd) nd = dd; }
+          if (nd <= u.melee.reach + (S.baseStep || 12) * 1.2) return { attack: "SNAP" };
+        }
+        return { attack: "RANGED" };
+      }
       if (los2 && u.ammo <= 0) return { attack: "RELOAD" };
       return { attack: "NONE" };
     }
@@ -453,6 +462,20 @@ window.SCS = window.SCS || {};
         if (ev.hits && fl.tier !== "front") { ev.flank = fl.tier; u.st.flanks++; }
         return ev;
       }
+      if (dec.attack === "SNAP") { // ノーチャージ速射（チャージ武器を溜め無しで即撃ち）＝命中×SNAP_ACCで圧倒的に当たらない
+        const rw = u.ranged;
+        if (u.ammo <= 0) { ev.empty = true; return ev; }
+        if (!los2) { ev.negated = true; return ev; }
+        u.ammo -= 1; u.charged = false; ev.snap = true;
+        const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * SNAP_ACC);
+        let hits = 0, dmg = 0, crits = 0;
+        if (rng.chance(hc)) { hits = 1; let dd = rw.damage; if (rng.chance(clamp(rw.crit + modCrit + fl.crit, 0, 0.6))) { dd *= rw.critMult; crits = 1; } dmg += dd * defMult(fp) * vulnOf(tgt); }
+        u.st.shots += 1; u.st.hits += hits; u.st.crits += crits;
+        ev.shots = 1; ev.hits = hits; ev.crit = crits > 0; ev.dmg = Math.round(dmg * outFac(u) * fl.dmg * dmgMod());
+        if (hits > 0 && rw.status) ev.applyStatus = rw.status;
+        if (hits > 0 && fl.tier !== "front") { ev.flank = fl.tier; u.st.flanks++; }
+        return ev;
+      }
       if (dec.attack === "RANGED") {
         const rw = u.ranged;
         if (rw.mode === "charge" && !u.charged) { u.charged = true; ev.charging = true; return ev; }
@@ -461,7 +484,7 @@ window.SCS = window.SCS || {};
         let shots = rw.mode === "charge" ? 1 : shotsFor(rw.fireRate, rng);
         if (precise > 0.55 && rw.mode !== "charge") shots = Math.max(1, Math.round(shots * (1 - precise * 0.5)));
         shots = Math.min(shots, u.ammo); u.ammo -= shots; if (rw.mode === "charge") u.charged = false;
-        const critChance = clamp(rw.crit + precise * 0.2 + (rw.mode === "charge" ? 0.25 : 0) + modCrit + fl.crit, 0, 0.78);
+        const critChance = clamp(rw.crit + precise * 0.2 + modCrit + fl.crit, 0, 0.78); // ★チャージは命中(狙い)を上げる行為＝威力(会心)は上げない。会心は武器固有値(スナイパー0.30/×2.5)が担う
         const hc = Math.min(1, rangedHit(rw, u, fp, tgt, d2, true, dec.move !== "HOLD") * (1 - u.spread) * fl.acc * (1 + corner * 0.05));
         let hits = 0, dmg = 0, crits = 0;
         for (let i = 0; i < shots; i++) if (rng.chance(hc)) { hits++; let dd = rw.damage; if (rng.chance(critChance)) { dd *= rw.critMult; crits++; } dmg += dd * defMult(fp) * vulnOf(tgt); }
@@ -615,10 +638,15 @@ window.SCS = window.SCS || {};
         if (!u.alive) continue;
         const dealt = u.st.dealt, taken = u.st.taken; // 累積だが増分で十分（簡易）
         const a = acc.get(u); const tookNow = a ? a.dmg : 0;
-        const dec = decs.get(u), attacked = dec && (dec.attack === "RANGED" || dec.attack === "MELEE" || dec.attack === "ULT");
+        const dec = decs.get(u), attacked = dec && (dec.attack === "RANGED" || dec.attack === "MELEE" || dec.attack === "ULT" || dec.attack === "SNAP");
         u.stamina = clamp(u.stamina + (attacked ? -0.09 * modSta : 0.07), 0, 1);
         u.flinch = u.flinch > 0 ? u.flinch - 1 : 0;
         if (tookNow >= 0.22 * u.maxHp) u.flinch = 1;
+        // ★チャージ中断：溜め中（charged・未発射）に近接で殴られる or 大きく被弾すると、据銃が崩れ一射を失う＝近づかれたスナイパーは撃てない
+        if (u.charged) {
+          const meleeHitOnU = evs.some((e) => e.def === u && (e.dmg || 0) > 0 && (e.attack === "MELEE" || (e.attack === "ULT" && e.ultRn === false)));
+          if (meleeHitOnU || tookNow >= 0.10 * u.maxHp) { u.charged = false; const cev = evs.find((e) => e.att === u && e.charging); if (cev) { cev.charging = false; cev.chargeBroke = true; } }
+        }
       }
       // 与/被ダメ→momentum/resolve（このターン分）
       const dealtNow = new Map(); let directDmg = 0; for (const ev of evs) if (ev.dmg > 0) { dealtNow.set(ev.att, (dealtNow.get(ev.att) || 0) + ev.dmg); directDmg += ev.dmg; }
@@ -740,6 +768,9 @@ window.SCS = window.SCS || {};
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
         const actOf = (u) => {
           const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
+          if (ev && ev.chargeBroke) return `狙いを定める間もなく踏み込まれ、照準が崩された`;
+          if (ev && ev.snap) return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`;
+          if (ev && ev.charging) return `息を整え、${t}に狙いを定める`;
           if (ev && ev.ult && !ev.whiff) return `必殺・${ev.ultName}を解き放った`;
           if (ev && ev.attack === "RANGED" && (ev.hits || 0) > 0) return `${t}を狙い撃った（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
           if (ev && ev.attack === "MELEE" && (ev.hits || 0) > 0) return `${fl2(ev)}${t}へ斬り込んだ（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
@@ -758,11 +789,12 @@ window.SCS = window.SCS || {};
           if (!u.alive) continue; const ev = evByAtt.get(u);
           if (ev && ev._killed) continue;        // 撃破はKO行が描く
           if (focusAtts.has(u)) continue;        // 集中砲火に束ねた攻め手は個別に出さない
-          const dec = decs.get(u), attacked = ev && ((ev.shots || 0) > 0 || ev.ult), moved = dec && (dec.move === "ADVANCE" || dec.move === "RETREAT");
+          const dec = decs.get(u), attacked = ev && ((ev.shots || 0) > 0 || ev.ult || ev.charging || ev.chargeBroke), moved = dec && (dec.move === "ADVANCE" || dec.move === "RETREAT");
           if (!(attacked || moved || u.guarding || u.peeling || isShielding(u))) continue; // 何もしていない（その場待機）体は語らない＝意図倒れの文を出さない
           let sal = 0;
           if (u.guarding) sal += 6; if (isShielding(u)) sal += 5; if (u.peeling) sal += 5;
           if (ev && ev.crit) sal += 4; if (ev && ev.flank) sal += 3;
+          if (ev && ev.chargeBroke) sal += 4; if (ev && ev.snap) sal += 2; if (ev && ev.charging) sal += 1;
           if (u.engage === "retreat") sal += 3; else if (u.engage === "commit") sal += 2;
           if (ev && (ev.dmg || 0) > 0) sal += Math.min(4, ev.dmg / 15);
           const clause = clauseOf(u); if (clause) sal += 2;
