@@ -144,6 +144,8 @@ window.SCS = window.SCS || {};
   function drawSquad(SX, SY, f, haz) {
     const k = 0.3, units = battle.teams.P.concat(battle.teams.C);
     for (const u of units) { let d = sdisp.get(u); if (!d) { d = { x: u.x, y: u.y }; sdisp.set(u, d); } d.x += (u.x - d.x) * k; d.y += (u.y - d.y) * k; }
+    // ビジョンコーン（各体の視界扇型・遮蔽でクリップ）＝索敵の可視化。索敵中(未発見の相手を探す)は濃く・交戦中は薄く。
+    for (const u of units) { if (!u.alive || !u.sightR) continue; const d = sdisp.get(u); drawVisionCone(SX, SY, d.x, d.y, u, !u.target); }
     // ターゲット線（生存→自target・射線が切れれば破線）
     ctx.lineWidth = 1;
     for (const u of units) {
@@ -171,14 +173,42 @@ window.SCS = window.SCS || {};
     const lowHp = units.some((u) => u.alive && u.hp / u.maxHp < 0.3);
     return fx.length > 0 || !conv || (!battle.over && (lowHp || haz.some((h) => h.turns > 0)));
   }
+  // レイ vs 矩形(AABB)。原点(px,py)・方向(dx,dy)・障害物o。手前の交差距離t(>0)を返す（無交差はnull）＝視界扇のクリップ
+  function rayAABB(px, py, dx, dy, o) {
+    let tmin = -Infinity, tmax = Infinity;
+    if (Math.abs(dx) < 1e-9) { if (px < o.x || px > o.x + o.w) return null; } else { let t1 = (o.x - px) / dx, t2 = (o.x + o.w - px) / dx; if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; } tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2); }
+    if (Math.abs(dy) < 1e-9) { if (py < o.y || py > o.y + o.h) return null; } else { let t1 = (o.y - py) / dy, t2 = (o.y + o.h - py) / dy; if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; } tmin = Math.max(tmin, t1); tmax = Math.min(tmax, t2); }
+    if (tmax < Math.max(tmin, 0)) return null; return tmin > 0 ? tmin : null;
+  }
+  function drawVisionCone(SX, SY, ux, uy, u, searching) {
+    const fa = Math.atan2(u.faceY || 0, u.faceX || 0), half = u.sightHalf || 0.6, R = u.sightR || 40, N = 16, obs = battle.obstacles || [];
+    ctx.beginPath(); ctx.moveTo(SX(ux), SY(uy));
+    for (let i = 0; i <= N; i++) {
+      const a = fa - half + (2 * half) * (i / N), dx = Math.cos(a), dy = Math.sin(a);
+      let len = R;
+      for (const o of obs) { if (o.hp <= 0) continue; const t = rayAABB(ux, uy, dx, dy, o); if (t !== null && t < len) len = t; }
+      ctx.lineTo(SX(ux + dx * len), SY(uy + dy * len));
+    }
+    ctx.closePath();
+    const aF = searching ? 0.07 : 0.035, aS = searching ? 0.16 : 0.08;
+    ctx.fillStyle = u.team === "P" ? "rgba(92,200,255," + aF + ")" : "rgba(255,94,94," + aF + ")";
+    ctx.fill();
+    ctx.lineWidth = 0.8; ctx.strokeStyle = u.team === "P" ? "rgba(92,200,255," + aS + ")" : "rgba(255,94,94," + aS + ")"; ctx.stroke();
+  }
   function drawSquadUnit(x, y, u) {
     const col = ushade(u);
     if (u.hp <= 0) { ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x - 3.5, y - 3.5); ctx.lineTo(x + 3.5, y + 3.5); ctx.moveTo(x + 3.5, y - 3.5); ctx.lineTo(x - 3.5, y + 3.5); ctx.stroke(); ctx.globalAlpha = 1; return; }
+    const ghost = battle.spotted && !battle.spotted(u); // 敵に発見されていない＝薄く中空で描く（観戦者には見えるが"気配を消している"＝奇襲の予兆）
     const fl = Math.hypot(u.faceX, u.faceY) || 1, ux = u.faceX / fl, uy = u.faceY / fl;
+    ctx.globalAlpha = ghost ? 0.4 : 1;
     ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9, y + uy * 9); ctx.stroke();
     const low = u.hp / u.maxHp < 0.3, t = perfNow() / 1000, r = low ? 3.6 + Math.sin(t * 6) * 1.1 : 3.4;
-    ctx.shadowColor = col; ctx.shadowBlur = 9; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.fillStyle = "#03060a"; ctx.font = "bold 6px " + (typeof window !== "undefined" ? "monospace" : "monospace"); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.5);
+    ctx.shadowColor = col; ctx.shadowBlur = ghost ? 2 : 9;
+    if (ghost) { ctx.lineWidth = 1.2; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.stroke(); }
+    else { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = ghost ? col : "#03060a"; ctx.globalAlpha = ghost ? 0.7 : 1; ctx.font = "bold 6px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.5);
+    ctx.globalAlpha = 1;
   }
 
   // ③ 寿命付きエフェクトを減衰描画。座標は coordFn(e)→[ax,ay,bx,by]（1v1=補間後dist／分隊=保存field座標）で解決

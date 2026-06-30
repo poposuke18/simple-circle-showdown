@@ -158,10 +158,43 @@ window.SCS = window.SCS || {};
     const alliesOf = (u) => (u.team === "P" ? P : C);
     for (const u of ALL) { u.winDist = winDistVsTeam(u, enemiesOf(u)); } // 敵全体に対する勝てる間合い＝ロール判定が編成順でブレない
     // 役割で前後に配置：近接寄り(winDist小)は前線へ・遠距離寄り(winDist大)は後方へ＝後衛(射手)が前衛に守られる編成が成立
-    for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.x = q.x; u.y = q.y; }
+    for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.y = q.y; u.x = q.x; }
+
+    // ===== 索敵・視界（ビジョンコーン）[[索敵・視界システム設計]] =====
+    //   各体に視界扇型（前方FOV・距離Range）＋隠密。敵がコーン+射線に入れば発見。観戦者は全可視・AIだけ発見済みに反応。
+    //   静的（人格＋アリーナ規模由来）＝乱数非消費・決定論。
+    const baseSight = maxDist * 0.42;
+    for (const u of ALL) {
+      const m = u.micros;
+      u.sightR = baseSight * clamp(0.7 + m.D1 * 0.6 + m.C5 * 0.25 + m.A1 * 0.3, 0.5, 1.8);     // 視界距離：相手読み/冷静/遠距離選好で伸びる＝斥候
+      u.sightHalf = (35 + m.D1 * 40 + clamp(0.5 + u.mv[5] * 0.5, 0, 1) * 15) * Math.PI / 180;  // 視界半角(rad)：相手読み/順応で広い周辺視・低いとトンネル視野
+      u.stealth = clamp(0.5 * m.B1 + 0.4 * m.D4 + 0.3 * Math.max(0, -u.mv[6]) + 0.2 * (1 - m.B5), 0, 1); // 隠密：遮蔽利用/狡猾/手段選ばず/気配消し
+    }
+    const cen = (t) => { let x = 0, y = 0, n = 0; for (const u of t) { x += u.x; y += u.y; n++; } return { x: x / n, y: y / n }; };
+    const homeOf = { P: cen(C), C: cen(P) };          // 各チームの「敵の居た方向」＝索敵の向き先（固定・現在位置は使わない＝未発見の敵位置を覗かない）
+    const known = { P: new Map(), C: new Map() };     // team → Map(敵 → {lastSeen, x, y})。即時共有＋鮮度減衰
+    const DETECT_DECAY = 3;                            // 全員が見失ってこのターン超でロスト＝再索敵
 
     const liveEnemies = (u) => enemiesOf(u).filter((e) => e.alive);
     function nearestLiveEnemy(u) { let best = null, bd = Infinity; for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
+    // u が e を視認できるか＝コーン内（角度）×実効距離（隠密/地形）×射線。幾何のみ＝決定論。
+    function detects(u, e) {
+      const dx = e.x - u.x, dy = e.y - u.y, d = Math.hypot(dx, dy) || 0.001;
+      const fl = Math.hypot(u.faceX, u.faceY) || 1, cosang = (u.faceX * dx + u.faceY * dy) / (fl * d);
+      if (cosang < Math.cos(u.sightHalf)) return false;                                   // コーンの外（背後/側方）
+      let range = u.sightR * (1 - (e.stealth || 0) * 0.4);                                 // 隠密ほど近づくまで見えない
+      if (terrainAt(e) === T.forest) range *= 0.6;                                         // 茂みの敵は隠れる
+      if (terrainAt(u) === T.highground) range *= 1.3;                                     // 高所からは見晴らし
+      if (d > range) return false;
+      return losClear(u, e);                                                               // 遮蔽が間にあれば見えない
+    }
+    // チーム探知更新（即時共有＋鮮度減衰）。pickTarget前に毎ターン。
+    function updateDetection() {
+      for (const u of ALL) { if (!u.alive) continue; const km = known[u.team]; for (const e of enemiesOf(u)) { if (e.alive && detects(u, e)) km.set(e, { lastSeen: turn, x: e.x, y: e.y }); } }
+      for (const tm of ["P", "C"]) { const km = known[tm]; for (const [e, info] of km) if (!e.alive || turn - info.lastSeen > DETECT_DECAY) km.delete(e); }
+    }
+    const knownEnemies = (u) => enemiesOf(u).filter((e) => e.alive && known[u.team].has(e)); // AIが反応してよい敵＝発見済み
+    function nearestKnownEnemy(u) { let best = null, bd = Infinity; for (const e of knownEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
     // ===== 役割（人格→武器/winDistから自動分類・★排他。ラベル/トリニティ挙動に使う）=====
     const isBackline = (u) => u.winDist >= 45;                                   // 後衛＝遠距離志向の射手（守られるべき）
     const isFrontline = (u) => !isBackline(u) && (u.winDist < 40 || u.maxHp >= 100); // 前衛＝近接志向 or 高HPの壁（後衛は高HPでも前衛にしない）
@@ -180,7 +213,7 @@ window.SCS = window.SCS || {};
       let best = null, bd = Infinity;
       for (const a of alliesOf(u)) {
         if (!a.alive || a === u || !isBackline(a)) continue;
-        const foe = nearestLiveEnemy(a); if (!foe) continue;
+        const foe = nearestKnownEnemy(a); if (!foe) continue; // 発見済みの敵だけ＝未発見の脅威にはかばえない
         const d = dist(foe, a);
         if (d < bd && d < imminentBand(foe)) { bd = d; best = { ward: a, foe }; }
       }
@@ -192,8 +225,8 @@ window.SCS = window.SCS || {};
     // ===== ターゲット選定（集中砲火＝キルオーダー収束＋脅威優先＋釣り出し耐性＋ピール）=====
     const sup = isSupport;
     function pickTarget(u) {
-      const live = liveEnemies(u);
-      if (!live.length) { u._focusCount = 0; u.peeling = false; return null; }
+      const live = knownEnemies(u);                  // ★発見済みの敵だけを狙える（未発見＝そもそも反応しない）
+      if (!live.length) { u._focusCount = 0; u.peeling = false; return null; } // 未発見＝索敵へ（decideでhome方向へ前進）
       const iAmSupport = sup(u);
       const myWard = isFrontline(u) ? findWard(u) : null; // 守る後衛がいれば、その後衛に迫る敵を迎撃対象に（前衛が自分の的を追って戦線を離れない＝かばうが成立する前提）
       let best = null, bv = -Infinity, bestPeel = false;
@@ -245,7 +278,7 @@ window.SCS = window.SCS || {};
     }
     function threatAt(u, pos, except) { // 接近する全敵からの期待被ダメ合計（exceptを除外可＝釣り出し判定で標的自身を二重計上しない）
       let t = 0;
-      for (const e of liveEnemies(u)) { if (e === except) continue; const d = dist(pos, e), los = losClear(e, pos); t += expEx(e, u, { x: e.x, y: e.y }, pos, d, los); }
+      for (const e of knownEnemies(u)) { if (e === except) continue; const d = dist(pos, e), los = losClear(e, pos); t += expEx(e, u, { x: e.x, y: e.y }, pos, d, los); } // 発見済みの敵からの脅威のみ（未発見の奇襲は読めない）
       return t;
     }
     // 点pから線分ab（攻め手→ward）への最短距離＋射影位置t＝割り込み判定
@@ -264,7 +297,7 @@ window.SCS = window.SCS || {};
     //   ★近くに敵がいなければ局所戦闘なし＝中立1を返す（開幕や離れた局面で「味方が固まり敵が遠い」を優勢と誤認しない）。
     function localForce(u) {
       const R = 42; let foe = 0;
-      for (const e of liveEnemies(u)) { const d = dist(u, e); if (d < R) foe += 1 - (d / R) * 0.6; }
+      for (const e of knownEnemies(u)) { const d = dist(u, e); if (d < R) foe += 1 - (d / R) * 0.6; } // 発見済みの敵で局所兵力比を評価
       if (foe < 0.25) return 1; // 交戦圏内に敵なし＝中立
       let ally = 1;
       for (const a of alliesOf(u)) { if (!a.alive || a === u) continue; const d = dist(u, a); if (d < R) ally += 1 - (d / R) * 0.6; }
@@ -330,7 +363,15 @@ window.SCS = window.SCS || {};
     // ===== 1手貪欲評価＝move×attackの最良を選ぶ（先読みなし・乱数非消費）=====
     function decide(u) {
       const tgt = u.target;
-      if (!tgt) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null };
+      if (!tgt) {
+        // ★索敵：敵を発見していない＝敵の居た方向（または最後の既知位置＝ロスト地点）へ前進しながら探す。faceを進行方向に向けコーンが前方を掃く。
+        let sx = homeOf[u.team].x, sy = homeOf[u.team].y, seen = -1;
+        for (const info of known[u.team].values()) if (info.lastSeen > seen) { seen = info.lastSeen; sx = info.x; sy = info.y; } // ロストした敵の最後の既知位置を優先
+        const sp = { x: sx, y: sy };
+        if (Math.hypot(sp.x - u.x, sp.y - u.y) < 6) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null, searchDir: sp }; // 索敵地点に到達＝その場で警戒
+        const np = applyMove(u, sp, "ADVANCE");
+        return { move: "ADVANCE", attack: "NONE", newPos: np, target: null, searchDir: sp };
+      }
       const fp = { x: tgt.x, y: tgt.y };
       let pref = prefRangeOf(u);
       // 攻め圧：与ダメが続かない体ほど焦って攻撃価値↑・脅威回避↓（遊兵化＝撃たない超防御型を戦線に引き戻す）
@@ -452,6 +493,7 @@ window.SCS = window.SCS || {};
       if (ev && ev.negated) return "遮蔽"; // 射線が壁に遮られ撃てなかった
       if (ev && ev.attack === "RANGED" && (ev.shots || 0) > 0) return "射撃";
       if (ev && ev.attack === "MELEE" && (ev.shots || 0) > 0) return "斬";
+      if (dec && dec.searchDir && !u.target) return "索敵"; // 敵を発見しておらず探している
       if (u.engage === "commit") return "攻勢";
       if (dec && dec.move === "RETREAT") return "退避";
       if (dec && dec.move === "ADVANCE") return "詰め";
@@ -463,7 +505,10 @@ window.SCS = window.SCS || {};
       if (over) return { turn, lines: [], events: [], over, result };
       turn++;
       const lines = [], events = [];
-      // 1) ターゲット選定（固定順＝集中砲火の創発・決定論）
+      // 0) 索敵：各体のビジョンコーンで敵を視認→チーム共有（即時）＋鮮度減衰。発見/ロストのフィードはこの差分から。
+      const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
+      updateDetection();
+      // 1) ターゲット選定（発見済みの敵のみ・固定順＝集中砲火の創発・決定論）
       for (const u of ALL) if (u.alive) u.target = pickTarget(u);
       // 集中度を一括集計（各敵の被ターゲット数）＝ラベル『集中』とレーダーのリングを同基準(>=2)に揃える
       { const tc = new Map(); for (const u of ALL) if (u.alive && u.target) tc.set(u.target, (tc.get(u.target) || 0) + 1); for (const u of ALL) u._focusCount = (u.alive && u.target) ? (tc.get(u.target) || 0) : 0; }
@@ -480,16 +525,21 @@ window.SCS = window.SCS || {};
         const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
         for (const u of ALL) {
           if (!u.alive || !restless(u)) continue; // ★防御的な体（専守・待ち）は引き寄せない＝両者防御的な"待ち戦"はタイムアップへ。攻撃的な体だけ強制接触で素早く決着
-
-          const e = nearestLiveEnemy(u); if (!e) continue;
+          const e = nearestKnownEnemy(u); if (!e) continue; // ★発見済みの敵にのみ引き寄せ＝索敵中（未発見）は引っ張らない（未発見の敵位置を覗かない）
           const d = dist(u, e), reach = Math.max(u.melee.reach, u.ranged.effRange);
           if (d <= reach && losClear(u, e)) continue; // 交戦圏内（当てられる距離＋射線）なら据え置き
           const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
           const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
         }
       }
-      // 4) 向き（自targetを見据える）
-      for (const u of ALL) if (u.alive && u.target) { const dx = u.target.x - u.x, dy = u.target.y - u.y, l = Math.hypot(dx, dy); if (l > 0.001) { u.faceX = dx / l; u.faceY = dy / l; } }
+      // 4) 向き：発見済みの標的を見据える／索敵中は進行（索敵）方向を向く＝ビジョンコーンが前方を掃く
+      for (const u of ALL) {
+        if (!u.alive) continue;
+        let fx, fy;
+        if (u.target) { fx = u.target.x - u.x; fy = u.target.y - u.y; }
+        else { const d = decs.get(u); if (d && d.searchDir) { fx = d.searchDir.x - u.x; fy = d.searchDir.y - u.y; } else { fx = u.faceX; fy = u.faceY; } }
+        const l = Math.hypot(fx, fy); if (l > 0.001) { u.faceX = fx / l; u.faceY = fy / l; }
+      }
       // 5) 同時解決（ダメージ等は accに溜めて後で適用）
       const acc = new Map(); // tgt -> { dmg, kbFrom, status[] }
       const evs = [];
@@ -573,6 +623,12 @@ window.SCS = window.SCS || {};
       const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
       const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
       const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
+      // 索敵：このターン新たに発見した／見失った敵をフィードに（チーム単位の差分）
+      for (const tm of ["P", "C"]) {
+        const army = tm === "P" ? "あなたの分隊" : "敵分隊";
+        for (const e of known[tm].keys()) if (!detectedBefore[tm].has(e) && e.alive) lines.push({ text: `── ${army}が ${npc(e)} を発見！`, cls: "cm" });
+        for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った。`, cls: "dim" });
+      }
       // KO（武器カテゴリ別の決め技・側背面・必殺）
       for (const ev of evs) if (ev._killed) {
         const verb = vary(KO_VERB[evCat(ev)] || KO_VERB.bal, seed, turn, ev.att.idx * 7 + ev.def.idx);
@@ -676,6 +732,7 @@ window.SCS = window.SCS || {};
       get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; },
       field, obstacles, maxDist, losClear, terrain: arena.terrain, baseTerrainKey: arena.base, get hazards() { return hazards; },
       teamHpFrac, aliveCount,
+      spotted: (u) => known[u.team === "P" ? "C" : "P"].has(u), // その体が敵に発見されているか（レーダーのゴースト表示用）。視界扇は u.sightR/u.sightHalf/faceX/faceY
     };
   };
 
