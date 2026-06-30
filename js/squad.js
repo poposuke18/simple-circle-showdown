@@ -399,6 +399,7 @@ window.SCS = window.SCS || {};
         const rw = u.ranged;
         if (rw.mode === "charge" && !u.charged) { u.charged = true; ev.charging = true; return ev; }
         if (u.ammo <= 0) { ev.empty = true; return ev; }
+        if (!los2) { ev.negated = true; return ev; } // ★射線が遮蔽で切れたら撃てない（撃つ判断は射線が通る位置だが、同時移動で標的が遮蔽裏へ動いた後は弾は壁に阻まれる）。弾薬/溜めは保持
         let shots = rw.mode === "charge" ? 1 : shotsFor(rw.fireRate, rng);
         if (precise > 0.55 && rw.mode !== "charge") shots = Math.max(1, Math.round(shots * (1 - precise * 0.5)));
         shots = Math.min(shots, u.ammo); u.ammo -= shots; if (rw.mode === "charge") u.charged = false;
@@ -446,6 +447,7 @@ window.SCS = window.SCS || {};
       if (ev && ev.flank === "side") return "側面";
       if (u.resolve >= 1 && !(ev && ev.ult)) return "温存"; // 気迫満タンを抱え好機を待つ（ult-economy）
       if (dec && dec.attack === "RELOAD") return "装填";
+      if (ev && ev.negated) return "遮蔽"; // 射線が壁に遮られ撃てなかった
       if (ev && ev.attack === "RANGED" && (ev.shots || 0) > 0) return "射撃";
       if (ev && ev.attack === "MELEE" && (ev.shots || 0) > 0) return "斬";
       if (u.engage === "commit") return "攻勢";
