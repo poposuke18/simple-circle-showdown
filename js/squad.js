@@ -909,7 +909,7 @@ window.SCS = window.SCS || {};
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
         const actOf = (u) => {
           const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
-          if (u._counter) return `${t}の一撃を見切り、返す刃で反撃を叩き込んだ（${npc(u._counter.on)}へ −${u._counter.dmg}）`;
+          if (u._counter) return `${npc(u._counter.on)}の一撃を見切り、返す刃で反撃を叩き込んだ（−${u._counter.dmg}）`;
           if (ev && ev.grabHit) { const env = ev.envThrow ? "——溶岩の只中へ叩き込む" : ev.wallThrow ? "——壁際へ叩きつける" : ""; return `${ev.clinch ? "組み合いを制し" : "受けの構えごと"}${t}を投げ飛ばした${env}（−${ev.dmg}）`; }
           if (ev && ev.grabFail) return `${t}に組み付こうと踏み込むが、攻撃を合わされて潰された——隙を晒す`;
           if (ev && ev.grabWhiff) return `${t}へ組み付こうと踏み込むも、空を切った`;
@@ -962,12 +962,26 @@ window.SCS = window.SCS || {};
           beats.push({ sal, u, clause });
         }
         beats.sort((a, b) => b.sal - a.sal);
-        beats.slice(0, 3).forEach((bt, i) => {
-          const conn = i === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、", "同時に、"], seed, turn, i * 3);
-          const dm = bt.u ? demeanorOf(bt.u) : "";
-          const body = bt.txt ? bt.txt : `${conn}${bt.clause ? bt.clause + "、" : ""}${npc(bt.u)} は ${dm ? dm + "、" : ""}${actOf(bt.u)}`;
-          lines.push({ text: `── ${body}。`, cls: i === 0 ? "cm" : "ex" });
-        });
+        const shown = beats.slice(0, 3);
+        let bi = 0;
+        while (bi < shown.length) {
+          const a = shown[bi], b = shown[bi + 1];
+          // ★相互に狙い合っている（真の一騎打ち＝AとBが互いをtarget）時だけ1文に織る。「。一方、Bは」の機械的分断を避ける。
+          const canMerge = a && b && !a.txt && !b.txt && a.u && b.u && b.u !== a.u && a.u.target === b.u && b.u.target === a.u;
+          if (canMerge) {
+            const dmA = demeanorOf(a.u), bev = evByAtt.get(b.u), strikesBack = bev && bev.def === a.u && (bev.hits || 0) > 0;
+            const link = strikesBack ? vary(["——すかさず ", "——間髪入れず ", "——即座に "], seed, turn, bi) : "——対する ";
+            const body = `${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dmA ? dmA + "、" : ""}${actOf(a.u)}${link}${npc(b.u)} は ${actOf(b.u)}`;
+            lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
+            bi += 2;
+          } else {
+            const conn = bi === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、"], seed, turn, bi * 3);
+            const dm = a.u ? demeanorOf(a.u) : "";
+            const body = a.txt ? a.txt : `${conn}${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dm ? dm + "、" : ""}${actOf(a.u)}`;
+            lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
+            bi += 1;
+          }
+        }
       }
       // ===== 結果（連携の帰結を後に置く）：奇襲→撃破→必殺 =====
       // 奇襲：本物の不意打ちだけ＝未発見のまま会心を当てた一撃（撃破はKO行が背後/側面で描くので除外）。1戦に1度きり＝特別感を保つ。
