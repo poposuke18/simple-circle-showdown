@@ -43,6 +43,7 @@ window.SCS = window.SCS || {};
   const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる"];
   const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。"];
   const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める"]; // 個体の索敵動作（誰が、を明示）
+  const INSTINCT_ACT = ["第六感で敵の気配を辿り、潜む方へ詰める", "勘を頼りに敵の潜伏点へ忍び寄る", "気配の揺らぎを嗅ぎ取り、そちらへ間合いを詰める", "研ぎ澄ました直感で敵の所在を探り当てにかかる"]; // 嗅覚(D1)が鋭い体の索敵（多彩化）
   const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
@@ -693,7 +694,7 @@ window.SCS = window.SCS || {};
           for (let k = 0, n = 0; k < sr.length && n < 2; k++, n++) {
             const u = sr[(turn * 2 + k) % sr.length];
             const line = u.micros.D1 >= 0.6
-              ? `${npc(u)} が第六感で敵の気配を辿り、潜む方へ詰める。`
+              ? `${npc(u)} が${vary(INSTINCT_ACT, seed, turn, u.idx * 3 + k)}。`
               : `${npc(u)} が${vary(SEARCH_ACT, seed, turn, u.idx * 3 + k)}。`;
             lines.push({ text: `　${line}`, cls: "dim" });
           }
