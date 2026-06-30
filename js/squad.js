@@ -498,7 +498,9 @@ window.SCS = window.SCS || {};
       // 回避：攻撃を捨てて見切る。★強い回避型(B3)が、実際にこのターン殴られる距離にいて、攻撃より明確に得な時だけ＝稀な個体テクスチャ。
       {
         const evd = dodgeEvade(u);
-        const canBeHit = u.micros.B3 > 0.6 && evd > 0.5 && knownEnemies(u).some((e) => { const dd = dist(u, e); return dd <= e.melee.reach || (e.ammo > 0 && dd <= e.ranged.effRange + e.ranged.falloff && losClear(e, u)); }); // ★回避巧者(B3)だけが見切る＝性格テクスチャ
+        // ★装填済みで標的が射程内・射線ありなら回避せず撃つ（射手が棒立ち回避で武器を腐らせるDODGEロックを防ぐ／#11）
+        const canEngageRanged = u.ammo > 0 && dist(u, fp) <= u.ranged.effRange + u.ranged.falloff && losClear(u, fp);
+        const canBeHit = !canEngageRanged && u.micros.B3 > 0.6 && evd > 0.5 && knownEnemies(u).some((e) => { const dd = dist(u, e); return dd <= e.melee.reach || (e.ammo > 0 && dd <= e.ranged.effRange + e.ranged.falloff && losClear(e, u)); }); // ★回避巧者(B3)だけが見切る＝性格テクスチャ
         if (canBeHit) {
           const dp = { x: u.x, y: u.y }, d2d = dist(dp, fp), los2d = losClear(dp, fp);
           const incoming = threatAt(u, dp);                                                       // 実際の被ダメ見込み
@@ -892,10 +894,11 @@ window.SCS = window.SCS || {};
         const clauseOf = (u) => {
           const allies = alliesOf(u).filter((a) => a !== u), shielder = allies.find((a) => a.alive && isShielding(a));
           const frontFell = deadThisTurn.some((d) => d.team === u.team && isFrontline(d));
+          const dec = decs.get(u), retreating = (dec && dec.move === "RETREAT") || u.engage === "retreat"; // ★実際に退いているなら攻勢句を出さない（逆因果防止）
           if (u.guarding && u._wardRef) return `味方後衛 ${npc(u._wardRef)} が狙われると見て`;
           if (u.peeling && u.target) return `後衛に食らいつく ${npc(u.target)} を引き剝がそうと`;
-          if (u.engage === "retreat" && frontFell) return `前衛が崩れ戦線が割れたため`;
-          if (u.engage === "retreat") return `押されていると見て`;
+          if (retreating && frontFell) return `前衛が崩れ戦線が割れたため`;
+          if (retreating) return vary(["押されていると見て", "間合いを取り直そうと", "一度退いて立て直そうと"], seed, turn, u.idx + 19);
           if (u.engage === "commit" && shielder) return `${npc(shielder)} が敵火力を引きつける隙を突き`;
           if (u.engage === "commit" && aliveCount(u.team) > otherCount(u.team)) return `数の有利を押し込もうと`;
           if (u._closing) return `長射程の的を黙らせるべく`;
@@ -906,6 +909,9 @@ window.SCS = window.SCS || {};
           if (u.target && u.target.alive && isolationOf(u.target) > 45) return `孤立した標的を逃さじと`;
           return "";
         };
+        // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
+        const attackedThisTurn = (u) => evs.some((e) => e.def === u && e.att.team !== u.team && e.att.alive && ((e.shots || 0) > 0 || ev_isUlt(e)));
+        const ev_isUlt = (e) => !!(e && e.ult && !e.whiff);
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
         const actOf = (u) => {
           const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
@@ -913,7 +919,8 @@ window.SCS = window.SCS || {};
           if (ev && ev.grabHit) { const env = ev.envThrow ? "——溶岩の只中へ叩き込む" : ev.wallThrow ? "——壁際へ叩きつける" : ""; return `${ev.clinch ? "組み合いを制し" : "受けの構えごと"}${t}を投げ飛ばした${env}（−${ev.dmg}）`; }
           if (ev && ev.grabFail) return `${t}に組み付こうと踏み込むが、攻撃を合わされて潰された——隙を晒す`;
           if (ev && ev.grabWhiff) return `${t}へ組み付こうと踏み込むも、空を切った`;
-          if (ev && ev.dodge) return `${t}の攻撃を見切り、紙一重で受け流した`;
+          // ★回避：実際に攻撃を受けた時だけ「見切って受け流した」。誰も攻撃していないターンは中立の構え（因果捏造を防ぐ）。
+          if (ev && ev.dodge) return attackedThisTurn(u) ? `${t}の攻撃を見切り、紙一重で受け流した` : vary(["敵の出方を窺い、身構えた", "隙を見せず構えを取った", "間合いを測り直して様子を見た"], seed, turn, u.idx + 17);
           if (ev && ev.chargeBroke) return `狙いを定める間もなく踏み込まれ、照準が崩された`;
           if (ev && ev.snap) return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`;
           if (ev && ev.charging) return `息を整え、${t}に狙いを定める`;
@@ -926,18 +933,18 @@ window.SCS = window.SCS || {};
           if (dec && dec.move === "RETREAT") return `射線を切って退いた`;
           if (u.engage === "retreat") return `味方の元へ退いて立て直しを図った`;
           if (isShielding(u)) return `敵の只中で盾となり火力を受け止めた`;
-          if (dec && dec.move === "ADVANCE") return `${t}へ間合いを詰めた`;
-          return `その場で射線と退路を計った`;
+          if (dec && dec.move === "ADVANCE") return u.target ? `${t}へ間合いを詰めた` : vary(["敵影を求めて前へ出た", "気配を探りつつ間合いを詰めた", "射線を確保しながら前進した"], seed, turn, u.idx + 18); // ★索敵中（未発見）は「敵へ」と言わない
+          return u.target ? `その場で射線と退路を計った` : `物陰から敵の気配を窺った`;
         };
         // 状態の気配（気力/流れ/気迫/怯み/背水を一語で・最も顕著な1つ）。機構は走っているのに描写に出ていなかった部分を露出。
         const demeanorOf = (u) => {
-          const hp = u.maxHp ? u.hp / u.maxHp : 1;
+          const hp = u.maxHp ? u.hp / u.maxHp : 1, dev = evByAtt.get(u), dhit = dev && (dev.hits || 0) > 0; // 当てた時だけ「勢い」を言う
           if (u._surged) return vary(["仲間の仇とばかりに闘志を燃やし", "むしろ気を吐き", "倒れた味方の分も背負い"], seed, turn, u.idx + 15); // 一匹狼＝味方の死で奮起
           if (u._shaken) return vary(["味方を失い動揺しながらも", "仲間の死に気を呑まれつつ"], seed, turn, u.idx + 16);       // 献身＝味方の死に気落ち
           if (u.flinch > 0) return vary(["体勢を崩されながらも", "たたらを踏みつつ"], seed, turn, u.idx + 5);
           if (hp > 0 && hp < 0.25) return vary(["満身創痍で", "血路を探りつつ", "気力を振り絞り"], seed, turn, u.idx + 6);
           if ((u.resolve || 0) >= 1) return vary(["闘気を滾らせ", "気迫を漲らせ"], seed, turn, u.idx + 7);          // 気迫満タン＝必殺の機
-          if ((u.momentum || 0) > 0.4) return vary(["勢いに乗って", "波に乗り", "畳みかけるように"], seed, turn, u.idx + 8); // 流れ＝勢い
+          if (dhit && (u.momentum || 0) > 0.4) return vary(["勢いに乗って", "波に乗り", "畳みかけるように"], seed, turn, u.idx + 8); // ★流れ＝勢い（当てた時だけ）
           if ((u.stamina || 1) < 0.35) return vary(["息を切らしながら", "足を重そうに", "肩で息をつきつつ"], seed, turn, u.idx + 9); // 気力＝消耗
           if ((u.momentum || 0) < -0.4) return vary(["気圧されながらも", "押されつつも"], seed, turn, u.idx + 10);   // 流れ＝萎え
           return "";
@@ -967,16 +974,19 @@ window.SCS = window.SCS || {};
         while (bi < shown.length) {
           const a = shown[bi], b = shown[bi + 1];
           // ★相互に狙い合っている（真の一騎打ち＝AとBが互いをtarget）時だけ1文に織る。「。一方、Bは」の機械的分断を避ける。
-          const canMerge = a && b && !a.txt && !b.txt && a.u && b.u && b.u !== a.u && a.u.target === b.u && b.u.target === a.u;
+          const isAtk = (av) => av && ((av.shots || 0) > 0 || av.ult || av.grab || av.grabHit);
+          const aev = a && a.u ? evByAtt.get(a.u) : null, bevm = b && b.u ? evByAtt.get(b.u) : null;
+          // ★相互に狙い合う一騎打ち＋少なくとも一方が実攻撃している時だけ1文に織る（両者非攻撃の「対決」捏造を防ぐ）
+          const canMerge = a && b && !a.txt && !b.txt && a.u && b.u && b.u !== a.u && a.u.target === b.u && b.u.target === a.u && (isAtk(aev) || isAtk(bevm));
           if (canMerge) {
-            const dmA = demeanorOf(a.u), bev = evByAtt.get(b.u), strikesBack = bev && bev.def === a.u && (bev.hits || 0) > 0;
+            const dmA = demeanorOf(a.u), strikesBack = bevm && bevm.def === a.u && (bevm.hits || 0) > 0;
             const link = strikesBack ? vary(["——すかさず ", "——間髪入れず ", "——即座に "], seed, turn, bi) : "——対する ";
             const body = `${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dmA ? dmA + "、" : ""}${actOf(a.u)}${link}${npc(b.u)} は ${actOf(b.u)}`;
             lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
             bi += 2;
           } else {
             const conn = bi === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、"], seed, turn, bi * 3);
-            const dm = a.u ? demeanorOf(a.u) : "";
+            const dm = conn ? "" : (a.u ? demeanorOf(a.u) : ""); // ★前置きは上限2＝接続詞を付ける時は気配を落とす（3連スタック防止）
             const body = a.txt ? a.txt : `${conn}${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dm ? dm + "、" : ""}${actOf(a.u)}`;
             lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
             bi += 1;

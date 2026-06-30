@@ -18,7 +18,7 @@ window.SCS = window.SCS || {};
     "均衡分隊": ["中庸バランス", "中庸バランス", "中庸バランス"],
   };
   let cpuName = "鉄壁分隊", arena = "ランダム", mod = "ランダム", form = "散開";
-  let battle = null, autoT = null;
+  let battle = null, autoT = null, lastSeed = null;
 
   function fillSelect(id, opts, cur, on) {
     const sel = $(id); if (!sel) return; sel.innerHTML = "";
@@ -106,8 +106,10 @@ window.SCS = window.SCS || {};
     if (b.formP && b.formP !== "loose") { const f = D.FORMATIONS.find((x) => x.key === b.formP); if (f) out.push({ t: `>> 隊形：${f.name} — ${f.flavor}`, c: "arena" }); }
     return out;
   }
-  function sortie() {
-    const seed = Math.floor(Math.random() * 0x7fffffff) >>> 0;
+  function sortie(fixedSeed) {
+    const seed = fixedSeed != null ? (fixedSeed >>> 0) : (Math.floor(Math.random() * 0x7fffffff) >>> 0);
+    lastSeed = seed; // 同条件で再戦できるよう保持（戦場/戦況/敵/隊形はseed由来なので同seedで完全再現）
+    const reBtn = $("sqRematch"); if (reBtn) reBtn.style.display = "";
     const cpuChoices = cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]);
     battle = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed, arena, mod, form, "ランダム");
     if (SCS.mini) SCS.mini.reset();
@@ -174,7 +176,8 @@ window.SCS = window.SCS || {};
     leave() { stopAuto(); },
   };
   function init() {
-    $("sqSortie").addEventListener("click", sortie);
+    $("sqSortie").addEventListener("click", () => sortie());
+    { const rb = $("sqRematch"); if (rb) rb.addEventListener("click", () => { if (lastSeed != null) sortie(lastSeed); }); }
     $("sqNext").addEventListener("click", nextStep);
     $("sqAuto").addEventListener("click", auto);
     $("sqAnalyze").addEventListener("click", () => { const w = $("sqParamsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderAnalysis(); });
