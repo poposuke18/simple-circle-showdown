@@ -1056,6 +1056,8 @@ window.SCS = window.SCS || {};
         if (counters) notes.push(`回避からの反撃 ${counters}回`); if (grabs) notes.push(`崩し（投げ）成功 ${grabs}回`);
         const loners = cards.filter((c) => c.coop < 0.32), teamers = cards.filter((c) => c.coop > 0.6);
         if (loners.length) notes.push(`一匹狼＝${loners.map((c) => c.name).join("・")}（連携せず単騎で戦う）`);
+        const fk = team === "P" ? formP : formC, avgCoop = sum(cards, "coop") / Math.max(1, cards.length);
+        if (fk && fk !== "loose") { const fname = (D.FORMATIONS.find((f) => f.key === fk) || {}).name || fk; notes.push(`隊形『${fname}』${avgCoop < 0.4 ? "——だが我流が多く崩れがち" : avgCoop > 0.62 ? "——規律が高くよく保てる" : ""}`); }
         // 状況信号
         const won = !!result && result.type === "win" && (result.winner === (team === "P" ? "PLR" : "CPU"));
         const draw = !result || result.type !== "win";
@@ -1076,6 +1078,7 @@ window.SCS = window.SCS || {};
         const advice = [];
         if (backLost && !hasTank) advice.push("盾役が不在。前衛の体に〈誇り〉〈自信〉〈規律〉と〈冷静さ〉を寄せ、狙われても持ちこたえる盾を作る。");
         else if (backLost && hasTank) advice.push("後衛が早期に脱落。前衛の盾度を上げるか、後衛を〈慎重〉寄りにして射点を下げる。");
+        if (advice.length < 2 && fk && fk !== "loose" && avgCoop < 0.38 && !won) advice.push(`選んだ隊形を保てる規律/協調が足りない（我流が多い）。〈規律〉〈順応性〉を寄せるか、隊形を『散開』にして各自の人格に任せる。`);
         if (advice.length < 2 && teamers.length === 0 && !won) advice.push("分隊に連携役がいない（全員が我流寄り）。〈順応性（観察）〉〈誇り（騎士道）〉〈規律〉を一部に寄せ、味方の崩しを活かす体を入れる。");
         if (advice.length < 2 && flanked >= 3) advice.push("側背面を取られすぎ。〈規律〉と〈観察（順応性）〉で隊形と射線を保つ。");
         if (advice.length < 2 && ultIdle) advice.push("気迫を抱え込んで終わった。〈非情さ〉〈リスク選好〉で必殺を早めに切る。");
@@ -1084,7 +1087,8 @@ window.SCS = window.SCS || {};
         if (advice.length < 2 && silent && cards.length > 1 && silent.dealt < mvp.dealt * 0.4) advice.push(`${silent.name}の役割が噛み合っていない。武器と気質（間合い・攻め引き）の組み合わせを見直す。`);
         if (!advice.length && won) advice.push("噛み合った編成。今の役割分担を軸に、より厳しい戦場/編成へ。");
         if (!advice.length) advice.push("決着つかず。〈闘争心〉か〈リスク選好〉を一段上げ、仕掛けを早めて膠着を破る。");
-        return { team, cards, dealt, taken, kills, survivors, notes, verdict, advice: advice.slice(0, 2) };
+        const formName = fk && fk !== "loose" ? ((D.FORMATIONS.find((f) => f.key === fk) || {}).name || fk) : "散開";
+        return { team, cards, dealt, taken, kills, survivors, notes, verdict, advice: advice.slice(0, 2), formation: formName };
       }
       const pC = P.map(unitCard), cC = C.map(unitCard);
       return { turns: turn, arena: arena.name, mod: mod.key === "none" ? null : mod.name, over, result, plr: build("P", pC, cC), cpu: build("C", cC, pC) };
@@ -1092,7 +1096,7 @@ window.SCS = window.SCS || {};
 
     // 撃破帰属（kills）は step 解決後に確定するので、step内で加算する
     return {
-      step, getAnalysis,
+      step, getAnalysis, formP, formC,
       get turn() { return turn; }, get over() { return over; }, get result() { return result; },
       get teams() { return { P, C }; }, get arena() { return { name: arena.name, flavor: arena.flavor }; },
       get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; },

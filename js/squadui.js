@@ -17,7 +17,7 @@ window.SCS = window.SCS || {};
     "撹乱分隊": ["かく乱の火付け", "海千山千の暗殺者", "毒手の刺客"],
     "均衡分隊": ["中庸バランス", "中庸バランス", "中庸バランス"],
   };
-  let cpuName = "鉄壁分隊", arena = "ランダム", mod = "ランダム";
+  let cpuName = "鉄壁分隊", arena = "ランダム", mod = "ランダム", form = "散開";
   let battle = null, autoT = null;
 
   function fillSelect(id, opts, cur, on) {
@@ -29,7 +29,13 @@ window.SCS = window.SCS || {};
     fillSelect("sqArena", ["ランダム"].concat(D.ARENAS.map((a) => a.name)), arena, (v) => (arena = v));
     fillSelect("sqMod", ["ランダム"].concat(D.MODIFIERS.map((m) => m.name)), mod, (v) => (mod = v));
     fillSelect("sqCpu", Object.keys(CPU_SQUADS).concat(["ランダム"]), cpuName, (v) => (cpuName = v));
+    fillSelect("sqForm", D.FORMATIONS.map((f) => f.name), form, (v) => { form = v; renderFormHint(); });
+    renderFormHint();
     renderTabs(); renderDials(); renderRoster();
+  }
+  function renderFormHint() {
+    const el = $("sqFormHint"); if (!el) return;
+    const f = D.FORMATIONS.find((x) => x.name === form); el.textContent = f ? f.flavor : "";
   }
   function renderTabs() {
     // 旧：戦士1/2/3 の重複タブ → 廃止。ロスターのカード自体が選択UI。ここは「どの戦士を設計中か」の指標に置換。
@@ -97,16 +103,18 @@ window.SCS = window.SCS || {};
     const seen = {};
     for (const z of b.terrain || []) { if (z.t === b.baseTerrainKey || seen[z.t] || !TERRAIN_DESC[z.t]) continue; seen[z.t] = 1; out.push({ t: `　地形：${TERRAIN_DESC[z.t]}（局所的に点在）`, c: "brief" }); }
     if (b.modifier) out.push({ t: `>> 戦況：${b.modifier.name} — ${b.modifier.flavor}`, c: "arena" });
+    if (b.formP && b.formP !== "loose") { const f = D.FORMATIONS.find((x) => x.key === b.formP); if (f) out.push({ t: `>> 隊形：${f.name} — ${f.flavor}`, c: "arena" }); }
     return out;
   }
   function sortie() {
     const seed = Math.floor(Math.random() * 0x7fffffff) >>> 0;
     const cpuChoices = cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]);
-    battle = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed, arena, mod);
+    battle = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed, arena, mod, form, "ランダム");
     if (SCS.mini) SCS.mini.reset();
     $("squadDesign").classList.add("hidden");
     $("squadStage").classList.remove("hidden");
     $("sqArenaChip").textContent = battle.arena.name;
+    const fc = $("sqFormChip"); if (fc) { const pf = battle.formP && battle.formP !== "loose" ? (D.FORMATIONS.find((f) => f.key === battle.formP) || {}).name : null; fc.textContent = pf ? ("陣形：" + pf) : ""; fc.style.display = pf ? "" : "none"; }
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";
     $("sqLog").innerHTML = "";
     for (const l of battlefieldBriefing(battle)) append(l.t, l.c);

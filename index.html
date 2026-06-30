@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#080b10" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0630m" />
+  <link rel="stylesheet" href="style.css?v=0630n" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
       <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0630m</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0630n</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
 
@@ -89,13 +89,15 @@
         <div class="cfg-foot" id="sqFoot">
           <label class="fld">戦場<select id="sqArena"></select></label>
           <label class="fld">戦況<select id="sqMod"></select></label>
+          <label class="fld">隊形<select id="sqForm"></select></label>
           <label class="fld">敵分隊<select id="sqCpu"></select></label>
           <button id="sqSortie" class="btn primary big">出撃（3対3）</button>
         </div>
-        <p class="hint">3体の人格＝編成。前衛(壁/近接)が射線と肉薄を引き受け、後衛(射手)が安全に削る——前衛が落ちると後衛が裸に。最後に立っていた分隊の勝ち。</p>
+        <p class="hint" id="sqFormHint"></p>
+        <p class="hint">3体の人格＝編成。前衛(壁/近接)が射線と肉薄を引き受け、後衛(射手)が安全に削る——前衛が落ちると後衛が裸に。隊形は緩い癖＝規律/忍耐/協調の高い体ほど守り、一匹狼は破って突出する。最後に立っていた分隊の勝ち。</p>
       </div>
       <div id="squadStage" class="hidden">
-        <div class="stage-top"><span class="chips-left"><span class="arena-chip" id="sqArenaChip">—</span><span class="mod-chip" id="sqModChip"></span></span><span class="turn-chip" id="sqTurn">TURN 0</span></div>
+        <div class="stage-top"><span class="chips-left"><span class="arena-chip" id="sqArenaChip">—</span><span class="mod-chip" id="sqModChip"></span><span class="mod-chip" id="sqFormChip" style="display:none"></span></span><span class="turn-chip" id="sqTurn">TURN 0</span></div>
         <div class="track-wrap">
           <canvas id="miniSquad" class="mini"></canvas>
           <div class="track-foot">
@@ -148,17 +150,17 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0630m"></script>
-  <script src="js/data.js?v=0630m"></script>
-  <script src="js/derive.js?v=0630m"></script>
-  <script src="js/sim.js?v=0630m"></script>
-  <script src="js/batch.js?v=0630m"></script>
-  <script src="js/squad.js?v=0630m"></script>
-  <script src="js/ui.js?v=0630m"></script>
-  <script src="js/mini.js?v=0630m"></script>
-  <script src="js/story.js?v=0630m"></script>
-  <script src="js/squadui.js?v=0630m"></script>
-  <script src="js/onboard.js?v=0630m"></script>
+  <script src="js/rng.js?v=0630n"></script>
+  <script src="js/data.js?v=0630n"></script>
+  <script src="js/derive.js?v=0630n"></script>
+  <script src="js/sim.js?v=0630n"></script>
+  <script src="js/batch.js?v=0630n"></script>
+  <script src="js/squad.js?v=0630n"></script>
+  <script src="js/ui.js?v=0630n"></script>
+  <script src="js/mini.js?v=0630n"></script>
+  <script src="js/story.js?v=0630n"></script>
+  <script src="js/squadui.js?v=0630n"></script>
+  <script src="js/onboard.js?v=0630n"></script>
   <div id="onboard" class="onboard hidden"></div>
 </body>
 </html>
