@@ -78,7 +78,8 @@ window.SCS = window.SCS || {};
     const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 }));
     const hazards = [];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
-    let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false;
+    let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false, lastGap = null;
+    const snapSeen = {};   // 前状況スナップショット：キー→{text,turn}。静的事実の連続反復を抑える（変化 or 3T経過で再掲）
 
     // ===== 幾何・地形・命中（1v1から移植）=====
     const cx = (x) => clamp(x, 0, field.w), cy = (y) => clamp(y, 0, field.h);
@@ -518,7 +519,8 @@ window.SCS = window.SCS || {};
     function step() {
       if (over) return { turn, lines: [], events: [], over, result };
       turn++;
-      const lines = [], events = [];
+      const lines = [], events = [], envLines = [];
+      const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive }); // ターン開始時(=前状況)の位置/HPを保存＝盤面スナップショット用
       // 0) 索敵：各体のビジョンコーンで敵を視認→チーム共有（即時）＋鮮度減衰。発見/ロストのフィードはこの差分から。
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
@@ -596,7 +598,7 @@ window.SCS = window.SCS || {};
       for (const ev of evs) if (ev.dmg > 0) ev.att.st.dealt += ev.dmg;
       // 状態異常DoT＋地形/ハザード（環境ダメージは膠着判定に算入）
       let envDmg = 0;
-      for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; lines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}`, cls: u.team === "P" ? "plr" : "cpu" }); } }
+      for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}`, cls: u.team === "P" ? "plr" : "cpu" }); } }
       // 燃え広がる炎の延焼＋立つ者を焼く
       for (const h of hazards) { if (h.turns <= 0) continue; h.turns--; for (const u of ALL) { if (u.alive && ptInRect(u, h)) { u.hp = Math.max(0, u.hp - h.dmg); envDmg += h.dmg; } } }
       for (const u of ALL) { if (!u.alive) continue; const lv = terrainDmg(u); if (lv) { u.hp = Math.max(0, u.hp - lv); envDmg += lv; } }
@@ -640,6 +642,50 @@ window.SCS = window.SCS || {};
       const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
       const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
       const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
+      // ===== 前状況スナップショット：その瞬間の盤面を詳細に切り取る（位置/HP/狙い/地形/孤立＝観測可能な状態のみ・決定論）=====
+      //   リアルタイム進行の一瞬を止めて、間合い・陣形・脅威の収束・手負い・地形・形勢を活写。隠しパラ(micros)には触れない。
+      {
+        const palive = (u) => pre.get(u).alive, phpf = (u) => pre.get(u).hp / u.maxHp;             // 前状況＝ターン開始時の生死/HP
+        const aliveP = P.filter(palive), aliveC = C.filter(palive);
+        if (aliveP.length && aliveC.length) {
+          const all0 = aliveP.concat(aliveC);
+          const cen = (arr) => { let x = 0, y = 0; for (const u of arr) { const q = pre.get(u); x += q.x; y += q.y; } return { x: x / arr.length, y: y / arr.length }; };
+          const cp = cen(aliveP), cc = cen(aliveC), gap = Math.hypot(cp.x - cc.x, cp.y - cc.y);
+          const fwd = (u, team) => team === "P" ? pre.get(u).x : -pre.get(u).x;
+          const spear = (arr, team) => arr.slice().sort((a, b) => fwd(b, team) - fwd(a, team))[0];   // 最前（槍先）
+          const TVERB = { 茂み: "茂みに身を潜め", 瓦礫: "瓦礫に身を寄せ", 沼地: "沼地に足を取られ", 高所: "高所に陣取り", 溶岩: "溶岩の際に立ち" };
+          const terrName = (u) => { const t = terrainAt(pre.get(u)); return (t !== baseTerrain && t.name && TVERB[t.name]) ? t.name : null; };
+          const hpBand = (f) => f < 0.25 ? "残りわずか" : f < 0.5 ? "半ば削られ" : "なお健在";
+          const obs = [];
+          // 各観測は sig（不変の中身署名）で連続反復を判定し、text（語り）は vary で多彩化。ord は読み順（情景→緊張）。
+          // A) 間合いと推移（常時・変化する）
+          const steps = Math.max(1, Math.round(gap / (S.baseStep || 4)));
+          let trend = "両軍にらみ合う"; if (lastGap != null) { const d = gap - lastGap; trend = d < -2 ? "じりと間合いを詰める" : d > 2 ? "距離が開いていく" : "間合いは膠着"; }
+          obs.push({ ord: 0, force: true, key: "A", sig: "A", text: `${vary(["両軍の隔たりはおよそ", "彼我の間合いはおよそ", "戦端まではおよそ"], seed, turn, 1)}${steps}歩、${trend}。` });
+          // B) 陣形（両軍の槍先を1行に）
+          if (all0.length >= 3) { const sp = spear(aliveP, "P"), sc = spear(aliveC, "C"); const tp = terrName(sp); if (sp && sc) obs.push({ ord: 1, key: "B", sig: "B" + sp.idx + sc.idx, text: `あなたの分隊は ${npc(sp)} を${vary(["前面に", "槍先に", "先頭に"], seed, turn, 2)}、敵は ${npc(sc)} を押し立て${tp ? `（${npc(sp)}は${TVERB[tp]}）` : ""}${vary(["対峙する", "にじり寄る", "隊列を組む"], seed, turn, 3)}。` }); }
+          // F) 形勢（頭数）
+          { const np = aliveP.length, ncc = aliveC.length; const s = np !== ncc ? `頭数は ${np} 対 ${ncc}、${np > ncc ? "あなたの分隊" : "敵分隊"}が数で押す。` : `${vary(["頭数は互角", "数の上では五分", "頭数は拮抗"], seed, turn, 5)}——${vary(["薄氷の均衡", "一手が雪崩を呼ぶ", "張り詰めた緊張"], seed, turn, 6)}。`; obs.push({ ord: 2, key: "F", sig: "F" + np + "v" + ncc, text: s }); }
+          // E) 地形（特徴的な場所に立つ体）
+          { const inT = all0.filter(terrName); if (inT.length) { const u = inT[turn % inT.length], n = terrName(u); obs.push({ ord: 3, key: "E", sig: "E" + u.idx + n, text: `${npc(u)} は${TVERB[n]}、機を計る。` }); } }
+          // C) 照準の収束（動的）
+          { const tcm = new Map(); for (const u of ALL) if (palive(u) && u.target && pre.has(u.target) && pre.get(u.target).alive) tcm.set(u.target, (tcm.get(u.target) || 0) + 1); let hot = null, hn = 0; for (const [t, n] of tcm) if (n >= 2 && n > hn) { hn = n; hot = t; } if (hot) obs.push({ ord: 4, key: "C", sig: "C" + hot.idx + hn, text: `${npc(hot)} に ${hn} 体の照準が集まり、包囲が締まる。` }); }
+          // D) 手負い（最も削られた生存者・動的）
+          { let w = null, wf = 1; for (const u of all0) { const f = phpf(u); if (f < 0.5 && f < wf) { wf = f; w = u; } } if (w) obs.push({ ord: 5, key: "D", sig: "D" + w.idx + Math.round(wf * 10), text: `${npc(w)} は ${hpBand(wf)}（HP${Math.round(wf * 100)}％）、${vary(["血路を探る", "なお退かない", "踏みとどまる"], seed, turn, 4)}。` }); }
+          // G) 孤立（好機の兆し・動的）
+          { let iso = null, iv = 0; for (const u of all0) { const v = isolationOf(u); if (v > 50 && v > iv) { iv = v; iso = u; } } if (iso) obs.push({ ord: 6, key: "G", sig: "G" + iso.idx, text: `${npc(iso)} が隊列から離れ孤立——突かれれば脆い。` }); }
+          // 選抜：中身が変わった or 3T以上未掲載のものを優先（同一事実の連続反復を抑制）。動的(C/D/G/F)を厚めに・最低3行確保・最大4行。
+          for (const o of obs) { const pv = snapSeen[o.key]; o._fresh = o.force || !pv || pv.sig !== o.sig || (turn - pv.turn >= 3); }
+          const dynPri = { C: 4, G: 4, D: 3, F: 2 };
+          obs.sort((a, b) => (b._fresh - a._fresh) || ((dynPri[b.key] || 1) - (dynPri[a.key] || 1)));
+          const show = [];
+          for (const o of obs) { if (show.length >= 4) break; if (!o._fresh && show.length >= 3) break; show.push(o); snapSeen[o.key] = { sig: o.sig, turn }; }
+          show.sort((a, b) => a.ord - b.ord);   // 表示は情景→緊張の読み順
+          for (const o of show) lines.push({ text: `　${o.text}`, cls: "snap" });
+          lastGap = gap;
+        }
+      }
+      for (const l of envLines) lines.push(l);   // 環境ダメージ(毒/出血/地形)は前状況の直後に
       // 索敵：このターン新たに発見した／見失った敵をフィードに（探知時に記録した発見者を常に名指し。撃たれて倒れても発見の事実は残る＝.aliveで弾かない）
       for (const tm of ["P", "C"]) {
         const army = tm === "P" ? "あなたの分隊" : "敵分隊";
