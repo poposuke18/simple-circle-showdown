@@ -173,6 +173,8 @@ window.SCS = window.SCS || {};
     //   アグロ単体は耐久不足の前衛を早死にさせ逆効果（勝率A/Bで判明）→ 軽減とセットで「狙われる盾」を成立させる。
     const braceMult = (u) => isShielding(u) ? 1 - clamp(0.10 + u.tank * 0.30, 0, 0.35) : 1;
     const imminentBand = (e) => Math.max(e.melee.reach + 18, 34);                // ★『迫る脅威』＝近接到達ベース（前衛が迎撃に動ける早さ・effRangeで全域発火するのは防ぐ）
+    // 攻めたがり＝アンチストールの強制接近/コミット対象。防御的な体（専守・待ち）は対象外＝両者防御的だと"待ち戦"が自然にタイムアップ
+    const restless = (u) => u.micros.A2 >= 0.45 || u.mv[0] > 0;                  // A2攻撃開始の早さ or ①闘争心＝攻めたがり
     // 守るべき後衛味方＋それを差し迫って脅かす敵（かばう用）。最も近接された1組を返す
     function findWard(u) {
       let best = null, bd = Infinity;
@@ -283,7 +285,7 @@ window.SCS = window.SCS || {};
         - u.micros.C6 * (hpFrac < 0.35 ? 1.0 : 0.4) - u.resolve * 0.2 - 0.05;
       const stick = 0.12 + u.micros.B4 * 0.18;                                          // ヒステリシス（規律で状態を保つ・固着しすぎない程度）
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
-      if ((u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;                   // 強制コミット安全弁＝膠着を攻めへ
+      if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3; // 強制コミット安全弁＝膠着を攻めへ（攻撃的な体のみ・防御的な体は待たせる）
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
     }
     // ===== 局所兵力比による分断機動（各個撃破 / defeat in detail）=====
@@ -332,7 +334,7 @@ window.SCS = window.SCS || {};
       const fp = { x: tgt.x, y: tgt.y };
       let pref = prefRangeOf(u);
       // 攻め圧：与ダメが続かない体ほど焦って攻撃価値↑・脅威回避↓（遊兵化＝撃たない超防御型を戦線に引き戻す）
-      const desp = Math.min((u.idleTurns || 0) / 6, 1);
+      const desp = restless(u) ? Math.min((u.idleTurns || 0) / 6, 1) : Math.min((u.idleTurns || 0) / 16, 1) * 0.4; // 攻撃的な体は焦って攻める・防御的な体は焦らず待つ
       let wAtk = (0.7 + u.micros.A2 * 0.4 + u.micros.A6 * 0.2) * (1 + desp * 0.9), wDef = (0.4 + u.micros.C1 * 0.5 + (1 - u.micros.C2) * 0.35) * (1 - desp * 0.55);
       // 交戦状態（OODA）で重みを傾ける：攻勢は肉薄・撤退は退いて味方と立て直す
       let regroupTo = null;
@@ -477,7 +479,8 @@ window.SCS = window.SCS || {};
       if (noDmgTurns >= 3) {
         const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
         for (const u of ALL) {
-          if (!u.alive) continue;
+          if (!u.alive || !restless(u)) continue; // ★防御的な体（専守・待ち）は引き寄せない＝両者防御的な"待ち戦"はタイムアップへ。攻撃的な体だけ強制接触で素早く決着
+
           const e = nearestLiveEnemy(u); if (!e) continue;
           const d = dist(u, e), reach = Math.max(u.melee.reach, u.ranged.effRange);
           if (d <= reach && losClear(u, e)) continue; // 交戦圏内（当てられる距離＋射線）なら据え置き
