@@ -10,6 +10,7 @@ window.SCS = window.SCS || {};
   const DEFAULT = [D.PRESETS["重剣の闘士"], D.PRESETS["鉄律の射手"], D.PRESETS["海千山千の暗殺者"]]; // 補完的な叩き台（壁/射手/遊撃）
   let squad = DEFAULT.map((c) => c.slice());
   let active = 0;
+  let hintsOn = false; // 各ダイヤルの効果説明をインライン表示（スマホはtitleツールチップが効かないため）
   const CPU_SQUADS = {
     "鉄壁分隊": ["専守要塞", "鉄律の射手", "毒手の刺客"],
     "猛攻分隊": ["猪突ガラスキャノン", "重剣の闘士", "海千山千の暗殺者"],
@@ -39,6 +40,10 @@ window.SCS = window.SCS || {};
   function renderDials() {
     $("sqBuildCard").innerHTML = SCS.ui.buildCardHtml(squad[active]);
     const wrap = $("sqDials"); wrap.innerHTML = "";
+    const tog = document.createElement("button"); tog.type = "button"; tog.className = "dial-hints-tog";
+    tog.textContent = hintsOn ? "▾ 各ダイヤルの効果を隠す" : "▸ 各ダイヤルが戦いに効く内容を見る";
+    tog.onclick = () => { hintsOn = !hintsOn; renderDials(); };
+    wrap.appendChild(tog);
     D.MACROS.forEach((mac, i) => {
       const row = document.createElement("div"); row.className = "macro";
       const label = document.createElement("label"); label.className = "macro-lbl"; label.textContent = mac.name; label.title = SCS.ui.macroHint(i);
@@ -46,7 +51,9 @@ window.SCS = window.SCS || {};
       mac.poles.forEach((p, ci) => { const o = document.createElement("option"); o.value = ci; o.textContent = p; sel.appendChild(o); });
       sel.value = squad[active][i];
       sel.onchange = () => { squad[active][i] = parseInt(sel.value, 10); renderDials(); renderRoster(); renderTabs(); };
-      row.appendChild(label); row.appendChild(sel); wrap.appendChild(row);
+      row.appendChild(label); row.appendChild(sel);
+      if (hintsOn) { const h = document.createElement("div"); h.className = "macro-hint"; h.textContent = SCS.ui.macroHint(i); row.appendChild(h); }
+      wrap.appendChild(row);
     });
   }
   function renderRoster() {

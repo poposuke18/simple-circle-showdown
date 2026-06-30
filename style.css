@@ -222,8 +222,11 @@ h3::before { content: "▌ "; }
 .pg-stats { color: var(--green2); font-size: 11px; margin-top: 7px; }
 .pg-note { display: block; color: var(--dim); font-size: 10.5px; margin-top: 3px; }
 .macros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 16px; }
-.macro { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 3px 2px; }
+.macro { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 3px 2px; }
 .macro-lbl { color: var(--dim); font-size: 12.5px; }
+.macro-hint { flex: 0 0 100%; color: var(--dim); font-size: 11px; line-height: 1.45; padding: 1px 0 4px; }
+.dial-hints-tog { grid-column: 1 / -1; width: 100%; text-align: left; background: rgba(255, 207, 92, .05); border: 1px dashed var(--line2); color: var(--amber); font-family: var(--mono); font-size: 11.5px; letter-spacing: .5px; padding: 6px 9px; border-radius: 3px; cursor: pointer; margin-bottom: 4px; }
+.dial-hints-tog:hover { border-color: var(--amber); }
 select, input[type="number"] {
   background: #04100a; color: var(--green); border: 1px solid var(--line2); border-radius: 2px;
   padding: 4px 6px; font-family: var(--mono); font-size: 12.5px; cursor: pointer; max-width: 56%;

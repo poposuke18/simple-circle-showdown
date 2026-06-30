@@ -147,7 +147,7 @@ window.SCS = window.SCS || {};
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
       Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, _focusCount: 0, _wardRef: null,
-        ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0,
+        ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0, _closing: false,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
       return u;
     }
@@ -234,7 +234,7 @@ window.SCS = window.SCS || {};
     function applyMove(u, fp, move) {
       const st = stepLen(u, u), dx = fp.x - u.x, dy = fp.y - u.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       let nx = u.x, ny = u.y;
-      if (move === "ADVANCE") { nx += ux * st; ny += uy * st; }
+      if (move === "ADVANCE") { const sp = u._closing ? 1.25 : 1; nx += ux * st * sp; ny += uy * st * sp; } // 突撃時は接近速度UP（被弾時間短縮）＝遠距離型を割る
       else if (move === "RETREAT") { nx -= ux * st; ny -= uy * st; }
       else if (move === "STRAFE_L") { nx += -uy * st; ny += ux * st; }
       else if (move === "STRAFE_R") { nx += uy * st; ny += -ux * st; }
@@ -341,6 +341,10 @@ window.SCS = window.SCS || {};
         wAtk *= 0.55; wDef *= 1.6; pref = Math.min(maxDist, pref + 18);
         let bd = Infinity; for (const a of alliesOf(u)) { if (a.alive && a !== u) { const d = dist(u, a); if (d < bd) { bd = d; regroupTo = a; } } } // 最寄り味方へ寄って再集結
       }
+      // 突撃（ギャップクローズ）：自分より長射程の敵へ commit で詰める体は接近を速める＝被弾時間を縮めて遠距離型を割る手段。
+      //   遠距離＋高HPの防御スタック(亀)が近接・攻撃型を一方的に溶かす偏りの是正。squad内の移動のみ（武器/HP/1v1は不変）。
+      const myReach = Math.max(u.ranged.effRange, u.melee.reach), tgtReach = Math.max(tgt.ranged.effRange, tgt.melee.reach);
+      u._closing = u.engage === "commit" && tgtReach > myReach + 12 && dist(u, fp) > u.melee.reach;
       // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）
       const ward = isFrontline(u) ? findWard(u) : null;
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
