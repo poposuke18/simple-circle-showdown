@@ -367,9 +367,16 @@ body.ob-open::before { content: ""; position: fixed; inset: 0; z-index: 10000; b
 /* ── 分隊戦 ── */
 .sq-roster { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .sq-rmini { flex: 1 1 30%; min-width: 150px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line); border-left: 3px solid var(--dim2); background: rgba(7, 21, 13, .35); border-radius: 3px; padding: 6px 9px; cursor: pointer; }
-.sq-rmini.active { border-left-color: var(--plr); background: rgba(92, 200, 255, .07); }
+.sq-rmini.active { border-left-color: var(--plr); background: rgba(92, 200, 255, .07); box-shadow: 0 0 0 1px var(--plr) inset; }
 .sq-rmini:hover { border-color: var(--line2); }
 .sqr-n { color: var(--plr); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+.sqr-edit { color: var(--amber); font-size: 9.5px; font-weight: 700; letter-spacing: 1px; border: 1px solid var(--amber); border-radius: 2px; padding: 0 4px; margin-left: 4px; vertical-align: middle; }
+/* 設計中インジケータ（旧・重複タブの置換） */
+.sq-editing { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; padding: 5px 9px; border-left: 3px solid var(--amber); background: rgba(255, 207, 92, .05); border-radius: 3px; font-size: 12.5px; }
+.sqe-lead { color: var(--dim); letter-spacing: 1px; }
+.sq-editing b { color: var(--amber); }
+.sqe-role { color: var(--green2); }
+.sqe-hint { color: var(--dim); font-size: 11px; margin-left: auto; }
 .sqr-role { color: var(--amber); font-size: 12.5px; }
 .sqr-tank { align-self: flex-start; color: #0b1a10; background: var(--gold); font-size: 10.5px; font-weight: 700; letter-spacing: 1px; padding: 0 5px; border-radius: 2px; }
 .sqr-w { color: var(--green2); font-size: 11.5px; }

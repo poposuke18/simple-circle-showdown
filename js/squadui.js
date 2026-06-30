@@ -31,8 +31,10 @@ window.SCS = window.SCS || {};
     renderTabs(); renderDials(); renderRoster();
   }
   function renderTabs() {
-    const t = $("sqTabs"); if (!t) return; t.innerHTML = "";
-    for (let i = 0; i < SIZE; i++) { const b = document.createElement("button"); b.className = "sq-tab" + (i === active ? " active" : ""); b.textContent = `戦士 ${i + 1}`; b.onclick = () => { active = i; renderTabs(); renderDials(); renderRoster(); }; t.appendChild(b); }
+    // 旧：戦士1/2/3 の重複タブ → 廃止。ロスターのカード自体が選択UI。ここは「どの戦士を設計中か」の指標に置換。
+    const t = $("sqTabs"); if (!t) return;
+    const role = SCS.ui.styleOf(SCS.derive.buildUnit("P", squad[active]));
+    t.innerHTML = `<span class="sqe-lead">設計中 ▸</span> <b>戦士${active + 1}</b> <span class="sqe-role">${role}</span><span class="sqe-hint">上のカードを選んで切替</span>`;
   }
   function renderDials() {
     $("sqBuildCard").innerHTML = SCS.ui.buildCardHtml(squad[active]);
@@ -43,7 +45,7 @@ window.SCS = window.SCS || {};
       const sel = document.createElement("select");
       mac.poles.forEach((p, ci) => { const o = document.createElement("option"); o.value = ci; o.textContent = p; sel.appendChild(o); });
       sel.value = squad[active][i];
-      sel.onchange = () => { squad[active][i] = parseInt(sel.value, 10); renderDials(); renderRoster(); };
+      sel.onchange = () => { squad[active][i] = parseInt(sel.value, 10); renderDials(); renderRoster(); renderTabs(); };
       row.appendChild(label); row.appendChild(sel); wrap.appendChild(row);
     });
   }
@@ -54,7 +56,8 @@ window.SCS = window.SCS || {};
       const tk = SCS.squadTank ? SCS.squadTank(squad[i]) : null; // 盾資質（目立つ×持ちこたえる）を設計時に可視化
       const shield = tk && tk.isTank ? `<span class="sqr-tank">盾</span>` : "";
       const d = document.createElement("div"); d.className = "sq-rmini" + (i === active ? " active" : "");
-      d.innerHTML = `<span class="sqr-n">戦士${i + 1}</span><span class="sqr-role">${role}</span>${shield}<span class="sqr-w">${u.ranged.name}＋${u.melee.name}</span><span class="sqr-hp">HP${u.maxHp}</span>`;
+      d.title = "クリックで設計";
+      d.innerHTML = `<span class="sqr-n">戦士${i + 1}${i === active ? ' <span class="sqr-edit">設計中</span>' : ''}</span><span class="sqr-role">${role}</span>${shield}<span class="sqr-w">${u.ranged.name}＋${u.melee.name}</span><span class="sqr-hp">HP${u.maxHp}</span>`;
       d.onclick = () => { active = i; renderTabs(); renderDials(); renderRoster(); };
       r.appendChild(d);
     }
