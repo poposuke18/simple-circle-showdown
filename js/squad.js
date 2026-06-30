@@ -163,15 +163,16 @@ window.SCS = window.SCS || {};
     // ===== 索敵・視界（ビジョンコーン）[[索敵・視界システム設計]] =====
     //   各体に視界扇型（前方FOV・距離Range）＋隠密。敵がコーン+射線に入れば発見。観戦者は全可視・AIだけ発見済みに反応。
     //   静的（人格＋アリーナ規模由来）＝乱数非消費・決定論。
-    const baseSight = maxDist * 0.42;
+    const baseSight = maxDist * 0.30;   // ★視界を締める：戦場のほぼ全域→一部だけ＝索敵が成立（即発見しない）。狙撃射程より短く＝先に撃たれる緊張も
     for (const u of ALL) {
       const m = u.micros;
-      u.sightR = baseSight * clamp(0.7 + m.D1 * 0.6 + m.C5 * 0.25 + m.A1 * 0.3, 0.5, 1.8);     // 視界距離：相手読み/冷静/遠距離選好で伸びる＝斥候
-      u.sightHalf = (35 + m.D1 * 40 + clamp(0.5 + u.mv[5] * 0.5, 0, 1) * 15) * Math.PI / 180;  // 視界半角(rad)：相手読み/順応で広い周辺視・低いとトンネル視野
+      u.sightR = baseSight * clamp(0.6 + m.D1 * 0.5 + m.C5 * 0.2 + m.A1 * 0.25, 0.5, 1.5);     // 視界距離：相手読み/冷静/遠距離選好で伸びる＝斥候
+      u.sightHalf = (28 + m.D1 * 30 + clamp(0.5 + u.mv[5] * 0.5, 0, 1) * 10) * Math.PI / 180;  // 視界半角(rad)：全角56°(トンネル)〜136°(広い斥候)。相手読み/順応で広い
       u.stealth = clamp(0.5 * m.B1 + 0.4 * m.D4 + 0.3 * Math.max(0, -u.mv[6]) + 0.2 * (1 - m.B5), 0, 1); // 隠密：遮蔽利用/狡猾/手段選ばず/気配消し
     }
     const cen = (t) => { let x = 0, y = 0, n = 0; for (const u of t) { x += u.x; y += u.y; n++; } return { x: x / n, y: y / n }; };
-    const homeOf = { P: cen(C), C: cen(P) };          // 各チームの「敵の居た方向」＝索敵の向き先（固定・現在位置は使わない＝未発見の敵位置を覗かない）
+    const cenLive = (t) => { let x = 0, y = 0, n = 0; for (const u of t) if (u.alive) { x += u.x; y += u.y; n++; } return n ? { x: x / n, y: y / n } : null; }; // 生存敵の重心＝本能(嗅覚)で向かう先
+    const homeOf = { P: cen(C), C: cen(P) };          // 各チームの「敵の居た方向」＝索敵の漠然とした向き先（開幕位置）
     const known = { P: new Map(), C: new Map() };     // team → Map(敵 → {lastSeen, x, y})。即時共有＋鮮度減衰
     const DETECT_DECAY = 3;                            // 全員が見失ってこのターン超でロスト＝再索敵
 
@@ -364,10 +365,14 @@ window.SCS = window.SCS || {};
     function decide(u) {
       const tgt = u.target;
       if (!tgt) {
-        // ★索敵：敵を発見していない＝敵の居た方向（または最後の既知位置＝ロスト地点）へ前進しながら探す。faceを進行方向に向けコーンが前方を掃く。
-        let sx = homeOf[u.team].x, sy = homeOf[u.team].y, seen = -1;
-        for (const info of known[u.team].values()) if (info.lastSeen > seen) { seen = info.lastSeen; sx = info.x; sy = info.y; } // ロストした敵の最後の既知位置を優先
-        const sp = { x: sx, y: sy };
+        // ★索敵：戦闘のプロらしく「敵の居そうな方」へ前進。鋭い相手読みD1＝第六感(嗅覚)で実際の敵集団へ直行、鈍い＝中央へ漠然と。faceを進行方向に＝コーンが前方を掃く。
+        let sp = null, seen = -1;
+        for (const info of known[u.team].values()) if (info.lastSeen > seen) { seen = info.lastSeen; sp = { x: info.x, y: info.y }; } // ロストした敵は最後の既知位置へ詰め直す（最優先）
+        if (!sp) {
+          const inst = u.micros.D1, ec = cenLive(enemiesOf(u)) || { x: field.w / 2, y: u.y };
+          const gx = (u.x + field.w / 2) / 2, gy = u.y;       // 鈍い索敵＝中央寄りへ漠然と
+          sp = { x: gx + (ec.x - gx) * inst, y: gy + (ec.y - gy) * inst }; // 本能で敵重心へ寄せる（D1鋭いほど直行）
+        }
         if (Math.hypot(sp.x - u.x, sp.y - u.y) < 6) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null, searchDir: sp }; // 索敵地点に到達＝その場で警戒
         const np = applyMove(u, sp, "ADVANCE");
         return { move: "ADVANCE", attack: "NONE", newPos: np, target: null, searchDir: sp };
