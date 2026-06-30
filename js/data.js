@@ -169,6 +169,15 @@ window.SCS = window.SCS || {};
     { key: "inferno", name: "火の海", flavor: "そこかしこで炎が噴き上がる", ignite: true, weight: 2 },
   ];
 
+  // ===== 隊形（分隊の作戦・プレーヤーが選ぶ・緩いベースパターン。[[分隊戦設計]]Sprint C-2）=====
+  // 戦闘判断が常に優先で、隊形は「普段どこに居たがるか」を弱く形作るだけ。遂行力は規律/忍耐/協調で決まる（一匹狼は守らない）。
+  const FORMATIONS = [
+    { key: "loose", name: "散開", flavor: "間隔を広く各自で戦う・縛り無し（一匹狼向き・AoE/集中を避ける）" },
+    { key: "line", name: "戦列", flavor: "横一線で正対し突出しない（守りのキルゾーン・規律/忍耐で固い）" },
+    { key: "wedge", name: "楔", flavor: "密集して一点を突破・集中砲火（攻めの隊形）" },
+    { key: "circle", name: "円陣", flavor: "後衛を内に抱え前衛が外を向く（キャリー保護）" },
+  ];
+
   // ===== ストーリーモード（[[ストーリーモード設計]]）=====
   // 敵＝看板キャラ：name/flavor(口上)/scout(偵察ヒント)/lesson(教える事)/choices(10択人格)/arena+mod(ホーム固定)/boss。
   // choices=null は鏡（プレイヤーの直近勝利ビルドを実行時に流し込む）。撃破で choices が「流派」プリセットとして解禁。
@@ -200,5 +209,5 @@ window.SCS = window.SCS || {};
     { key: "ch5", title: "第5章 極", theme: "総合と自己理解", enemies: ["ogre", "mirror"] },
   ];
 
-  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS, ENEMIES, CHAPTERS };
+  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS, FORMATIONS, ENEMIES, CHAPTERS };
 })();

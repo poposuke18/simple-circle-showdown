@@ -70,8 +70,11 @@ window.SCS = window.SCS || {};
     return clamp(0.35 + 0.32 * Math.max(0, adapt) + 0.30 * Math.max(0, pride) - 0.25 * Math.max(0, -pride) + 0.20 * Math.max(0, disc) - 0.28 * Math.max(0, conf) - 0.22 * Math.max(0, belli), 0, 1);
   }
 
-  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName) {
+  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName) {
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
+    // 隊形（プレーヤーの作戦・既定=散開）。CPU側未指定はランダム（seed由来＝決定論）。
+    const formKey = (name, salt) => { if (name && name !== "ランダム") { const f = D.FORMATIONS.find((x) => x.key === name || x.name === name); if (f) return f.key; } if (!name) return "loose"; return D.FORMATIONS[SCS.makeRNG((seed ^ salt) >>> 0).int(D.FORMATIONS.length)].key; };
+    const formP = formKey(formPName, 0x111), formC = formKey(formCName, 0x222);
 
     // --- 戦場・戦況（makeBattleと同じ選び方）---
     let arena;
@@ -177,7 +180,7 @@ window.SCS = window.SCS || {};
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u), coop = coopRating(u); // タンク度＝目立つ×持ちこたえる／協調性＝チームプレイ度
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, coop, _opened: null, _focusCount: 0, _wardRef: null,
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, coop, form: team === "P" ? formP : formC, _opened: null, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0, _closing: false,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0, dodges: 0, counters: 0, grabs: 0, grabHits: 0, wasFlanked: 0, winded: 0, resPeak: 0 } });
       return u;
@@ -372,6 +375,23 @@ window.SCS = window.SCS || {};
       let bd = Infinity; for (const a of alliesOf(e)) { if (!a.alive || a === e) continue; const d = dist(e, a); if (d < bd) bd = d; }
       return bd === Infinity ? maxDist : bd;
     }
+    // ===== 隊形スロット（緩いベースパターン・相対位置）。ランク=前→後(winDist順)。散開はスロット無し。=====
+    function formSlot(fk, rank, n) {
+      if (fk === "line") return { fx: 0, fy: (rank - (n - 1) / 2) * 1.0 };                    // 横一線（敵に正対）
+      if (fk === "wedge") return rank === 0 ? { fx: 1, fy: 0 } : { fx: -0.6, fy: (rank % 2 ? 1 : -1) * 0.8 }; // 楔（先頭が点・後続が翼）
+      if (fk === "circle") return rank < n - 1 ? { fx: 0.6, fy: (rank - (n - 2) / 2) * 0.9 } : { fx: -0.9, fy: 0 }; // 前衛screen＋最後尾carryを後ろに匿う
+      return null;
+    }
+    function formSlotWorld(u) {
+      if (!u.form || u.form === "loose") return null;
+      const al = alliesOf(u).filter((a) => a.alive); const n = al.length; if (n <= 1) return null;
+      const rank = al.slice().sort((p, q) => p.winDist - q.winDist).indexOf(u);
+      const off = formSlot(u.form, rank, n); if (!off) return null;
+      let ay = 0; for (const a of al) ay += a.y; ay /= n;
+      // ★前後(fx)は自分のx基準で控えめ＝各体の射程の好み(winDist)を壊さない／左右(fy)は重心基準で隊形の形を作る
+      const fwd = u.team === "P" ? 1 : -1, SP = 14;
+      return { x: cx(u.x + off.fx * SP * fwd * 0.5), y: cy(ay + off.fy * SP) };
+    }
 
     // ===== 必殺の打ち時（温存経済）：即撃ちでなく仕留め確/側背面/窮地でここぞと切る。死蔵防止に強制解放弁 =====
     function ultReady(u, tgt, pos, d2) {
@@ -447,6 +467,17 @@ window.SCS = window.SCS || {};
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
       const guardScale = ward ? 0.6 + u.micros.B6 * 0.45 + u.micros.C6 * 0.45 : 0; // 実距離ベース＝offenseと同オーダーで実際に割り込む
       const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
+      // 隊形（緩いベースパターン）：作戦スロットへ弱く寄る。遂行力=規律B4+忍耐(mv3)+協調coop。自targetが交戦圏に近いほど戦闘優先で隊形を捨てる。
+      let formSlotPos = null, formW = 0;
+      if (u.form && u.form !== "loose") {
+        formSlotPos = formSlotWorld(u);
+        if (formSlotPos) {
+          const holdAbility = clamp(0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3, 0, 1.1); // 一匹狼/気まぐれは守らない
+          const reach = Math.max(u.melee.reach, u.ranged.effRange);
+          const urgency = clamp(1 - (dist(u, fp) - reach) / 45, 0, 1);                          // 交戦圏に近いほど隊形より戦闘
+          formW = holdAbility * (1 - urgency) * 0.10;                                            // ★ごく小さい＝接近フェーズに見える緩い癖。戦闘判断が常に上回る＝支配しない・罠にしない
+        }
+      }
       let best = null;
       for (const mv of MOVES) {
         const np = applyMove(u, fp, mv), d2 = dist(np, fp), los2 = losClear(np, fp);
@@ -459,7 +490,8 @@ window.SCS = window.SCS || {};
         const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
         const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * guardScale : 0; // 割り込み位置に近いほど良い（実距離）
         const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0; // 撤退時＝味方へ寄る再集結
-        const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + (mv === "HOLD" ? 0.2 : 0);
+        const formTerm = formSlotPos ? -(dist(np, formSlotPos) / maxDist) * 22 * formW : 0;     // 隊形スロットへ緩く寄る
+        const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm + (mv === "HOLD" ? 0.2 : 0);
         if (!best || v > best.v) best = { v, move: mv, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2 };
       }
       // ＝＝個体テクスチャの追加候補（チーム評価の後段に乗せる・既存の集中砲火/盾/かばうは不変）＝＝
