@@ -690,13 +690,13 @@ window.SCS = window.SCS || {};
       else if (hitN === 0 && shown === 0) {
         const searchPhase = (known.P.size + known.C.size) === 0;
         if (searchPhase) {                                              // 索敵中：誰が探しているかを個体で描く（嗅覚=D1が鋭い体は第六感で敵方へ）
-          const sr = ALL.filter((u) => u.alive);
+          const sr = ALL.filter((u) => u.alive); let prevAct = null;
           for (let k = 0, n = 0; k < sr.length && n < 2; k++, n++) {
-            const u = sr[(turn * 2 + k) % sr.length];
-            const line = u.micros.D1 >= 0.6
-              ? `${npc(u)} が${vary(INSTINCT_ACT, seed, turn, u.idx * 3 + k)}。`
-              : `${npc(u)} が${vary(SEARCH_ACT, seed, turn, u.idx * 3 + k)}。`;
-            lines.push({ text: `　${line}`, cls: "dim" });
+            const u = sr[(turn * 2 + k) % sr.length], pool = u.micros.D1 >= 0.6 ? INSTINCT_ACT : SEARCH_ACT;
+            let off = 0, act = vary(pool, seed, turn, u.idx * 3 + k);
+            while (act === prevAct && off < pool.length) { off++; act = vary(pool, seed, turn, u.idx * 3 + k + off); } // 同ターン同文を回避（決定論）
+            lines.push({ text: `　${npc(u)} が${act}。`, cls: "dim" });
+            prevAct = act;
           }
         } else lines.push({ text: `　${vary(MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" });
       }
