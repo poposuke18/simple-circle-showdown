@@ -394,9 +394,15 @@ window.SCS = window.SCS || {};
     }
 
     // ===== 必殺の打ち時（温存経済）：即撃ちでなく仕留め確/側背面/窮地でここぞと切る。死蔵防止に強制解放弁 =====
-    function ultReady(u, tgt, pos, d2) {
+    function ultReady(u, tgt, pos, d2, los) {
       const meleeOk = d2 <= u.melee.reach, rn = !meleeOk, w = meleeOk ? u.melee : u.ranged;
       const desperate = u.hp / u.maxHp < 0.28;
+      const forced = (u._ultHold || 0) >= 4;
+      // ★命中見込みが低い時は必殺を切らない（空撃ち抑制／#12）。窮地・強制解放は捨て身なので除く。
+      if (!desperate && !forced) {
+        const hcEst = meleeOk ? meleeHit(tgt, tgt) : (los ? rangedHit(u.ranged, u, tgt, tgt, d2, los, false) : 0);
+        if (hcEst < 0.42) return false;
+      }
       // ★無駄撃ち抑制（overkill回避）：通常攻撃で仕留まる相手に必殺は切らない（窮地を除く）＝切り札を取っておく
       const normalEst = meleeOk ? u.melee.rate * 0.9 * u.melee.damage : u.ranged.fireRate * u.ranged.accuracy * u.ranged.damage;
       if (tgt.hp <= normalEst && !desperate && (u._ultHold || 0) < 4) return false;       // 通常で落ちる＝温存（強制解放と窮地は除く）
@@ -412,7 +418,7 @@ window.SCS = window.SCS || {};
     function chooseAttack(u, tgt, pos, d2, los2) {
       if (u.reloadLeft > 0) return { attack: "RELOAD" };
       const meleeOk = d2 <= u.melee.reach, rangedOk = los2 && u.ammo > 0 && d2 <= u.ranged.effRange + u.ranged.falloff;
-      if (u.resolve >= 1 && ultReady(u, tgt, pos, d2)) { // 必殺：好機なら解放／好機でなければ温存して通常攻撃を続ける
+      if (u.resolve >= 1 && ultReady(u, tgt, pos, d2, los2)) { // 必殺：好機なら解放／好機でなければ温存して通常攻撃を続ける
         if (meleeOk) return { attack: "ULT", ultKind: "melee" };
         if (los2 && u.ammo > 0) return { attack: "ULT", ultKind: "ranged" };
       }
@@ -656,8 +662,11 @@ window.SCS = window.SCS || {};
         for (const u of ALL) {
           if (!u.alive || !restless(u)) continue; // ★防御的な体（専守・待ち）は引き寄せない＝両者防御的な"待ち戦"はタイムアップへ。攻撃的な体だけ強制接触で素早く決着
           const e = nearestKnownEnemy(u); if (!e) continue; // ★発見済みの敵にのみ引き寄せ＝索敵中（未発見）は引っ張らない（未発見の敵位置を覗かない）
-          const d = dist(u, e), reach = Math.max(u.melee.reach, u.ranged.effRange);
-          if (d <= reach && losClear(u, e)) continue; // 交戦圏内（当てられる距離＋射線）なら据え置き
+          const d = dist(u, e);
+          // ★射程でなく「現に削れているか(idleTurns)」で据え置き判定（#13）：近接の空振りオーバーシュート振動（射程内なのに0ダメで往復）を放置しないため。
+          const inMelee = d <= u.melee.reach && losClear(u, e);
+          const rangedEngaging = u.ranged.effRange > u.melee.reach + 12 && d <= u.ranged.effRange && losClear(u, e) && (u.idleTurns || 0) < 3; // 本物の射手が射程内で現に削れている時だけ据え置く
+          if (inMelee || rangedEngaging) continue;
           const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
           const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
         }
