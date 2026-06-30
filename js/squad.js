@@ -650,6 +650,67 @@ window.SCS = window.SCS || {};
         }
         for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った——気配を探り直す。`, cls: "dim" });
       }
+      // ===== チーム連携の活写：同時動作を「味方が〜なので OOは XXした」の因果で文章化（決定論）=====
+      //   sim が既に持つチーム挙動（役割・OODA交戦状態・かばう/剝がし/集中）を、観測可能な状態（生死/HP/役割/被集中/孤立）だけを根拠に文章化。隠しパラには触れない。
+      //   順序は「設定→結末」：連携(この描写)→結果(奇襲/撃破/必殺)。同時性は接続詞（一方／時を同じくして…）で明示。顕著な動き上位3＋集中砲火の束ね。撃破はKO行が描く。
+      {
+        const otherCount = (tm) => aliveCount(tm === "P" ? "C" : "P");
+        const fl2 = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面から" : "";
+        // 集中砲火（同一標的に2体以上が実ダメ）＝チームの集中を1件に束ね、先頭ビートへ。束ねた攻め手は個別に出さない。
+        let focus = null; { const m = new Map(); for (const ev of evs) if ((ev.dmg || 0) > 0 && !ev.ult) m.set(ev.def, (m.get(ev.def) || []).concat(ev)); for (const [tgt, list] of m) if (list.length >= 2) { const sum = list.reduce((s, e) => s + e.dmg, 0); if (!focus || sum > focus.sum) focus = { tgt, list, sum, team: list[0].att.team }; } }
+        const focusAtts = new Set(focus ? focus.list.map((e) => e.att) : []);
+        // 因果クローズ（「味方が〜なので」の前段。観測可能な根拠のみ）
+        const clauseOf = (u) => {
+          const allies = alliesOf(u).filter((a) => a !== u), shielder = allies.find((a) => a.alive && isShielding(a));
+          const frontFell = deadThisTurn.some((d) => d.team === u.team && isFrontline(d));
+          if (u.guarding && u._wardRef) return `味方後衛 ${npc(u._wardRef)} が狙われると見て`;
+          if (u.peeling && u.target) return `後衛に食らいつく ${npc(u.target)} を引き剝がそうと`;
+          if (u.engage === "retreat" && frontFell) return `前衛が崩れ戦線が割れたため`;
+          if (u.engage === "retreat") return `押されていると見て`;
+          if (u.engage === "commit" && shielder) return `${npc(shielder)} が敵火力を引きつける隙を突き`;
+          if (u.engage === "commit" && aliveCount(u.team) > otherCount(u.team)) return `数の有利を押し込もうと`;
+          if (u._closing) return `長射程の的を黙らせるべく`;
+          if (aliveCount(u.team) === 1) return `ただ一人生き残り`;
+          if (u.target && u.target.alive && isolationOf(u.target) > 45) return `孤立した標的を逃さじと`;
+          return "";
+        };
+        // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
+        const actOf = (u) => {
+          const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
+          if (ev && ev.ult && !ev.whiff) return `必殺・${ev.ultName}を解き放った`;
+          if (ev && ev.attack === "RANGED" && (ev.hits || 0) > 0) return `${t}を狙い撃った（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
+          if (ev && ev.attack === "MELEE" && (ev.hits || 0) > 0) return `${fl2(ev)}${t}へ斬り込んだ（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
+          if (ev && (ev.shots || 0) > 0 && (ev.hits || 0) === 0) return `${t}を狙うも捉えきれず`;
+          if (u.guarding) return `身を割り込ませて盾となった`;
+          const dec = decs.get(u);
+          if (dec && dec.move === "RETREAT") return `射線を切って退いた`;
+          if (u.engage === "retreat") return `味方の元へ退いて立て直しを図った`;
+          if (dec && dec.move === "ADVANCE") return `${t}へ間合いを詰めた`;
+          return `その場で射線と退路を計った`;
+        };
+        const beats = [];
+        if (focus) { const army = focus.team === "P" ? "あなたの分隊" : "敵分隊", v = isolationOf(focus.tgt) > 45 ? `孤立した ${npc(focus.tgt)}を囲んで各個撃破にかかった` : `${npc(focus.tgt)}へ火力を一点に集中した`; beats.push({ sal: 50, txt: `${army}は ${v}（計 −${Math.min(focus.sum, focus.tgt.maxHp)}）` }); }
+        for (const u of ALL) {
+          if (!u.alive) continue; const ev = evByAtt.get(u);
+          if (ev && ev._killed) continue;        // 撃破はKO行が描く
+          if (focusAtts.has(u)) continue;        // 集中砲火に束ねた攻め手は個別に出さない
+          let sal = 0;
+          if (u.guarding) sal += 6; if (isShielding(u)) sal += 5; if (u.peeling) sal += 5;
+          if (ev && ev.crit) sal += 4; if (ev && ev.flank) sal += 3;
+          if (u.engage === "retreat") sal += 3; else if (u.engage === "commit") sal += 2;
+          if (ev && (ev.dmg || 0) > 0) sal += Math.min(4, ev.dmg / 15);
+          const clause = clauseOf(u); if (clause) sal += 2;
+          if (sal < 3) continue;
+          beats.push({ sal, u, clause });
+        }
+        beats.sort((a, b) => b.sal - a.sal);
+        beats.slice(0, 3).forEach((bt, i) => {
+          const conn = i === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、", "同時に、"], seed, turn, i * 3);
+          const body = bt.txt ? bt.txt : `${conn}${bt.clause ? bt.clause + "、" : ""}${npc(bt.u)} は ${actOf(bt.u)}`;
+          lines.push({ text: `── ${body}。`, cls: i === 0 ? "cm" : "ex" });
+        });
+      }
+      // ===== 結果（連携の帰結を後に置く）：奇襲→撃破→必殺 =====
       // 奇襲：本物の不意打ちだけ＝未発見のまま会心を当てた一撃（撃破はKO行が背後/側面で描くので除外）。1戦に1度きり＝特別感を保つ。
       if (!ambushShown) { let amb = null; for (const ev of evs) if ((ev.dmg || 0) > 0 && ev.crit && !ev._killed && !known[ev.att.team === "P" ? "C" : "P"].has(ev.att) && (!amb || ev.dmg > amb.dmg)) amb = ev; if (amb) { lines.push({ text: `── 奇襲！ ${npc(amb.att)} が死角から ${npc(amb.def)} に痛打を見舞う！ −${amb.dmg}`, cls: "cm" }); ambushShown = true; } }
       // KO（武器カテゴリ別の決め技・側背面・必殺）
@@ -662,29 +723,6 @@ window.SCS = window.SCS || {};
       for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)}、力尽きて崩れ落ちる。`, cls: "cm" });
       // 必殺（撃破に紐づかなかったもの）
       for (const ev of evs) if (ev.ult && !ev._killed) lines.push({ text: `── 気迫炸裂！${npc(ev.att)} の必殺・${ev.ultName}${ev.whiff ? "——惜しくも空を切る！" : `が ${npc(ev.def)} を捉える −${ev.dmg}！`}`, cls: "cm" });
-      // 戦術ハイライト（盾/集中砲火/かばう/剝がし/立て直しから最大2件を顕著な順に・决定論選択）
-      const covered = new Set(); // 集中砲火で言及した標的は個別大ヒット行を抑制（二重計上回避）
-      {
-        const tac = [];
-        // 盾：火力を受け止めた高ヘイト前衛
-        for (const u of ALL) if (u.alive && u.label === "盾") { const a = acc.get(u); if (a && a.dmg >= 8) { tac.push({ pri: 5, dmg: a.dmg, text: `── ${npc(u)} が盾となり、降りかかる火力を受け止める。` }); break; } }
-        // かばう（ボディブロックで肩代わり）
-        { let topG = null; for (const ev of evs) if (ev.guardedBy && (ev.guardCut || 0) >= 8 && (!topG || ev.guardCut > topG.guardCut)) topG = ev; if (topG) tac.push({ pri: 4, dmg: topG.guardCut, text: `── ${npc(topG.guardedBy)} が身を挺して ${npc(topG.def)} をかばい、${topG.guardCut} を引き受けた。` }); }
-        // 集中砲火：2体以上が実ダメージを与え かつ 総被ダメが大（真の集中・個別大ヒットは抑制）
-        { let topF = null; for (const [tgt, a] of acc) { if (a.dmg < 0.25 * tgt.maxHp) continue; const atkN = evs.filter((ev) => ev.def === tgt && (ev.dmg || 0) > 0).length; if (atkN >= 2 && (!topF || a.dmg > topF.dmg)) topF = { tgt, dmg: a.dmg }; } if (topF) { const atkArmy = topF.tgt.team === "P" ? "敵分隊" : "あなたの分隊", shown = Math.min(topF.dmg, topF.tgt.maxHp); const txt = isolationOf(topF.tgt) > 45 ? `── 孤立した ${npc(topF.tgt)} を ${atkArmy}が囲んで各個撃破！（計 −${shown}）` : `── ${atkArmy}が ${npc(topF.tgt)} へ集中砲火！ 一斉射が突き刺さる（計 −${shown}）`; tac.push({ pri: 6, dmg: topF.dmg, text: txt }); covered.add(topF.tgt); } }
-        // 剝がし（ピール）
-        for (const u of ALL) if (u.alive && u.label === "剝がし" && u.target) { tac.push({ pri: 3, dmg: 0, text: `── ${npc(u)} が後衛に食らいつく ${npc(u.target)} を引き剝がしにかかる。` }); break; }
-        // 立て直し（手負いの撤退）
-        for (const u of ALL) if (u.alive && u.engage === "retreat" && u.hp / u.maxHp < 0.4) { tac.push({ pri: 2, dmg: 0, text: `── 手負いの ${npc(u)}、深追いを避けて隊列へ退く。` }); break; }
-        tac.sort((a, b) => b.pri - a.pri || b.dmg - a.dmg);
-        for (const t of tac.slice(0, 2)) lines.push({ text: t.text, cls: "cm" });
-      }
-      // 大ヒット（上位2件・KO/必殺/集中砲火済の標的を除く）＝武器カテゴリ別の手応え＋会心/状態異常
-      const bigs = evs.filter((ev) => (ev.dmg || 0) > 0 && !ev._killed && !ev.ult && !covered.has(ev.def)).sort((a, b) => b.dmg - a.dmg).slice(0, 2);
-      for (const ev of bigs) if (ev.dmg >= 0.14 * ev.def.maxHp || ev.crit || ev.flank) {
-        const verb = vary(HIT_VERB[evCat(ev)] || HIT_VERB.bal, seed, turn, ev.att.idx * 11 + ev.def.idx + ev.dmg);
-        lines.push({ text: `${npc(ev.att)} が ${flankPre(ev)}${npc(ev.def)}${verb}${ev.crit ? "——会心！" : ""} −${ev.dmg}${stTag(ev)}`, cls: "ex" });
-      }
       // 瀕死ドラマ（このターンで瀕死域に踏み込んだ体・1件）
       { let dying = null; for (const ev of evs) if (ev.dmg > 0 && ev.def.alive && ev.def.hp / ev.def.maxHp < 0.22 && (ev.def.hp + ev.dmg) / ev.def.maxHp >= 0.22) { dying = ev.def; break; } if (dying) lines.push({ text: `　${npc(dying)} 満身創痍——なお踏みとどまる。`, cls: "dim" }); }
       // その他サマリ（多彩化）／静かなターンは機動フレーバーで埋める
