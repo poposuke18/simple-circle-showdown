@@ -76,7 +76,7 @@ window.SCS = window.SCS || {};
     const field = { w: arena.w, h: arena.h }, baseTerrain = T[arena.base];
     const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 }));
     const hazards = [];
-    const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.6);
+    const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
     let turn = 0, over = false, result = null, noDmgTurns = 0;
 
     // ===== 幾何・地形・命中（1v1から移植）=====
