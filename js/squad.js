@@ -42,7 +42,7 @@ window.SCS = window.SCS || {};
   };
   const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる"];
   const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。"];
-  const SEARCH_FLAVOR = ["両軍、まだ互いを捉えられず——慎重に索敵。", "気配を探りながら前進する。", "敵影を求めて間合いを詰める。", "誰もまだ敵を視界に捉えていない。", "息を潜め、敵の所在を探る。", "前進——どこかに潜む敵を探して。"];
+  const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める"]; // 個体の索敵動作（誰が、を明示）
   const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
@@ -77,7 +77,7 @@ window.SCS = window.SCS || {};
     const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 }));
     const hazards = [];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
-    let turn = 0, over = false, result = null, noDmgTurns = 0;
+    let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false;
 
     // ===== 幾何・地形・命中（1v1から移植）=====
     const cx = (x) => clamp(x, 0, field.w), cy = (y) => clamp(y, 0, field.h);
@@ -198,7 +198,8 @@ window.SCS = window.SCS || {};
     // チーム探知更新（即時共有＋鮮度減衰）。pickTarget前に毎ターン。
     function updateDetection() {
       if (fogless) { refreshFogless(); return; }                                          // 霧なし：常に全敵発見済み（位置だけ更新）
-      for (const u of ALL) { if (!u.alive) continue; const km = known[u.team]; for (const e of enemiesOf(u)) { if (e.alive && detects(u, e)) km.set(e, { lastSeen: turn, x: e.x, y: e.y }); } }
+      // 探知した瞬間に「誰が見つけたか（最寄りの発見者）」を記録＝描写で常に発見者を名指しできる（移動後の再判定では取りこぼす）
+      for (const u of ALL) { if (!u.alive) continue; const km = known[u.team]; for (const e of enemiesOf(u)) { if (e.alive && detects(u, e)) { const prev = km.get(e), d = dist(u, e); if (!prev || prev.lastSeen !== turn || d < (prev._bd || Infinity)) km.set(e, { lastSeen: turn, x: e.x, y: e.y, by: u, _bd: d }); } } }
       for (const tm of ["P", "C"]) { const km = known[tm]; for (const [e, info] of km) if (!e.alive || turn - info.lastSeen > DETECT_DECAY) km.delete(e); }
     }
     const knownEnemies = (u) => enemiesOf(u).filter((e) => e.alive && known[u.team].has(e)); // AIが反応してよい敵＝発見済み
@@ -635,18 +636,18 @@ window.SCS = window.SCS || {};
       const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
       const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
       const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
-      // 索敵：このターン新たに発見した／見失った敵をフィードに（誰が見つけたか＋多彩化）
+      // 索敵：このターン新たに発見した／見失った敵をフィードに（探知時に記録した発見者を常に名指し。撃たれて倒れても発見の事実は残る＝.aliveで弾かない）
       for (const tm of ["P", "C"]) {
-        const army = tm === "P" ? "あなたの分隊" : "敵分隊", allyT = tm === "P" ? P : C;
+        const army = tm === "P" ? "あなたの分隊" : "敵分隊";
         for (const e of known[tm].keys()) if (!detectedBefore[tm].has(e) && e.alive) {
-          let spotter = null, sd = Infinity; for (const a of allyT) if (a.alive && detects(a, e)) { const d = dist(a, e); if (d < sd) { sd = d; spotter = a; } } // 発見した味方（最寄り）
+          const info = known[tm].get(e), spotter = info && info.by ? info.by : null;
           const v = vary(SPOT_VERB, seed, turn, e.idx * 5 + (spotter ? spotter.idx : 0));
           lines.push({ text: spotter ? `── ${npc(spotter)} が ${npc(e)}${v}` : `── ${army}が ${npc(e)}${v}`, cls: "cm" });
         }
         for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った——気配を探り直す。`, cls: "dim" });
       }
-      // 奇襲：未発見のまま（敵に発見されていない体が）強襲して削った＝隠密の報酬。最大の一撃を1件。
-      { let amb = null; for (const ev of evs) if ((ev.dmg || 0) > 0 && (ev.hits || 0) > 0 && !known[ev.att.team === "P" ? "C" : "P"].has(ev.att) && (!amb || ev.dmg > amb.dmg)) amb = ev; if (amb) lines.push({ text: `── 奇襲！ ${npc(amb.att)} が未発見のまま ${npc(amb.def)} を強襲！ −${amb.dmg}`, cls: "cm" }); }
+      // 奇襲：本物の不意打ちだけ＝未発見のまま会心を当てた一撃（撃破はKO行が背後/側面で描くので除外）。1戦に1度きり＝特別感を保つ。
+      if (!ambushShown) { let amb = null; for (const ev of evs) if ((ev.dmg || 0) > 0 && ev.crit && !ev._killed && !known[ev.att.team === "P" ? "C" : "P"].has(ev.att) && (!amb || ev.dmg > amb.dmg)) amb = ev; if (amb) { lines.push({ text: `── 奇襲！ ${npc(amb.att)} が死角から ${npc(amb.def)} に痛打を見舞う！ −${amb.dmg}`, cls: "cm" }); ambushShown = true; } }
       // KO（武器カテゴリ別の決め技・側背面・必殺）
       for (const ev of evs) if (ev._killed) {
         const verb = vary(KO_VERB[evCat(ev)] || KO_VERB.bal, seed, turn, ev.att.idx * 7 + ev.def.idx);
@@ -685,7 +686,19 @@ window.SCS = window.SCS || {};
       // その他サマリ（多彩化）／静かなターンは機動フレーバーで埋める
       const hitN = evs.filter((ev) => (ev.hits || 0) > 0).length, shown = lines.filter((l) => l.cls === "cm" || l.cls === "ex").length;
       if (hitN > shown) lines.push({ text: `　…${vary(SKIRMISH, seed, turn, hitN)}（命中 ${hitN} 件）`, cls: "dim" });
-      else if (hitN === 0 && shown === 0) { const searchPhase = (known.P.size + known.C.size) === 0; lines.push({ text: `　${vary(searchPhase ? SEARCH_FLAVOR : MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" }); }
+      else if (hitN === 0 && shown === 0) {
+        const searchPhase = (known.P.size + known.C.size) === 0;
+        if (searchPhase) {                                              // 索敵中：誰が探しているかを個体で描く（嗅覚=D1が鋭い体は第六感で敵方へ）
+          const sr = ALL.filter((u) => u.alive);
+          for (let k = 0, n = 0; k < sr.length && n < 2; k++, n++) {
+            const u = sr[(turn * 2 + k) % sr.length];
+            const line = u.micros.D1 >= 0.6
+              ? `${npc(u)} が第六感で敵の気配を辿り、潜む方へ詰める。`
+              : `${npc(u)} が${vary(SEARCH_ACT, seed, turn, u.idx * 3 + k)}。`;
+            lines.push({ text: `　${line}`, cls: "dim" });
+          }
+        } else lines.push({ text: `　${vary(MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" });
+      }
       lines.push({ text: `　└ 残存 PLR ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・CPU ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
 
       // 9) 勝敗
