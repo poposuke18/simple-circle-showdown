@@ -658,10 +658,19 @@ window.SCS = window.SCS || {};
           const hpBand = (f) => f < 0.25 ? "残りわずか" : f < 0.5 ? "半ば削られ" : "なお健在";
           const obs = [];
           // 各観測は sig（不変の中身署名）で連続反復を判定し、text（語り）は vary で多彩化。ord は読み順（情景→緊張）。
-          // A) 間合いと推移（常時・変化する）
-          const steps = Math.max(1, Math.round(gap / (S.baseStep || 4)));
-          let trend = "両軍にらみ合う"; if (lastGap != null) { const d = gap - lastGap; trend = d < -2 ? "じりと間合いを詰める" : d > 2 ? "距離が開いていく" : "間合いは膠着"; }
-          obs.push({ ord: 0, force: true, key: "A", sig: "A", text: `${vary(["両軍の隔たりはおよそ", "彼我の間合いはおよそ", "戦端まではおよそ"], seed, turn, 1)}${steps}歩、${trend}。` });
+          // A) 間合いと推移（常時）。★敵を誰も視認していない索敵中は精確な間合いを語らない（見えない敵までの距離は測れない＝矛盾回避）。視認後だけ数値で。
+          const contact = (known.P.size + known.C.size) > 0;
+          let aText;
+          if (contact) {
+            const steps = Math.max(1, Math.round(gap / (S.baseStep || 12)));
+            let trend;
+            if (lastGap == null) trend = vary(["対峙する", "睨み合う", "対陣する"], seed, turn, 8);
+            else { const d = gap - lastGap; trend = d < -2 ? vary(["じりと間合いを詰める", "間合いを詰めていく", "距離を潰しにかかる"], seed, turn, 8) : d > 2 ? vary(["距離を取り直す", "間合いを開け直す", "一旦引いて仕切り直す"], seed, turn, 8) : vary(["間合いは膠着", "睨み合いが続く", "両者譲らず", "動かぬ均衡"], seed, turn, 8); }
+            aText = `${vary(["両軍の間合いはおよそ", "彼我の距離はおよそ", "敵との隔たりはおよそ"], seed, turn, 1)}${steps}歩、${trend}。`;
+          } else {
+            aText = vary(["彼我はなお視界の外、互いの位置を探り合う。", "両軍まだ敵影を捉えられず、気配だけが漂う。", "姿は見えず、広い戦場に睨み合いだけが続く。"], seed, turn, 7);
+          }
+          obs.push({ ord: 0, force: true, key: "A", sig: "A" + (contact ? "c" : "s"), text: aText });
           // B) 陣形（両軍の槍先を1行に）
           if (all0.length >= 3) { const sp = spear(aliveP, "P"), sc = spear(aliveC, "C"); const tp = terrName(sp); if (sp && sc) obs.push({ ord: 1, key: "B", sig: "B" + sp.idx + sc.idx, text: `あなたの分隊は ${npc(sp)} を${vary(["前面に", "槍先に", "先頭に"], seed, turn, 2)}、敵は ${npc(sc)} を押し立て${tp ? `（${npc(sp)}は${TVERB[tp]}）` : ""}${vary(["対峙する", "にじり寄る", "隊列を組む"], seed, turn, 3)}。` }); }
           // F) 形勢（頭数）
@@ -674,12 +683,12 @@ window.SCS = window.SCS || {};
           { let w = null, wf = 1; for (const u of all0) { const f = phpf(u); if (f < 0.5 && f < wf) { wf = f; w = u; } } if (w) obs.push({ ord: 5, key: "D", sig: "D" + w.idx + Math.round(wf * 10), text: `${npc(w)} は ${hpBand(wf)}（HP${Math.round(wf * 100)}％）、${vary(["血路を探る", "なお退かない", "踏みとどまる"], seed, turn, 4)}。` }); }
           // G) 孤立（好機の兆し・動的）
           { let iso = null, iv = 0; for (const u of all0) { const v = isolationOf(u); if (v > 50 && v > iv) { iv = v; iso = u; } } if (iso) obs.push({ ord: 6, key: "G", sig: "G" + iso.idx, text: `${npc(iso)} が隊列から離れ孤立——突かれれば脆い。` }); }
-          // 選抜：中身が変わった or 3T以上未掲載のものを優先（同一事実の連続反復を抑制）。動的(C/D/G/F)を厚めに・最低3行確保・最大4行。
+          // 選抜：★中身が変わった or 3T以上未掲載の「新鮮」な観測だけを出す（古い事実の水増し再掲はしない＝膠着時に同じ行を連発しない）。
+          //   動ある時は複数が新鮮→厚く、膠着時はAだけ→静かに。最大4行。Aは常時(force)。
           for (const o of obs) { const pv = snapSeen[o.key]; o._fresh = o.force || !pv || pv.sig !== o.sig || (turn - pv.turn >= 3); }
           const dynPri = { C: 4, G: 4, D: 3, F: 2 };
-          obs.sort((a, b) => (b._fresh - a._fresh) || ((dynPri[b.key] || 1) - (dynPri[a.key] || 1)));
-          const show = [];
-          for (const o of obs) { if (show.length >= 4) break; if (!o._fresh && show.length >= 3) break; show.push(o); snapSeen[o.key] = { sig: o.sig, turn }; }
+          const show = obs.filter((o) => o._fresh).sort((a, b) => (dynPri[b.key] || 1) - (dynPri[a.key] || 1)).slice(0, 4);
+          for (const o of show) snapSeen[o.key] = { sig: o.sig, turn };
           show.sort((a, b) => a.ord - b.ord);   // 表示は情景→緊張の読み順
           for (const o of show) lines.push({ text: `　${o.text}`, cls: "snap" });
           lastGap = gap;
