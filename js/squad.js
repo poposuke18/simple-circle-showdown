@@ -600,7 +600,7 @@ window.SCS = window.SCS || {};
       turn++;
       const lines = [], events = [], envLines = [];
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive }); // ターン開始時(=前状況)の位置/HPを保存＝盤面スナップショット用
-      for (const u of ALL) u._counter = null; // 回避カウンターの当ターン限定フラグをリセット
+      for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; } // 当ターン限定フラグをリセット（回避反撃／味方の死への反応）
       // 0) 索敵：各体のビジョンコーンで敵を視認→チーム共有（即時）＋鮮度減衰。発見/ロストのフィードはこの差分から。
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
@@ -747,6 +747,17 @@ window.SCS = window.SCS || {};
         u.momentum = clamp(u.momentum + (d - tk) / 60, -1, 1);
         u.resolve = clamp(u.resolve + (d + tk) / u.maxHp * 0.5, 0, 1);
       }
+      // ★味方の死への反応（協調性で連続的に）：一匹狼は奮い立ち流れを引き寄せ(+)、献身は気落ちして流れを失う(−)。
+      //   ＋一定確率で気力ガクン（献身ほど高確率・大幅／一匹狼は低確率・小幅）。流れ/気力システムが活きる＝散開して仲間を失う一匹狼が、最後に流れを帯びた狂戦士として捲る目を持つ。
+      for (const d of deadThisTurn) {
+        for (const u of (d.team === "P" ? P : C)) {
+          if (!u.alive || u === d) continue;
+          const delta = (0.48 - u.coop) * 0.6;
+          u.momentum = clamp(u.momentum + delta, -1, 1);                                 // coop低=奮起(+)・coop高=動揺(−)
+          if (delta > 0.06) u._surged = true;                                            // 一匹狼が味方の死で奮い立つ
+          if (rng.chance(clamp(0.12 + u.coop * 0.55, 0, 0.72))) { u.stamina = clamp(u.stamina - (0.10 + u.coop * 0.32), 0, 1); u._shaken = true; } // 動揺で気力ガクン
+        }
+      }
       noDmgTurns = directDmg + envDmg > 0 ? 0 : noDmgTurns + 1; // 膠着検知（次ターンのアンチストール引き寄せに使う）
       for (const u of ALL) if (u.alive) u.idleTurns = (dealtNow.get(u) || 0) > 0 ? 0 : u.idleTurns + 1; // 個体の遊兵化検知（攻め圧の累積）
       // 動的ラベル（今ターンの役割行動を1語で・HUD/レーダー用）
@@ -889,6 +900,8 @@ window.SCS = window.SCS || {};
         // 状態の気配（気力/流れ/気迫/怯み/背水を一語で・最も顕著な1つ）。機構は走っているのに描写に出ていなかった部分を露出。
         const demeanorOf = (u) => {
           const hp = u.maxHp ? u.hp / u.maxHp : 1;
+          if (u._surged) return vary(["仲間の仇とばかりに闘志を燃やし", "むしろ気を吐き", "倒れた味方の分も背負い"], seed, turn, u.idx + 15); // 一匹狼＝味方の死で奮起
+          if (u._shaken) return vary(["味方を失い動揺しながらも", "仲間の死に気を呑まれつつ"], seed, turn, u.idx + 16);       // 献身＝味方の死に気落ち
           if (u.flinch > 0) return vary(["体勢を崩されながらも", "たたらを踏みつつ"], seed, turn, u.idx + 5);
           if (hp > 0 && hp < 0.25) return vary(["満身創痍で", "血路を探りつつ", "気力を振り絞り"], seed, turn, u.idx + 6);
           if ((u.resolve || 0) >= 1) return vary(["闘気を滾らせ", "気迫を漲らせ"], seed, turn, u.idx + 7);          // 気迫満タン＝必殺の機
