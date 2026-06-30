@@ -147,13 +147,16 @@ window.SCS = window.SCS || {};
     const a = battle.getAnalysis();
     const col = (s, label, isP) => {
       const badge = a.over ? (a.result.type === "draw" ? `<span class="abadge draw">DRAW</span>` : (a.result.winner === (isP ? "PLR" : "CPU") ? `<span class="abadge win">WIN</span>` : `<span class="abadge lose">LOSE</span>`)) : "";
-      let h = `<div class="acol"><h4>${label} ${badge}</h4><div class="aweap">与ダメ計 ${s.dealt}／撃破 ${s.kills}／生存 ${s.survivors}/${s.cards.length}</div><table class="atab">`;
-      for (const c of s.cards) h += `<tr><td>${c.name}<span class="sqc-role">${c.role}</span></td><td>${c.alive ? "生存" : "T" + c.downTurn + "脱落"}・与${c.dealt}/被${c.taken}${c.kills ? "・撃破" + c.kills : ""}</td></tr>`;
+      let h = `<div class="acol"><h4>${label} ${badge}</h4>`;
+      if (s.verdict) h += `<div class="averdict">${s.verdict}</div>`;
+      h += `<div class="aweap">与ダメ計 ${s.dealt}／撃破 ${s.kills}／生存 ${s.survivors}/${s.cards.length}</div><table class="atab">`;
+      for (const c of s.cards) { const tags = [c.counters ? "反撃" + c.counters : "", c.grabs ? "投げ" + c.grabs : "", c.wasFlanked ? "被側背" + c.wasFlanked : ""].filter(Boolean).join("・"); h += `<tr><td>${c.name}<span class="sqc-role">${c.role}</span></td><td>${c.alive ? "生存" : "T" + c.downTurn + "脱落"}・与${c.dealt}/被${c.taken}${c.kills ? "・撃破" + c.kills : ""}${tags ? "・" + tags : ""}</td></tr>`; }
       h += `</table>`;
       if (s.notes.length) h += `<div class="anotes"><b>戦評</b><ul>${s.notes.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
+      if (s.advice && s.advice.length) h += `<div class="aadvice"><b>次の方向性</b><ul>${s.advice.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
       return h + `</div>`;
     };
-    $("sqParams").innerHTML = `<div class="ameta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン</div><div class="acols">${col(a.plr, "あなたの分隊", true)}${col(a.cpu, "敵分隊", false)}</div><p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。沈黙した体・噛み合わなかった役割を見直そう。</p>`;
+    $("sqParams").innerHTML = `<div class="ameta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン</div><div class="acols">${col(a.plr, "あなたの分隊", true)}${col(a.cpu, "敵分隊", false)}</div><p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。総評と「次の方向性」を手がかりに、人格のダイヤルを回して再設計しよう。</p>`;
   }
 
   function backToDesign() { stopAuto(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); }

@@ -173,7 +173,7 @@ window.SCS = window.SCS || {};
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
       Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0, _closing: false,
-        st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0 } });
+        st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0, dodges: 0, counters: 0, grabs: 0, grabHits: 0, wasFlanked: 0, winded: 0, resPeak: 0 } });
       return u;
     }
     const P = teamPChoices.map((c, i) => mkUnit(c, "P", i, teamPChoices.length));
@@ -695,6 +695,7 @@ window.SCS = window.SCS || {};
       }
       // 与ダメ記録（撃破は適用後に判定するので、ここで攻め手のdealtを反映）
       for (const ev of evs) if (ev.dmg > 0) ev.att.st.dealt += ev.dmg;
+      for (const ev of evs) { if (ev.flank && (ev.hits || 0) > 0 && ev.def) ev.def.st.wasFlanked++; if (ev.grabHit) ev.att.st.grabHits++; } // 被フランク／投げ成功の計測
       // 状態異常DoT＋地形/ハザード（環境ダメージは膠着判定に算入）
       let envDmg = 0;
       for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}`, cls: u.team === "P" ? "plr" : "cpu" }); } }
@@ -716,6 +717,8 @@ window.SCS = window.SCS || {};
         const a = acc.get(u); const tookNow = a ? a.dmg : 0;
         const dec = decs.get(u), attacked = dec && (dec.attack === "RANGED" || dec.attack === "MELEE" || dec.attack === "ULT" || dec.attack === "SNAP");
         u.stamina = clamp(u.stamina + (attacked ? -0.09 * modSta : 0.07), 0, 1);
+        if (u.stamina < 0.35) u.st.winded++;                    // 息切れターン数（分析用）
+        u.st.resPeak = Math.max(u.st.resPeak, u.resolve || 0);  // 気迫ピーク（温存しすぎ判定用）
         u.flinch = u.flinch > 0 ? u.flinch - 1 : 0;
         if (tookNow >= 0.22 * u.maxHp) u.flinch = 1;
         // ★チャージ中断：溜め中（charged・未発射）に近接で殴られる or 大きく被弾すると、据銃が崩れ一射を失う＝近づかれたスナイパーは撃てない
@@ -795,10 +798,14 @@ window.SCS = window.SCS || {};
           { let w = null, wf = 1; for (const u of all0) { const f = phpf(u); if (f < 0.5 && f < wf) { wf = f; w = u; } } if (w) obs.push({ ord: 5, key: "D", sig: "D" + w.idx + Math.round(wf * 10), text: `${npc(w)} は ${hpBand(wf)}（HP${Math.round(wf * 100)}％）、${vary(["血路を探る", "なお退かない", "踏みとどまる"], seed, turn, 4)}。` }); }
           // G) 孤立（好機の兆し・動的）
           { let iso = null, iv = 0; for (const u of all0) { const v = isolationOf(u); if (v > 50 && v > iv) { iv = v; iso = u; } } if (iso) obs.push({ ord: 6, key: "G", sig: "G" + iso.idx, text: `${npc(iso)} が隊列から離れ孤立——突かれれば脆い。` }); }
+          // H) 気迫/気力の気配（状態を前状況にも露出）。気迫満タン＝必殺の機を最優先、無ければ最も消耗した体。
+          { let r = null; for (const u of all0) if ((u.resolve || 0) >= 1) { r = u; break; }
+            if (r) obs.push({ ord: 7, key: "H", sig: "H" + r.idx + "r", text: `${npc(r)} は気迫を満たし、${vary(["必殺の時をうかがう", "解き放つ機を計る"], seed, turn, 11)}。` });
+            else { let wd = null, ws = 0.35; for (const u of all0) { const s = u.stamina != null ? u.stamina : 1; if (s < ws) { ws = s; wd = u; } } if (wd) obs.push({ ord: 7, key: "H", sig: "H" + wd.idx + "s", text: `${npc(wd)} は息が上がり、${vary(["動きが鈍り始める", "足が止まりかける"], seed, turn, 12)}。` }); } }
           // 選抜：★中身が変わった or 3T以上未掲載の「新鮮」な観測だけを出す（古い事実の水増し再掲はしない＝膠着時に同じ行を連発しない）。
           //   動ある時は複数が新鮮→厚く、膠着時はAだけ→静かに。最大4行。Aは常時(force)。
           for (const o of obs) { const pv = snapSeen[o.key]; o._fresh = o.force || !pv || pv.sig !== o.sig || (turn - pv.turn >= 3); }
-          const dynPri = { C: 4, G: 4, D: 3, F: 2 };
+          const dynPri = { C: 4, G: 4, D: 3, H: 3, F: 2 };
           const show = obs.filter((o) => o._fresh).sort((a, b) => (dynPri[b.key] || 1) - (dynPri[a.key] || 1)).slice(0, 4);
           for (const o of show) snapSeen[o.key] = { sig: o.sig, turn };
           show.sort((a, b) => a.ord - b.ord);   // 表示は情景→緊張の読み順
@@ -864,6 +871,17 @@ window.SCS = window.SCS || {};
           if (dec && dec.move === "ADVANCE") return `${t}へ間合いを詰めた`;
           return `その場で射線と退路を計った`;
         };
+        // 状態の気配（気力/流れ/気迫/怯み/背水を一語で・最も顕著な1つ）。機構は走っているのに描写に出ていなかった部分を露出。
+        const demeanorOf = (u) => {
+          const hp = u.maxHp ? u.hp / u.maxHp : 1;
+          if (u.flinch > 0) return vary(["体勢を崩されながらも", "たたらを踏みつつ"], seed, turn, u.idx + 5);
+          if (hp > 0 && hp < 0.25) return vary(["満身創痍で", "血路を探りつつ", "気力を振り絞り"], seed, turn, u.idx + 6);
+          if ((u.resolve || 0) >= 1) return vary(["闘気を滾らせ", "気迫を漲らせ"], seed, turn, u.idx + 7);          // 気迫満タン＝必殺の機
+          if ((u.momentum || 0) > 0.4) return vary(["勢いに乗って", "波に乗り", "畳みかけるように"], seed, turn, u.idx + 8); // 流れ＝勢い
+          if ((u.stamina || 1) < 0.35) return vary(["息を切らしながら", "足を重そうに", "肩で息をつきつつ"], seed, turn, u.idx + 9); // 気力＝消耗
+          if ((u.momentum || 0) < -0.4) return vary(["気圧されながらも", "押されつつも"], seed, turn, u.idx + 10);   // 流れ＝萎え
+          return "";
+        };
         const beats = [];
         if (focus) { const army = focus.team === "P" ? "あなたの分隊" : "敵分隊", v = isolationOf(focus.tgt) > 45 ? `孤立した ${npc(focus.tgt)}を囲んで各個撃破にかかった` : `${npc(focus.tgt)}へ火力を一点に集中した`; beats.push({ sal: 50, txt: `${army}は ${v}（計 −${Math.min(focus.sum, focus.tgt.maxHp)}）` }); }
         for (const u of ALL) {
@@ -886,7 +904,8 @@ window.SCS = window.SCS || {};
         beats.sort((a, b) => b.sal - a.sal);
         beats.slice(0, 3).forEach((bt, i) => {
           const conn = i === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、", "同時に、"], seed, turn, i * 3);
-          const body = bt.txt ? bt.txt : `${conn}${bt.clause ? bt.clause + "、" : ""}${npc(bt.u)} は ${actOf(bt.u)}`;
+          const dm = bt.u ? demeanorOf(bt.u) : "";
+          const body = bt.txt ? bt.txt : `${conn}${bt.clause ? bt.clause + "、" : ""}${npc(bt.u)} は ${dm ? dm + "、" : ""}${actOf(bt.u)}`;
           lines.push({ text: `── ${body}。`, cls: i === 0 ? "cm" : "ex" });
         });
       }
@@ -957,24 +976,55 @@ window.SCS = window.SCS || {};
         const won = !!result && result.type === "win" && (result.winner === (u.team === "P" ? "PLR" : "CPU"));
         const role = SCS.ui && SCS.ui.styleOf ? SCS.ui.styleOf(u) : "";
         const hitRate = u.st.shots ? Math.round((u.st.hits / u.st.shots) * 100) : 0;
-        return { name: u.name, team: u.team, alive: u.alive, hp: `${Math.max(0, u.hp)}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, role,
-          dealt: u.st.dealt, taken: u.st.taken, kills: u.st.kills, hitRate, crits: u.st.crits, ults: u.st.ults, flanks: u.st.flanks, downTurn: u.st.downTurn, won };
+        return { name: u.name, team: u.team, alive: u.alive, hp: `${Math.max(0, u.hp)}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, role, tank: u.tank || 0,
+          dealt: u.st.dealt, taken: u.st.taken, kills: u.st.kills, hitRate, crits: u.st.crits, ults: u.st.ults, flanks: u.st.flanks, downTurn: u.st.downTurn,
+          dodges: u.st.dodges, counters: u.st.counters, grabs: u.st.grabHits, wasFlanked: u.st.wasFlanked, winded: u.st.winded, resPeak: u.st.resPeak, won };
       }
-      // 撃破帰属の集計（evベースで step 内では一時的なので、ここは downTurn から近似不可→killsはstepで加算）
-      function squad(team) {
-        const t = team === "P" ? P : C, cards = t.map(unitCard);
-        const dealt = cards.reduce((a, c) => a + c.dealt, 0), taken = cards.reduce((a, c) => a + c.taken, 0), kills = cards.reduce((a, c) => a + c.kills, 0);
+      const sum = (cs, k) => cs.reduce((a, c) => a + (c[k] || 0), 0);
+      // 総評＝一戦の物語を一言／方向性＝弱点に応じて回す大パラを名指し（24小パラ・重み行列は非公開のまま）
+      function build(team, cards, foe) {
+        const dealt = sum(cards, "dealt"), taken = sum(cards, "taken"), kills = sum(cards, "kills");
+        const survivors = cards.filter((c) => c.alive).length, foeSurv = foe.filter((c) => c.alive).length;
         let mvp = null, silent = null;
         for (const c of cards) { if (!mvp || c.dealt > mvp.dealt) mvp = c; if (!silent || c.dealt < silent.dealt) silent = c; }
-        const survivors = cards.filter((c) => c.alive).length;
+        const firstDown = cards.filter((c) => c.downTurn > 0).sort((a, b) => a.downTurn - b.downTurn)[0];
         const notes = [];
         if (mvp) notes.push(`主力＝${mvp.name}（与ダメ${mvp.dealt}・撃破${mvp.kills}）`);
-        if (silent && cards.length > 1 && silent !== mvp && silent.dealt < mvp.dealt * 0.4) notes.push(`${silent.name}が機能せず（与ダメ${silent.dealt}）＝役割/編成の見直し余地`);
-        const firstDown = cards.filter((c) => c.downTurn > 0).sort((a, b) => a.downTurn - b.downTurn)[0];
+        if (silent && cards.length > 1 && silent !== mvp && silent.dealt < mvp.dealt * 0.4) notes.push(`${silent.name}が機能せず（与ダメ${silent.dealt}）`);
         if (firstDown) notes.push(`${firstDown.name}が最初に脱落（T${firstDown.downTurn}）`);
-        return { team, cards, dealt, taken, kills, survivors, notes };
+        const flanked = sum(cards, "wasFlanked"), winded = sum(cards, "winded"), dodges = sum(cards, "dodges"), counters = sum(cards, "counters"), grabs = sum(cards, "grabs");
+        if (counters) notes.push(`回避からの反撃 ${counters}回`); if (grabs) notes.push(`崩し（投げ）成功 ${grabs}回`);
+        // 状況信号
+        const won = !!result && result.type === "win" && (result.winner === (team === "P" ? "PLR" : "CPU"));
+        const draw = !result || result.type !== "win";
+        const hasTank = cards.some((c) => c.tank >= 0.4);
+        const backLost = firstDown && firstDown.tank < 0.3;                    // 脆い/後衛役が先に落ちた
+        const ultIdle = cards.some((c) => c.resPeak >= 1 && c.ults === 0);     // 気迫満タンに達したが必殺ゼロ
+        const wOut = dealt < taken * 0.72;                                     // 火力負け
+        // 総評
+        let verdict;
+        if (draw) verdict = "決着つかず——両軍、痛み分け。";
+        else if (won) verdict = survivors === cards.length ? "無傷で殲滅——危なげない快勝。" : survivors >= 2 ? `${survivors}体を残して押し切った。` : "ただ一騎を残し、辛くも競り勝った。";
+        else if (backLost) verdict = "前衛が支えきれず、後衛が裸にされて押し切られた。";
+        else if (flanked >= 3) verdict = "側背面を取られ続け、陣形を崩されて敗れた。";
+        else if (ultIdle) verdict = "切り札を抱えたまま、競り負けた。";
+        else if (wOut) verdict = "火力で押し込まれ、削り負けた。";
+        else verdict = "一進一退の末、最後の数で及ばなかった。";
+        // 次の方向性（優先順・大パラ名指し・最大2件）
+        const advice = [];
+        if (backLost && !hasTank) advice.push("盾役が不在。前衛の体に〈誇り〉〈自信〉〈規律〉と〈冷静さ〉を寄せ、狙われても持ちこたえる盾を作る。");
+        else if (backLost && hasTank) advice.push("後衛が早期に脱落。前衛の盾度を上げるか、後衛を〈慎重〉寄りにして射点を下げる。");
+        if (advice.length < 2 && flanked >= 3) advice.push("側背面を取られすぎ。〈規律〉と〈観察（順応性）〉で隊形と射線を保つ。");
+        if (advice.length < 2 && ultIdle) advice.push("気迫を抱え込んで終わった。〈非情さ〉〈リスク選好〉で必殺を早めに切る。");
+        if (advice.length < 2 && winded >= (turn * 0.5)) advice.push("息切れで失速。〈忍耐（待ち）〉で消耗を抑えるか〈冷静さ〉で気力回復を速める。");
+        if (advice.length < 2 && wOut) advice.push("火力不足。〈闘争心〉〈攻め志向〉で攻撃に出る体を増やす。");
+        if (advice.length < 2 && silent && cards.length > 1 && silent.dealt < mvp.dealt * 0.4) advice.push(`${silent.name}の役割が噛み合っていない。武器と気質（間合い・攻め引き）の組み合わせを見直す。`);
+        if (!advice.length && won) advice.push("噛み合った編成。今の役割分担を軸に、より厳しい戦場/編成へ。");
+        if (!advice.length) advice.push("決着つかず。〈闘争心〉か〈リスク選好〉を一段上げ、仕掛けを早めて膠着を破る。");
+        return { team, cards, dealt, taken, kills, survivors, notes, verdict, advice: advice.slice(0, 2) };
       }
-      return { turns: turn, arena: arena.name, mod: mod.key === "none" ? null : mod.name, over, result, plr: squad("P"), cpu: squad("C") };
+      const pC = P.map(unitCard), cC = C.map(unitCard);
+      return { turns: turn, arena: arena.name, mod: mod.key === "none" ? null : mod.name, over, result, plr: build("P", pC, cC), cpu: build("C", cC, pC) };
     }
 
     // 撃破帰属（kills）は step 解決後に確定するので、step内で加算する
