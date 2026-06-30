@@ -10,7 +10,7 @@ window.SCS = window.SCS || {};
   const DEFAULT = [D.PRESETS["重剣の闘士"], D.PRESETS["鉄律の射手"], D.PRESETS["海千山千の暗殺者"]]; // 補完的な叩き台（壁/射手/遊撃）
   let squad = DEFAULT.map((c) => c.slice());
   let active = 0;
-  let hintsOn = false; // 各ダイヤルの効果説明をインライン表示（スマホはtitleツールチップが効かないため）
+  let hintsOn = true; // 各ダイヤルの効果説明をインライン表示（初見が各軸の意味を掴めるよう既定ON・トグルで消せる）
   const CPU_SQUADS = {
     "鉄壁分隊": ["専守要塞", "鉄律の射手", "毒手の刺客"],
     "猛攻分隊": ["猪突ガラスキャノン", "重剣の闘士", "海千山千の暗殺者"],
@@ -28,10 +28,17 @@ window.SCS = window.SCS || {};
   function buildDesign() {
     fillSelect("sqArena", ["ランダム"].concat(D.ARENAS.map((a) => a.name)), arena, (v) => (arena = v));
     fillSelect("sqMod", ["ランダム"].concat(D.MODIFIERS.map((m) => m.name)), mod, (v) => (mod = v));
-    fillSelect("sqCpu", Object.keys(CPU_SQUADS).concat(["ランダム"]), cpuName, (v) => (cpuName = v));
+    fillSelect("sqCpu", Object.keys(CPU_SQUADS).concat(["ランダム"]), cpuName, (v) => { cpuName = v; renderCpuHint(); });
     fillSelect("sqForm", D.FORMATIONS.map((f) => f.name), form, (v) => { form = v; renderFormHint(); });
-    renderFormHint();
+    renderFormHint(); renderCpuHint();
     renderTabs(); renderDials(); renderRoster();
+  }
+  function renderCpuHint() { // 敵分隊の編成プレビュー（武器/HP）＝何と戦うか分かってカウンターを設計できる
+    const el = $("sqCpuHint"); if (!el) return;
+    if (cpuName === "ランダム") { el.textContent = "敵分隊：ランダム編成（毎回変化）"; return; }
+    const names = CPU_SQUADS[cpuName] || [];
+    const parts = names.map((n) => { const u = SCS.derive.buildUnit("U", D.PRESETS[n]); return `${n}〔${u.ranged.name}・HP${u.maxHp}〕`; });
+    el.textContent = "▸ 敵「" + cpuName + "」＝ " + parts.join("　");
   }
   function renderFormHint() {
     const el = $("sqFormHint"); if (!el) return;
@@ -106,6 +113,13 @@ window.SCS = window.SCS || {};
     if (b.formP && b.formP !== "loose") { const f = D.FORMATIONS.find((x) => x.key === b.formP); if (f) out.push({ t: `>> 隊形：${f.name} — ${f.flavor}`, c: "arena" }); }
     return out;
   }
+  function maybeShowLegendFirstRun() { // 初回だけ「見方（凡例）」を開いてレーダー記号を説明（以後は閉じておく）
+    let seen = false; try { seen = localStorage.getItem("scs_sq_legend") === "1"; } catch (e) {}
+    if (seen) return;
+    const k = $("sqKey"); if (k) k.classList.remove("hidden");
+    const kt = $("sqKeyTog"); if (kt) kt.textContent = "▾ 見方";
+    try { localStorage.setItem("scs_sq_legend", "1"); } catch (e) {}
+  }
   function sortie(fixedSeed) {
     const seed = fixedSeed != null ? (fixedSeed >>> 0) : (Math.floor(Math.random() * 0x7fffffff) >>> 0);
     lastSeed = seed; // 同条件で再戦できるよう保持（戦場/戦況/敵/隊形はseed由来なので同seedで完全再現）
@@ -115,6 +129,7 @@ window.SCS = window.SCS || {};
     if (SCS.mini) SCS.mini.reset();
     $("squadDesign").classList.add("hidden");
     $("squadStage").classList.remove("hidden");
+    maybeShowLegendFirstRun();
     $("sqArenaChip").textContent = battle.arena.name;
     const fc = $("sqFormChip"); if (fc) { const pf = battle.formP && battle.formP !== "loose" ? (D.FORMATIONS.find((f) => f.key === battle.formP) || {}).name : null; fc.textContent = pf ? ("陣形：" + pf) : ""; fc.style.display = pf ? "" : "none"; }
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";

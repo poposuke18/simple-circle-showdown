@@ -177,6 +177,7 @@ window.SCS = window.SCS || {};
     // ===== 分隊の構築・配置 =====
     function mkUnit(choices, team, idx, n) {
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
+      u.name = team === "P" ? `戦士${idx + 1}` : `敵${idx + 1}`; // ★表示名を設計側（戦士N）と統一（レーダーは番号表示で不変）。自軍=戦士・敵軍=敵、色で区別。
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u), coop = coopRating(u); // タンク度＝目立つ×持ちこたえる／協調性＝チームプレイ度
