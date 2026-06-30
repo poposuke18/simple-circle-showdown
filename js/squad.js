@@ -63,6 +63,12 @@ window.SCS = window.SCS || {};
     return clamp(0.15 + u.micros.C5 * 0.45 + u.micros.B4 * 0.25 + (u.maxHp - 80) / 80, 0.1, 1.0);
   }
   function tankRating(u) { return clamp(basePresence(u) * holdFactor(u), 0, 1.2); } // タンク度＝目立つ×持ちこたえる
+  // 協調性 coop（0=一匹狼/我流・利己 〜 1=献身/味方思い）。静的・人格由来・乱数非消費・決定論。チーム特有行動をゲートする。
+  //   ↑順応(観察/変幻=味方を読む)・騎士道(味方を守る)・規律(隊形に従う)／↓手段選ばず(利己)・過信(単騎で手柄)・猪突(単騎突撃)。
+  function coopRating(u) {
+    const adapt = u.mv[5], pride = u.mv[6], disc = u.mv[4], conf = u.mv[8], belli = u.mv[0];
+    return clamp(0.35 + 0.32 * Math.max(0, adapt) + 0.30 * Math.max(0, pride) - 0.25 * Math.max(0, -pride) + 0.20 * Math.max(0, disc) - 0.28 * Math.max(0, conf) - 0.22 * Math.max(0, belli), 0, 1);
+  }
 
   SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName) {
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
@@ -170,8 +176,8 @@ window.SCS = window.SCS || {};
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
-      const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u); // タンク度＝目立つ×持ちこたえる（モジュール公開ヘルパ）
-      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, _focusCount: 0, _wardRef: null,
+      const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u), coop = coopRating(u); // タンク度＝目立つ×持ちこたえる／協調性＝チームプレイ度
+      Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, coop, _opened: null, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0, _closing: false,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0, dodges: 0, counters: 0, grabs: 0, grabHits: 0, wasFlanked: 0, winded: 0, resPeak: 0 } });
       return u;
@@ -260,7 +266,7 @@ window.SCS = window.SCS || {};
       const live = knownEnemies(u);                  // ★発見済みの敵だけを狙える（未発見＝そもそも反応しない）
       if (!live.length) { u._focusCount = 0; u.peeling = false; return null; } // 未発見＝索敵へ（decideでhome方向へ前進）
       const iAmSupport = sup(u);
-      const myWard = isFrontline(u) ? findWard(u) : null; // 守る後衛がいれば、その後衛に迫る敵を迎撃対象に（前衛が自分の的を追って戦線を離れない＝かばうが成立する前提）
+      const myWard = (isFrontline(u) && u.coop > 0.45) ? findWard(u) : null; // 守る後衛がいれば迎撃対象に。★協調性が高い前衛だけがかばう（一匹狼は味方を守らない）
       let best = null, bv = -Infinity, bestPeel = false;
       for (const e of live) {
         const d = dist(u, e), fl = flankOf(u, e);
@@ -273,7 +279,11 @@ window.SCS = window.SCS || {};
         v += clamp(eThreat / 32, 0, 1) * (0.3 + u.micros.D1 * 0.35);
         // ★集中砲火：味方が既に狙う敵に束ねる（規律B4/順応D2で連携↑）＝キルオーダー収束
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
-        v += Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22);
+        v += Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）
+        // ★連携アシスト（高coop＝味方思い）：味方が直前に崩した敵（_opened＝側背/投げ/大打）を逃さず突く＝集中の質↑。一匹狼はこれを重視しない。
+        if (e._opened != null && turn - e._opened <= 1) v += u.coop * (0.9 + u.micros.A2 * 0.3);
+        // ★一匹狼（低coop＝我流・利己）：味方の連携でなく、手柄になる手負い/孤立の獲物を単騎で追う。
+        v += (1 - u.coop) * (clamp(isolationOf(e) / 40, 0, 1) * 0.45 + (1 - e.hp / e.maxHp) * 0.4);
         // ★ヘイト（脅威吸引）：タンク度の高い敵（目立つ×持ちこたえる）に火力が吸われる＝デコイ・タンク成立。
         //   A3近接傾倒で釣られやすく・D1相手読みで釣られにくい（脅威eThreatが主・tankは従）。脆い体はtankが低く吸引も弱い＝早死にしない
         v += clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3); // 床0.2＝タンク度の低い脆い体は吸引が立たない
@@ -432,8 +442,8 @@ window.SCS = window.SCS || {};
       //   遠距離＋高HPの防御スタック(亀)が近接・攻撃型を一方的に溶かす偏りの是正。squad内の移動のみ（武器/HP/1v1は不変）。
       const myReach = Math.max(u.ranged.effRange, u.melee.reach), tgtReach = Math.max(tgt.ranged.effRange, tgt.melee.reach);
       u._closing = u.engage === "commit" && tgtReach > myReach + 12 && dist(u, fp) > u.melee.reach;
-      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）
-      const ward = isFrontline(u) ? findWard(u) : null;
+      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）。★協調性が高い体だけ（一匹狼はかばわない）
+      const ward = (isFrontline(u) && u.coop > 0.45) ? findWard(u) : null;
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
       const guardScale = ward ? 0.6 + u.micros.B6 * 0.45 + u.micros.C6 * 0.45 : 0; // 実距離ベース＝offenseと同オーダーで実際に割り込む
       const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
@@ -696,6 +706,8 @@ window.SCS = window.SCS || {};
       // 与ダメ記録（撃破は適用後に判定するので、ここで攻め手のdealtを反映）
       for (const ev of evs) if (ev.dmg > 0) ev.att.st.dealt += ev.dmg;
       for (const ev of evs) { if (ev.flank && (ev.hits || 0) > 0 && ev.def) ev.def.st.wasFlanked++; if (ev.grabHit) ev.att.st.grabHits++; } // 被フランク／投げ成功の計測
+      // 連携アシストの基盤：味方が崩した敵（側背を取った/投げた/大打した）を _opened にマーク＝高coopの味方が次ターン突く好機
+      for (const ev of evs) { if (ev.def && ev.def.alive && ((ev.flank && (ev.hits || 0) > 0) || ev.grabHit || (ev.dmg || 0) >= 0.15 * ev.def.maxHp)) ev.def._opened = turn; }
       // 状態異常DoT＋地形/ハザード（環境ダメージは膠着判定に算入）
       let envDmg = 0;
       for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}`, cls: u.team === "P" ? "plr" : "cpu" }); } }
@@ -845,6 +857,9 @@ window.SCS = window.SCS || {};
           if (u.engage === "commit" && aliveCount(u.team) > otherCount(u.team)) return `数の有利を押し込もうと`;
           if (u._closing) return `長射程の的を黙らせるべく`;
           if (aliveCount(u.team) === 1) return `ただ一人生き残り`;
+          // ★連携アシスト：味方が崩した敵を高協調の体が突く／一匹狼は我流で動く＝協調性を言葉で可視化
+          if (u.coop > 0.6 && u.target && u.target._opened != null && turn - u.target._opened <= 1) return vary(["味方が崩した隙を逃さず", "味方の崩しに合わせて", "崩れた敵を仲間と挟もうと"], seed, turn, u.idx + 13);
+          if (u.coop < 0.32) return vary(["我流に単騎で", "手柄を求めて単身", "仲間に構わず"], seed, turn, u.idx + 14);
           if (u.target && u.target.alive && isolationOf(u.target) > 45) return `孤立した標的を逃さじと`;
           return "";
         };
@@ -976,7 +991,7 @@ window.SCS = window.SCS || {};
         const won = !!result && result.type === "win" && (result.winner === (u.team === "P" ? "PLR" : "CPU"));
         const role = SCS.ui && SCS.ui.styleOf ? SCS.ui.styleOf(u) : "";
         const hitRate = u.st.shots ? Math.round((u.st.hits / u.st.shots) * 100) : 0;
-        return { name: u.name, team: u.team, alive: u.alive, hp: `${Math.max(0, u.hp)}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, role, tank: u.tank || 0,
+        return { name: u.name, team: u.team, alive: u.alive, hp: `${Math.max(0, u.hp)}/${u.maxHp}`, weapon: `${u.ranged.name}＋${u.melee.name}`, role, tank: u.tank || 0, coop: u.coop || 0,
           dealt: u.st.dealt, taken: u.st.taken, kills: u.st.kills, hitRate, crits: u.st.crits, ults: u.st.ults, flanks: u.st.flanks, downTurn: u.st.downTurn,
           dodges: u.st.dodges, counters: u.st.counters, grabs: u.st.grabHits, wasFlanked: u.st.wasFlanked, winded: u.st.winded, resPeak: u.st.resPeak, won };
       }
@@ -994,6 +1009,8 @@ window.SCS = window.SCS || {};
         if (firstDown) notes.push(`${firstDown.name}が最初に脱落（T${firstDown.downTurn}）`);
         const flanked = sum(cards, "wasFlanked"), winded = sum(cards, "winded"), dodges = sum(cards, "dodges"), counters = sum(cards, "counters"), grabs = sum(cards, "grabs");
         if (counters) notes.push(`回避からの反撃 ${counters}回`); if (grabs) notes.push(`崩し（投げ）成功 ${grabs}回`);
+        const loners = cards.filter((c) => c.coop < 0.32), teamers = cards.filter((c) => c.coop > 0.6);
+        if (loners.length) notes.push(`一匹狼＝${loners.map((c) => c.name).join("・")}（連携せず単騎で戦う）`);
         // 状況信号
         const won = !!result && result.type === "win" && (result.winner === (team === "P" ? "PLR" : "CPU"));
         const draw = !result || result.type !== "win";
@@ -1014,6 +1031,7 @@ window.SCS = window.SCS || {};
         const advice = [];
         if (backLost && !hasTank) advice.push("盾役が不在。前衛の体に〈誇り〉〈自信〉〈規律〉と〈冷静さ〉を寄せ、狙われても持ちこたえる盾を作る。");
         else if (backLost && hasTank) advice.push("後衛が早期に脱落。前衛の盾度を上げるか、後衛を〈慎重〉寄りにして射点を下げる。");
+        if (advice.length < 2 && teamers.length === 0 && !won) advice.push("分隊に連携役がいない（全員が我流寄り）。〈順応性（観察）〉〈誇り（騎士道）〉〈規律〉を一部に寄せ、味方の崩しを活かす体を入れる。");
         if (advice.length < 2 && flanked >= 3) advice.push("側背面を取られすぎ。〈規律〉と〈観察（順応性）〉で隊形と射線を保つ。");
         if (advice.length < 2 && ultIdle) advice.push("気迫を抱え込んで終わった。〈非情さ〉〈リスク選好〉で必殺を早めに切る。");
         if (advice.length < 2 && winded >= (turn * 0.5)) advice.push("息切れで失速。〈忍耐（待ち）〉で消耗を抑えるか〈冷静さ〉で気力回復を速める。");
@@ -1044,5 +1062,10 @@ window.SCS = window.SCS || {};
     const u = SCS.derive.buildUnit("U", choices);
     const tank = tankRating(u);
     return { tank, presence: basePresence(u), hold: holdFactor(u), isTank: tank >= 0.45, isFront: tank >= 0.30 };
+  };
+  SCS.squadCoop = function (choices) { // 協調性（チームプレイ度）＝設計UIの『連携/我流』バッジ用
+    const u = SCS.derive.buildUnit("U", choices);
+    const coop = coopRating(u);
+    return { coop, isTeam: coop >= 0.6, isLoner: coop < 0.32 };
   };
 })();
