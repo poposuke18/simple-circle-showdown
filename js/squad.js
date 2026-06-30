@@ -685,6 +685,7 @@ window.SCS = window.SCS || {};
           const dec = decs.get(u);
           if (dec && dec.move === "RETREAT") return `射線を切って退いた`;
           if (u.engage === "retreat") return `味方の元へ退いて立て直しを図った`;
+          if (isShielding(u)) return `敵の只中で盾となり火力を受け止めた`;
           if (dec && dec.move === "ADVANCE") return `${t}へ間合いを詰めた`;
           return `その場で射線と退路を計った`;
         };
@@ -694,6 +695,8 @@ window.SCS = window.SCS || {};
           if (!u.alive) continue; const ev = evByAtt.get(u);
           if (ev && ev._killed) continue;        // 撃破はKO行が描く
           if (focusAtts.has(u)) continue;        // 集中砲火に束ねた攻め手は個別に出さない
+          const dec = decs.get(u), attacked = ev && ((ev.shots || 0) > 0 || ev.ult), moved = dec && (dec.move === "ADVANCE" || dec.move === "RETREAT");
+          if (!(attacked || moved || u.guarding || u.peeling || isShielding(u))) continue; // 何もしていない（その場待機）体は語らない＝意図倒れの文を出さない
           let sal = 0;
           if (u.guarding) sal += 6; if (isShielding(u)) sal += 5; if (u.peeling) sal += 5;
           if (ev && ev.crit) sal += 4; if (ev && ev.flank) sal += 3;
