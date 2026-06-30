@@ -42,6 +42,8 @@ window.SCS = window.SCS || {};
   };
   const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる"];
   const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。"];
+  const SEARCH_FLAVOR = ["両軍、まだ互いを捉えられず——慎重に索敵。", "気配を探りながら前進する。", "敵影を求めて間合いを詰める。", "誰もまだ敵を視界に捉えていない。", "息を潜め、敵の所在を探る。", "前進——どこかに潜む敵を探して。"];
+  const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
     return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
@@ -628,12 +630,18 @@ window.SCS = window.SCS || {};
       const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
       const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
       const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
-      // 索敵：このターン新たに発見した／見失った敵をフィードに（チーム単位の差分）
+      // 索敵：このターン新たに発見した／見失った敵をフィードに（誰が見つけたか＋多彩化）
       for (const tm of ["P", "C"]) {
-        const army = tm === "P" ? "あなたの分隊" : "敵分隊";
-        for (const e of known[tm].keys()) if (!detectedBefore[tm].has(e) && e.alive) lines.push({ text: `── ${army}が ${npc(e)} を発見！`, cls: "cm" });
-        for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った。`, cls: "dim" });
+        const army = tm === "P" ? "あなたの分隊" : "敵分隊", allyT = tm === "P" ? P : C;
+        for (const e of known[tm].keys()) if (!detectedBefore[tm].has(e) && e.alive) {
+          let spotter = null, sd = Infinity; for (const a of allyT) if (a.alive && detects(a, e)) { const d = dist(a, e); if (d < sd) { sd = d; spotter = a; } } // 発見した味方（最寄り）
+          const v = vary(SPOT_VERB, seed, turn, e.idx * 5 + (spotter ? spotter.idx : 0));
+          lines.push({ text: spotter ? `── ${npc(spotter)} が ${npc(e)}${v}` : `── ${army}が ${npc(e)}${v}`, cls: "cm" });
+        }
+        for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った——気配を探り直す。`, cls: "dim" });
       }
+      // 奇襲：未発見のまま（敵に発見されていない体が）強襲して削った＝隠密の報酬。最大の一撃を1件。
+      { let amb = null; for (const ev of evs) if ((ev.dmg || 0) > 0 && (ev.hits || 0) > 0 && !known[ev.att.team === "P" ? "C" : "P"].has(ev.att) && (!amb || ev.dmg > amb.dmg)) amb = ev; if (amb) lines.push({ text: `── 奇襲！ ${npc(amb.att)} が未発見のまま ${npc(amb.def)} を強襲！ −${amb.dmg}`, cls: "cm" }); }
       // KO（武器カテゴリ別の決め技・側背面・必殺）
       for (const ev of evs) if (ev._killed) {
         const verb = vary(KO_VERB[evCat(ev)] || KO_VERB.bal, seed, turn, ev.att.idx * 7 + ev.def.idx);
@@ -672,7 +680,7 @@ window.SCS = window.SCS || {};
       // その他サマリ（多彩化）／静かなターンは機動フレーバーで埋める
       const hitN = evs.filter((ev) => (ev.hits || 0) > 0).length, shown = lines.filter((l) => l.cls === "cm" || l.cls === "ex").length;
       if (hitN > shown) lines.push({ text: `　…${vary(SKIRMISH, seed, turn, hitN)}（命中 ${hitN} 件）`, cls: "dim" });
-      else if (hitN === 0 && shown === 0) lines.push({ text: `　${vary(MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" });
+      else if (hitN === 0 && shown === 0) { const searchPhase = (known.P.size + known.C.size) === 0; lines.push({ text: `　${vary(searchPhase ? SEARCH_FLAVOR : MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" }); }
       lines.push({ text: `　└ 残存 PLR ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・CPU ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
 
       // 9) 勝敗

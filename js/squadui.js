@@ -169,6 +169,7 @@ window.SCS = window.SCS || {};
     $("sqAnalyze").addEventListener("click", () => { const w = $("sqParamsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderAnalysis(); });
     $("sqBack").addEventListener("click", backToDesign);
     const kt = $("sqKeyTog"); if (kt) kt.addEventListener("click", () => { const k = $("sqKey"); k.classList.toggle("hidden"); kt.textContent = k.classList.contains("hidden") ? "▸ 見方" : "▾ 見方"; });
+    const ct = $("sqConeTog"); if (ct) ct.addEventListener("click", () => { const on = !(SCS.mini && SCS.mini.conesOn && SCS.mini.conesOn()); if (SCS.mini && SCS.mini.setCones) SCS.mini.setCones(on); ct.textContent = on ? "視界 ON" : "視界 OFF"; ct.classList.toggle("on", on); render(); });
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

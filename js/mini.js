@@ -10,6 +10,7 @@ window.SCS = window.SCS || {};
   let needSnap = false;
   let fx = []; // ③ 戦闘エフェクト（寿命付き・描画専用）。step()のevents由来＝決定論を壊さない
   let squadMode = false; const sdisp = new Map(); // 分隊戦：ユニット別の補間位置
+  let showCones = false; // ビジョンコーン表示（既定Off・トグルでOn）
   const COL_P = "#5cc8ff", COL_C = "#ff5e5e";
   const perfNow = () => (typeof performance !== "undefined" ? performance.now() : 0);
   // 地形ゾーンの色（テキストの「茂みに紛れ/瓦礫を盾に/高所/溶岩」と整合させる）
@@ -144,8 +145,8 @@ window.SCS = window.SCS || {};
   function drawSquad(SX, SY, f, haz) {
     const k = 0.3, units = battle.teams.P.concat(battle.teams.C);
     for (const u of units) { let d = sdisp.get(u); if (!d) { d = { x: u.x, y: u.y }; sdisp.set(u, d); } d.x += (u.x - d.x) * k; d.y += (u.y - d.y) * k; }
-    // ビジョンコーン（各体の視界扇型・遮蔽でクリップ）＝索敵の可視化。索敵中(未発見の相手を探す)は濃く・交戦中は薄く。
-    for (const u of units) { if (!u.alive || !u.sightR) continue; const d = sdisp.get(u); drawVisionCone(SX, SY, d.x, d.y, u, !u.target); }
+    // ビジョンコーン（各体の視界扇型・遮蔽でクリップ）＝索敵の可視化。既定Off・トグルでOn。索敵中(未発見の相手を探す)は濃く・交戦中は薄く。
+    if (showCones) for (const u of units) { if (!u.alive || !u.sightR) continue; const d = sdisp.get(u); drawVisionCone(SX, SY, d.x, d.y, u, !u.target); }
     // ターゲット線（生存→自target・射線が切れれば破線）
     ctx.lineWidth = 1;
     for (const u of units) {
@@ -302,5 +303,5 @@ window.SCS = window.SCS || {};
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); ctx.shadowBlur = 0;
   }
 
-  SCS.mini = { sync, syncSquad, reset, pushFx };
+  SCS.mini = { sync, syncSquad, reset, pushFx, setCones: (on) => { showCones = !!on; }, conesOn: () => showCones };
 })();
