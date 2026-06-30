@@ -658,19 +658,27 @@ window.SCS = window.SCS || {};
           const hpBand = (f) => f < 0.25 ? "残りわずか" : f < 0.5 ? "半ば削られ" : "なお健在";
           const obs = [];
           // 各観測は sig（不変の中身署名）で連続反復を判定し、text（語り）は vary で多彩化。ord は読み順（情景→緊張）。
-          // A) 間合いと推移（常時）。★敵を誰も視認していない索敵中は精確な間合いを語らない（見えない敵までの距離は測れない＝矛盾回避）。視認後だけ数値で。
+          // A) 間合いと推移（常時）。★距離は数値で語らない＝質的な「遠い/近い/鉢合わせ寸前」だけ（見えない敵まで歩数を測れる方が不自然）。
           const contact = (known.P.size + known.C.size) > 0;
-          let aText;
+          let aText, aSig;
           if (contact) {
-            const steps = Math.max(1, Math.round(gap / (S.baseStep || 12)));
-            let trend;
-            if (lastGap == null) trend = vary(["対峙する", "睨み合う", "対陣する"], seed, turn, 8);
-            else { const d = gap - lastGap; trend = d < -2 ? vary(["じりと間合いを詰める", "間合いを詰めていく", "距離を潰しにかかる"], seed, turn, 8) : d > 2 ? vary(["距離を取り直す", "間合いを開け直す", "一旦引いて仕切り直す"], seed, turn, 8) : vary(["間合いは膠着", "睨み合いが続く", "両者譲らず", "動かぬ均衡"], seed, turn, 8); }
-            aText = `${vary(["両軍の間合いはおよそ", "彼我の距離はおよそ", "敵との隔たりはおよそ"], seed, turn, 1)}${steps}歩、${trend}。`;
+            const r = gap / (maxDist || gap);                                                    // 戦場の対角比で間合いを質的に表現
+            const bi = r < 0.15 ? 0 : r < 0.32 ? 1 : r < 0.55 ? 2 : 3;
+            const band = [
+              ["もう刃が届く間合い", "目と鼻の先で対峙する", "鼻先まで詰め合った"],
+              ["この間合いなら鉢合わせは時間の問題", "互いの息遣いが届くほどに迫る", "あと数歩で刃が交わる隔たり"],
+              ["まだ間合いはあるが、無視できる距離ではない", "中ほどの間合いで睨み合う", "射線が届くか届かぬかの隔たり"],
+              ["まだだいぶ遠い", "戦場の端と端、隔たりは大きい", "遠く、互いの姿が小さく霞む"],
+            ][bi];
+            let trendC = "", ts = "0";
+            if (lastGap != null) { const d = gap - lastGap; if (d < -2) { trendC = vary(["じりと詰まりつつある", "差は急速に縮まっている", "間合いが潰されていく"], seed, turn, 8); ts = "-"; } else if (d > 2) { trendC = vary(["じわり開き直されていく", "距離が取り直されていく"], seed, turn, 8); ts = "+"; } }
+            aText = vary(band, seed, turn, 1) + (trendC ? "、" + trendC + "。" : "。");
+            aSig = "Ac" + bi + ts;                                                                // 同じバンド＋推移なら再掲しない（状況が動いた時だけ出る）
           } else {
             aText = vary(["彼我はなお視界の外、互いの位置を探り合う。", "両軍まだ敵影を捉えられず、気配だけが漂う。", "姿は見えず、広い戦場に睨み合いだけが続く。"], seed, turn, 7);
+            aSig = "As";
           }
-          obs.push({ ord: 0, force: true, key: "A", sig: "A" + (contact ? "c" : "s"), text: aText });
+          obs.push({ ord: 0, force: true, key: "A", sig: aSig, text: aText });
           // B) 陣形（両軍の槍先を1行に）
           if (all0.length >= 3) { const sp = spear(aliveP, "P"), sc = spear(aliveC, "C"); const tp = terrName(sp); if (sp && sc) obs.push({ ord: 1, key: "B", sig: "B" + sp.idx + sc.idx, text: `あなたの分隊は ${npc(sp)} を${vary(["前面に", "槍先に", "先頭に"], seed, turn, 2)}、敵は ${npc(sc)} を押し立て${tp ? `（${npc(sp)}は${TVERB[tp]}）` : ""}${vary(["対峙する", "にじり寄る", "隊列を組む"], seed, turn, 3)}。` }); }
           // F) 形勢（頭数）
