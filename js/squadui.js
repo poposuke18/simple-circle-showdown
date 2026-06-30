@@ -113,6 +113,18 @@ window.SCS = window.SCS || {};
     if (b.formP && b.formP !== "loose") { const f = D.FORMATIONS.find((x) => x.key === b.formP); if (f) out.push({ t: `>> 隊形：${f.name} — ${f.flavor}`, c: "arena" }); }
     return out;
   }
+  // 開戦時の布陣＝各ユニットの状況（武器/HP/役割＋盾/一匹狼/連携）。観測可能なラベルのみ（24小パラ数値は出さない）。
+  function lineupLines(arr, side, label) {
+    const out = [{ t: `>> ${label}`, c: "arena" }];
+    arr.forEach((ch, i) => {
+      const u = SCS.derive.buildUnit("U", ch), role = (SCS.ui && SCS.ui.styleOf) ? SCS.ui.styleOf(u) : "";
+      const tk = SCS.squadTank ? SCS.squadTank(ch) : null, cp = SCS.squadCoop ? SCS.squadCoop(ch) : null;
+      const tags = [tk && tk.isTank ? "盾" : "", cp && cp.isLoner ? "一匹狼" : (cp && cp.isTeam ? "連携型" : "")].filter(Boolean).join("・");
+      const nm = side === "P" ? `戦士${i + 1}` : `敵${i + 1}`;
+      out.push({ t: `　${nm}：${u.ranged.name}＋${u.melee.name}（HP${u.maxHp}）／${role}${tags ? "・" + tags : ""}`, c: "brief" });
+    });
+    return out;
+  }
   function maybeShowLegendFirstRun() { // 初回だけ「見方（凡例）」を開いてレーダー記号を説明（以後は閉じておく）
     let seen = false; try { seen = localStorage.getItem("scs_sq_legend") === "1"; } catch (e) {}
     if (seen) return;
@@ -135,6 +147,8 @@ window.SCS = window.SCS || {};
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";
     $("sqLog").innerHTML = "";
     for (const l of battlefieldBriefing(battle)) append(l.t, l.c);
+    for (const l of lineupLines(squad, "P", "あなたの布陣")) append(l.t, l.c);
+    for (const l of lineupLines(cpuChoices, "C", "敵の布陣（" + (cpuName === "ランダム" ? "ランダム編成" : cpuName) + "）")) append(l.t, l.c);
     append(`>> 分隊戦開始：あなた${SIZE}体 vs ${cpuName}（${SIZE}体）`, "sys");
     $("sqParamsWrap").classList.add("hidden");
     render();
