@@ -144,6 +144,7 @@ window.SCS = window.SCS || {};
     $("sqAuto").addEventListener("click", auto);
     $("sqAnalyze").addEventListener("click", () => { const w = $("sqParamsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderAnalysis(); });
     $("sqBack").addEventListener("click", backToDesign);
+    const kt = $("sqKeyTog"); if (kt) kt.addEventListener("click", () => { const k = $("sqKey"); k.classList.toggle("hidden"); kt.textContent = k.classList.contains("hidden") ? "▸ 見方" : "▾ 見方"; });
   }
   document.addEventListener("DOMContentLoaded", init);
 })();
