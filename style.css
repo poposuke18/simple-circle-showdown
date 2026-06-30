@@ -346,7 +346,9 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .help-btn { position: absolute; top: 0; right: 0; width: 26px; height: 26px; border-radius: 50%; background: #061b10; color: var(--green2); border: 1px solid var(--line2); font-family: var(--mono); font-size: 14px; cursor: pointer; line-height: 1; }
 .help-btn:hover { color: var(--green); border-color: var(--green2); box-shadow: 0 0 9px rgba(109, 255, 160, .3); }
 .app-head { position: relative; }
-.onboard { position: fixed; inset: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; padding: 20px; background: radial-gradient(120% 90% at 50% 30%, rgba(4, 16, 10, .82), rgba(0, 0, 0, .9)); }
+/* 3層スタック：暗幕(10000) < 強調スポット(10001) < ダイアログ(10003)。スポットがダイアログに重なって表示が壊れるのを防ぐ */
+.onboard { position: fixed; inset: 0; z-index: 10003; display: flex; align-items: center; justify-content: center; padding: 20px; background: transparent; }
+body.ob-open::before { content: ""; position: fixed; inset: 0; z-index: 10000; background: radial-gradient(120% 90% at 50% 30%, rgba(4, 16, 10, .82), rgba(0, 0, 0, .9)); pointer-events: none; }
 .ob-box { width: 100%; max-width: 470px; background: radial-gradient(120% 90% at 50% 0%, #0a1c12, var(--scr) 75%); border: 2px solid var(--line2); border-radius: 8px; padding: 20px 22px; box-shadow: 0 0 0 4px #060807, 0 0 50px rgba(60, 220, 130, .12), 0 18px 50px rgba(0, 0, 0, .7); }
 .ob-step { color: var(--dim); font-size: 11px; letter-spacing: 2px; }
 .ob-title { color: var(--amber); font-size: 16px; font-weight: 700; letter-spacing: .5px; margin: 6px 0 12px; text-shadow: 0 0 9px rgba(255, 207, 92, .3); }
@@ -359,7 +361,7 @@ select:focus, input:focus { outline: none; border-color: var(--green2); box-shad
 .ob-foot { display: flex; align-items: center; gap: 8px; }
 .ob-spacer { flex: 1; }
 .btn.tiny { padding: 4px 10px; font-size: 11px; }
-.ob-spot { position: relative; z-index: 10002; outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; box-shadow: 0 0 22px rgba(255, 207, 92, .35); animation: obspot 1.4s ease-in-out infinite; } /* 暗幕(10001)より前面＝強調要素が沈まない */
+.ob-spot { position: relative; z-index: 10001; outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; box-shadow: 0 0 22px rgba(255, 207, 92, .35); animation: obspot 1.4s ease-in-out infinite; } /* 暗幕(10000)より前面で強調・ダイアログ(10003)より背面で重ならない */
 @keyframes obspot { 0%, 100% { outline-color: rgba(255, 207, 92, .55); } 50% { outline-color: rgba(255, 207, 92, 1); } }
 
 /* ── 分隊戦 ── */

@@ -52,10 +52,11 @@ window.SCS = window.SCS || {};
     const pv = $("obPrev"); if (pv) pv.addEventListener("click", () => { i = Math.max(0, i - 1); render(); });
   }
 
-  function open(fromHelp) { i = 0; const ov = $("onboard"); if (!ov) return; ov.classList.remove("hidden"); render(); }
+  function open(fromHelp) { i = 0; const ov = $("onboard"); if (!ov) return; ov.classList.remove("hidden"); document.body.classList.add("ob-open"); render(); }
   function finish() {
     clearSpot();
     const ov = $("onboard"); if (ov) ov.classList.add("hidden");
+    document.body.classList.remove("ob-open"); // 暗幕(body::before)を消す
     try { localStorage.setItem(KEY, "1"); } catch (e) {}
   }
 
