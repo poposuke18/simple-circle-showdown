@@ -89,6 +89,7 @@ window.SCS = window.SCS || {};
     const hazards = [];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
     let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false, lastGap = null, everContact = false;
+    let prevLeadSign = 0, lastResidual = "", lastFooterTurn = -9; // 形勢転換の演出／残存フッターの冗長抑制（70%が無変化だった）
     const snapSeen = {};   // 前状況スナップショット：キー→{text,turn}。静的事実の連続反復を抑える（変化 or 3T経過で再掲）
 
     // ===== 幾何・地形・命中（1v1から移植）=====
@@ -834,7 +835,8 @@ window.SCS = window.SCS || {};
           // 各観測は sig（不変の中身署名）で連続反復を判定し、text（語り）は vary で多彩化。ord は読み順（情景→緊張）。
           // A) 間合いと推移（常時）。★距離は数値で語らない＝質的な「遠い/近い/鉢合わせ寸前」だけ（見えない敵まで歩数を測れる方が不自然）。
           const contact = (known.P.size + known.C.size) > 0;
-          if (contact) everContact = true;                                                        // 一度でも接敵したら以後「まだ」「開幕」表現は使わない
+          if (contact && !everContact) { everContact = true; lines.push({ text: `── 両軍、ついに互いを捉える——開戦！`, cls: "cm" }); } // ★索敵→交戦の転換点を1度だけ盛り上げる
+          else if (contact) everContact = true;
           let aText, aSig;
           if (contact) {
             const r = gap / (maxDist || gap);                                                    // 戦場の対角比で間合いを質的に表現
@@ -1040,7 +1042,18 @@ window.SCS = window.SCS || {};
           }
         } else lines.push({ text: `　${vary(MANEUVER, seed, turn, aliveCount("P") * 5 + aliveCount("C"))}`, cls: "dim" });
       }
-      lines.push({ text: `　└ 残存 PLR ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・CPU ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
+      // ★形勢転換の演出：頭数の優劣が覆った瞬間だけ盛り上げる（撃破が絡む時＝ドラマの山）。初撃破(0→±)では出さない。
+      { const lead = aliveCount("P") - aliveCount("C"), sign = lead > 0 ? 1 : lead < 0 ? -1 : 0;
+        if (sign !== prevLeadSign) {
+          if (prevLeadSign !== 0 && deadThisTurn.length) { const txt = sign > 0 ? "あなたの分隊が数で押し返す" : sign < 0 ? "敵分隊が数で押し込む" : "数が並び、五分に戻る"; lines.push({ text: `── 形勢が動く——${txt}！`, cls: "cm" }); }
+          prevLeadSign = sign;
+        } }
+      // ★残存フッターは変化した時だけ（毎ターン70%が無変化＝HUDと重複の冗長を解消）。10%帯で量子化＋5T毎に区切り＋決着。
+      { const resSig = `${aliveCount("P")}/${Math.round(teamHpFrac("P") * 5)}|${aliveCount("C")}/${Math.round(teamHpFrac("C") * 5)}`;
+        if (resSig !== lastResidual || turn - lastFooterTurn >= 5 || over) {
+          lines.push({ text: `　└ 残存 あなた ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・敵 ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
+          lastResidual = resSig; lastFooterTurn = turn;
+        } }
 
       // 9) 勝敗
       result = finishCheck();
