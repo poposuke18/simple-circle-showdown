@@ -63,7 +63,12 @@ window.SCS = window.SCS || {};
   const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める", "銃を構えたまま角を回り込む", "息を潜め、敵の気配に耳を澄ます"]; // 個体の索敵動作（誰が、を明示）
   const INSTINCT_ACT = ["第六感で敵の気配を辿り、潜む方へ詰める", "勘を頼りに敵の潜伏点へ忍び寄る", "気配の揺らぎを嗅ぎ取り、そちらへ間合いを詰める", "研ぎ澄ました直感で敵の所在を探り当てにかかる"]; // 嗅覚(D1)が鋭い体の索敵（多彩化）
   const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
-  const SNAP_ACC = 0.30; // チャージ武器をノーチャージで即撃ちする時の命中倍率。チャージ＝狙いを定める＝命中を一気に上げる行為なので、溜め無しは圧倒的に当たらない（＝近距離なら近接武器を使う方が良い、という判断が自然に出る）
+  const SNAP_ACC = 0.30;       // ノーチャージ速射の命中倍率。溜め無しは圧倒的に当たらない（近距離なら近接武器を使う判断が自然に出る）
+  const FOG_MAX_DIST = 95;     // これ未満の対角 or 回廊(h<18)なら霧なし（狭い部屋・吊り橋）
+  const BASE_SIGHT_RATIO = 0.30; // 基本視野距離 = maxDist × 比率（戦場全域を見渡せないよう絞る）
+  const TVERB = { 茂み: "茂みに身を潜め", 瓦礫: "瓦礫に身を寄せ", 沼地: "沼地に足を取られ", 高所: "高所に陣取り", 溶岩: "溶岩の際に立ち" };
+  const FORM_HELD  = { line: "横一線で崩れず正対する", wedge: "楔の陣で一点に圧をかける", circle: "円陣で後衛を抱え守る" };
+  const FORM_BROKE = { line: "戦列が乱れ、横の連携が切れかける", wedge: "楔が崩れ、勢いが散る", circle: "円陣が解け、後衛が露出しかける" };
   function weaponCat(w, ranged) {
     if (ranged) return w.key === "flamethrower" ? "flame" : w.mode === "charge" || w.key === "marksman" || w.key === "pistol" || w.key === "burst" ? "precise" : w.key === "shotgun" ? "shotgun" : "auto";
     return w.pattern === "multi" ? "mlt" : w.pattern === "heavy" ? "hvy" : "bal";
@@ -218,8 +223,8 @@ window.SCS = window.SCS || {};
     //   各体に視界扇型（前方FOV・距離Range）＋隠密。敵がコーン+射線に入れば発見。観戦者は全可視・AIだけ発見済みに反応。
     //   静的（人格＋アリーナ規模由来）＝乱数非消費・決定論。
     // ★狭い部屋・回廊（吊り橋）は見渡せば相手がいる＝索敵フェーズ自体が不自然。霧なし＝開幕から相互発見済み。視界システムは中〜大アリーナだけ機能。
-    const fogless = maxDist < 95 || arena.h < 18; // 狭い部屋(狭い闘技場md34)＋細い回廊(吊り橋h14＝一直線の射線＝見渡せば相手が見える)。0630gのアリーナ再寸法で吊り橋が長くなりmaxDistが95超→h閾値で回廊を再び霧なしに（リグレッション修正）
-    const baseSight = maxDist * 0.30;   // ★視界を締める：戦場のほぼ全域→一部だけ＝索敵が成立（即発見しない）。狙撃射程より短く＝先に撃たれる緊張も
+    const fogless = maxDist < FOG_MAX_DIST || arena.h < 18;
+    const baseSight = maxDist * BASE_SIGHT_RATIO;
     for (const u of ALL) {
       const m = u.micros;
       u.sightR = baseSight * clamp(0.6 + m.D1 * 0.5 + m.C5 * 0.2 + m.A1 * 0.25, 0.5, 1.5);     // 視界距離：相手読み/冷静/遠距離選好で伸びる＝斥候
@@ -659,39 +664,37 @@ window.SCS = window.SCS || {};
       if (over) return { turn, lines: [], events: [], over, result };
       turn++;
       const lines = [], events = [], envLines = [];
-      const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive }); // ターン開始時(=前状況)の位置/HPを保存＝盤面スナップショット用
-      for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; } // 当ターン限定フラグをリセット（回避反撃／味方の死への反応）
-      // 0) 索敵：各体のビジョンコーンで敵を視認→チーム共有（即時）＋鮮度減衰。発見/ロストのフィードはこの差分から。
+      const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive });
+      for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; }
+      // 0) 索敵
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
-      // 1) ターゲット選定（発見済みの敵のみ・固定順＝集中砲火の創発・決定論）
+      // 1) ターゲット選定（発見済みのみ・固定順＝決定論）
       for (const u of ALL) if (u.alive) u.target = pickTarget(u);
-      // 集中度を一括集計（各敵の被ターゲット数）＝ラベル『集中』とレーダーのリングを同基準(>=2)に揃える
       { const tc = new Map(); for (const u of ALL) if (u.alive && u.target) tc.set(u.target, (tc.get(u.target) || 0) + 1); for (const u of ALL) u._focusCount = (u.alive && u.target) ? (tc.get(u.target) || 0) : 0; }
-      // 1.5) 交戦状態（OODA）更新：有利なら攻勢・不利かつ手負いなら撤退（decideの重みを傾ける）
+      // 1.5) 交戦状態（OODA）
       for (const u of ALL) if (u.alive) updateEngage(u);
       // 2) 意思決定
       const decs = new Map();
       for (const u of ALL) if (u.alive) decs.set(u, decide(u));
       // 3) 同時移動
       for (const u of ALL) if (u.alive) { const d = decs.get(u); u.x = d.newPos.x; u.y = d.newPos.y; }
-      // 3.5) アンチストール：膠着したら【交戦圏外の体だけ】を最寄り敵へ引き寄せ強制接触。
-      //      ★既に射程＆射線で交戦できている射手は引き寄せない＝後衛が前に引きずり出されて溶ける現象を防ぐ
+      // 3.5) アンチストール：膠着したら攻撃的な体だけ最寄り敵へ引き寄せる（専守・待ちは引かない→待ち戦はタイムアップ）
       if (noDmgTurns >= 3) {
         const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
         for (const u of ALL) {
-          if (!u.alive || !restless(u)) continue; // ★防御的な体（専守・待ち）は引き寄せない＝両者防御的な"待ち戦"はタイムアップへ。攻撃的な体だけ強制接触で素早く決着
-          const e = nearestKnownEnemy(u); if (!e) continue; // ★発見済みの敵にのみ引き寄せ＝索敵中（未発見）は引っ張らない（未発見の敵位置を覗かない）
+          if (!u.alive || !restless(u)) continue;
+          const e = nearestKnownEnemy(u); if (!e) continue;
           const d = dist(u, e);
-          // ★射程でなく「現に削れているか(idleTurns)」で据え置き判定（#13）：近接の空振りオーバーシュート振動（射程内なのに0ダメで往復）を放置しないため。
+          // 近接は距離で・射手は idleTurns で判断（射程内でも0ダメ往復の振動を強制接触で断ち切る）
           const inMelee = d <= u.melee.reach && losClear(u, e);
-          const rangedEngaging = u.ranged.effRange > u.melee.reach + 12 && d <= u.ranged.effRange && losClear(u, e) && (u.idleTurns || 0) < 3; // 本物の射手が射程内で現に削れている時だけ据え置く
+          const rangedEngaging = u.ranged.effRange > u.melee.reach + 12 && d <= u.ranged.effRange && losClear(u, e) && (u.idleTurns || 0) < 3;
           if (inMelee || rangedEngaging) continue;
           const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
           const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
         }
       }
-      // 4) 向き：発見済みの標的を見据える／索敵中は進行（索敵）方向を向く＝ビジョンコーンが前方を掃く
+      // 4) 向き
       for (const u of ALL) {
         if (!u.alive) continue;
         let fx, fy;
@@ -766,24 +769,20 @@ window.SCS = window.SCS || {};
         const c = counterStrike(u, atkr.att);
         if (c) { const before = atkr.att.hp; atkr.att.hp = Math.max(0, atkr.att.hp - c); atkr.att.st.taken += Math.min(before, c); u._counter = { dmg: c, on: atkr.att }; u.st.counters = (u.st.counters || 0) + 1; u.st.dealt += c; }
       }
-      // 与ダメ記録（撃破は適用後に判定するので、ここで攻め手のdealtを反映）
+      // 6.8) 与ダメ・統計記録
       for (const ev of evs) if (ev.dmg > 0) ev.att.st.dealt += ev.dmg;
-      for (const ev of evs) { if (ev.flank && (ev.hits || 0) > 0 && ev.def) ev.def.st.wasFlanked++; if (ev.grabHit) ev.att.st.grabHits++; } // 被フランク／投げ成功の計測
-      // 連携アシストの基盤：味方が崩した敵（側背を取った/投げた/大打した）を _opened にマーク＝高coopの味方が次ターン突く好機
+      for (const ev of evs) { if (ev.flank && (ev.hits || 0) > 0 && ev.def) ev.def.st.wasFlanked++; if (ev.grabHit) ev.att.st.grabHits++; }
       for (const ev of evs) { if (ev.def && ev.def.alive && ((ev.flank && (ev.hits || 0) > 0) || ev.grabHit || (ev.dmg || 0) >= 0.15 * ev.def.maxHp)) ev.def._opened = turn; }
-      // 状態異常DoT＋地形/ハザード（環境ダメージは膠着判定に算入）
+      // 6.9) DoT・地形・ハザード
       let envDmg = 0;
       for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}（残${Math.max(0, Math.round(u.hp))}/${u.maxHp}）`, cls: u.team === "P" ? "plr" : "cpu" }); } }
-      // 燃え広がる炎の延焼＋立つ者を焼く
       for (const h of hazards) { if (h.turns <= 0) continue; h.turns--; for (const u of ALL) { if (u.alive && ptInRect(u, h)) { u.hp = Math.max(0, u.hp - h.dmg); envDmg += h.dmg; } } }
       for (const u of ALL) { if (!u.alive) continue; const lv = terrainDmg(u); if (lv) { u.hp = Math.max(0, u.hp - lv); envDmg += lv; } }
-      // ハザード掃除
       for (let i = hazards.length - 1; i >= 0; i--) if (hazards[i].turns <= 0) hazards.splice(i, 1);
-      // 7) 死亡判定＋撃破帰属（倒れた敵に当てた攻撃者のうち最大ダメージへ）
+      // 7) 死亡判定・撃破帰属
       for (const u of ALL) { if (u.alive && u.hp <= 0) { u.alive = false; u.st.downTurn = turn; deadThisTurn.push(u); } }
       for (const u of deadThisTurn) { let best = null; for (const ev of evs) if (ev.def === u && (ev.dmg || 0) > 0) { if (!best || ev.dmg > best.dmg) best = ev; } if (best) { best._killed = u; best.att.st.kills++; } }
-      // 7.5) ★ターン終わりの再索敵：移動・戦闘・死亡を経た「最終位置」で視認し直す。
-      //      頭の索敵(=移動前)だけだと、移動後に明らかに敵の視界へ入った体が未発見表示になり、描写・ミニマップ(最終位置)とズレる。
+      // 7.5) 終わりの再索敵（最終位置で一致させる）
       updateDetection();
       // 8) リソース更新
       for (const u of ALL) {
@@ -825,20 +824,18 @@ window.SCS = window.SCS || {};
       for (const u of ALL) if (u.alive) u.idleTurns = (dealtNow.get(u) || 0) > 0 ? 0 : u.idleTurns + 1; // 個体の遊兵化検知（攻め圧の累積）
       // 動的ラベル（今ターンの役割行動を1語で・HUD/レーダー用）
       const evByAtt = new Map(); for (const ev of evs) if (!evByAtt.has(ev.att)) evByAtt.set(ev.att, ev);
-      // 必殺の抱え込みターン数（温存経済・死蔵防止の強制解放弁に使う）：撃ったら0・満タンで温存中は加算
       for (const u of ALL) { if (!u.alive) { u._ultHold = 0; continue; } const evU = evByAtt.get(u); if (evU && evU.ult) u._ultHold = 0; else if (u.resolve >= 1) u._ultHold = (u._ultHold || 0) + 1; else u._ultHold = 0; }
       for (const u of ALL) u.label = dynLabel(u, evByAtt.get(u), decs.get(u));
 
-      // ===== 描写フィード（注目イベントを拾い、武器/側背面/状態/戦術を活写。決定論ハッシュで多彩化）=====
+      // 9) 描写フィード
       const npc = (u) => `<span class="${u.team === 'P' ? 'np' : 'nc'}">${u.name}</span>`;
       const armyOf = (u) => (u.team === "P" ? "あなたの分隊" : "敵分隊");
       const evCat = (ev) => { const rn = ev.ult ? ev.ultRn : ev.attack === "RANGED"; return weaponCat(rn ? ev.att.ranged : ev.att.melee, rn); };
       const flankPre = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面を突き" : "";
       const stTag = (ev) => ev.applyStatus ? `（${D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type}）` : "";
-      // ===== 前状況スナップショット：その瞬間の盤面を詳細に切り取る（位置/HP/狙い/地形/孤立＝観測可能な状態のみ・決定論）=====
-      //   リアルタイム進行の一瞬を止めて、間合い・陣形・脅威の収束・手負い・地形・形勢を活写。隠しパラ(micros)には触れない。
+      // 9.1) 前状況スナップショット（間合い・陣形・HP・地形・形勢・孤立を活写。隠しパラ不使用）
       {
-        const palive = (u) => pre.get(u).alive, phpf = (u) => pre.get(u).hp / u.maxHp;             // 前状況＝ターン開始時の生死/HP
+        const palive = (u) => pre.get(u).alive, phpf = (u) => pre.get(u).hp / u.maxHp;
         const aliveP = P.filter(palive), aliveC = C.filter(palive);
         if (aliveP.length && aliveC.length) {
           const all0 = aliveP.concat(aliveC);
@@ -846,7 +843,6 @@ window.SCS = window.SCS || {};
           const cp = cen(aliveP), cc = cen(aliveC), gap = Math.hypot(cp.x - cc.x, cp.y - cc.y);
           const fwd = (u, team) => team === "P" ? pre.get(u).x : -pre.get(u).x;
           const spear = (arr, team) => arr.slice().sort((a, b) => fwd(b, team) - fwd(a, team))[0];   // 最前（槍先）
-          const TVERB = { 茂み: "茂みに身を潜め", 瓦礫: "瓦礫に身を寄せ", 沼地: "沼地に足を取られ", 高所: "高所に陣取り", 溶岩: "溶岩の際に立ち" };
           const terrName = (u) => { const t = terrainAt(pre.get(u)); return (t !== baseTerrain && t.name && TVERB[t.name]) ? t.name : null; };
           const hpBand = (f) => f < 0.25 ? "残りわずか" : f < 0.5 ? "半ば削られ" : "なお健在";
           const obs = [];
@@ -900,10 +896,8 @@ window.SCS = window.SCS || {};
             if (m) obs.push({ ord: 5, key: "I", sig: "I" + m.idx + (mv > 0 ? "+" : "-"), text: mv > 0 ? `${npc(m)} に勢いが乗り、${vary(["押し始める", "波に乗る", "攻勢を強める"], seed, turn, 13)}。` : `${npc(m)} は勢いを失い、${vary(["防戦に回る", "気圧されていく"], seed, turn, 13)}。` }); }
           // J) 情景（一瞬の切り取り・低優先・たまに）＝硝煙/薬莢/砂塵で観戦に温度を足す
           if (hsh(seed, turn, 20) % 3 === 0) obs.push({ ord: 8, key: "J", sig: "J" + turn, text: vary(ATMO, seed, turn, 20) });
-          // K) 隊形の維持状況＝プレーヤーが選んだ作戦が機能しているか（規律/協調で遂行度が変わるのを状況説明に露出）。
-          { const FORM_HELD = { line: "横一線で崩れず正対する", wedge: "楔の陣で一点に圧をかける", circle: "円陣で後衛を抱え守る" };
-            const FORM_BROKE = { line: "戦列が乱れ、横の連携が切れかける", wedge: "楔が崩れ、勢いが散る", circle: "円陣が解け、後衛が露出しかける" };
-            for (const tm of ["P", "C"]) { const fk = tm === "P" ? formP : formC; if (fk === "loose" || !FORM_HELD[fk]) continue;
+          // K) 隊形の維持状況
+          { for (const tm of ["P", "C"]) { const fk = tm === "P" ? formP : formC; if (fk === "loose" || !FORM_HELD[fk]) continue;
               const units = (tm === "P" ? P : C).filter((u) => u.alive); if (units.length < 2) continue;
               let held = 0; for (const u of units) { const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) held++; }
               const ok = held / units.length >= 0.5, army = tm === "P" ? "あなたの分隊" : "敵分隊", fname = (D.FORMATIONS.find((f) => f.key === fk) || {}).name || fk;
@@ -931,16 +925,12 @@ window.SCS = window.SCS || {};
         }
         for (const e of detectedBefore[tm]) if (!known[tm].has(e) && e.alive) lines.push({ text: `　${army}は ${npc(e)} を見失った——気配を探り直す。`, cls: "dim" });
       }
-      // ===== チーム連携の活写：同時動作を「味方が〜なので OOは XXした」の因果で文章化（決定論）=====
-      //   sim が既に持つチーム挙動（役割・OODA交戦状態・かばう/剝がし/集中）を、観測可能な状態（生死/HP/役割/被集中/孤立）だけを根拠に文章化。隠しパラには触れない。
-      //   順序は「設定→結末」：連携(この描写)→結果(奇襲/撃破/必殺)。同時性は接続詞（一方／時を同じくして…）で明示。顕著な動き上位3＋集中砲火の束ね。撃破はKO行が描く。
+      // 9.2) チーム連携の活写（因果・同時動作・隠しパラ不使用）
       {
         const otherCount = (tm) => aliveCount(tm === "P" ? "C" : "P");
         const fl2 = (ev) => ev.flank === "rear" ? "背後から" : ev.flank === "side" ? "側面から" : "";
-        // 集中砲火（同一標的に2体以上が実ダメ）＝チームの集中を1件に束ね、先頭ビートへ。束ねた攻め手は個別に出さない。
         let focus = null; { const m = new Map(); for (const ev of evs) if ((ev.dmg || 0) > 0 && !ev.ult) m.set(ev.def, (m.get(ev.def) || []).concat(ev)); for (const [tgt, list] of m) if (list.length >= 2) { const sum = list.reduce((s, e) => s + e.dmg, 0); if (!focus || sum > focus.sum) focus = { tgt, list, sum, team: list[0].att.team }; } }
         const focusAtts = new Set(focus ? focus.list.map((e) => e.att) : []);
-        // 因果クローズ（「味方が〜なので」の前段。観測可能な根拠のみ）
         const clauseOf = (u) => {
           const allies = alliesOf(u).filter((a) => a !== u), shielder = allies.find((a) => a.alive && isShielding(a));
           const frontFell = deadThisTurn.some((d) => d.team === u.team && isFrontline(d));
@@ -962,8 +952,8 @@ window.SCS = window.SCS || {};
           return "";
         };
         // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
-        const attackedThisTurn = (u) => evs.some((e) => e.def === u && e.att.team !== u.team && e.att.alive && ((e.shots || 0) > 0 || ev_isUlt(e)));
         const ev_isUlt = (e) => !!(e && e.ult && !e.whiff);
+        const attackedThisTurn = (u) => evs.some((e) => e.def === u && e.att.team !== u.team && e.att.alive && ((e.shots || 0) > 0 || ev_isUlt(e)));
         const hpTag = (u) => `残${Math.max(0, Math.round(u.hp))}/${u.maxHp}`; // 命中後の残HP（数値情報）
         // 手応え（被ダメの深さ・攻撃行の末尾に付す・観測可能な結果のみ）
         const reactOf = (ev) => { if (!ev || !ev.def || !(ev.dmg > 0)) return ""; const f = ev.dmg / (ev.def.maxHp || 100); const lv = ev.def.hp <= 0 ? "huge" : f < 0.08 ? "graze" : f < 0.18 ? "light" : f < 0.32 ? "solid" : f < 0.5 ? "heavy" : "huge"; return vary(REACT[lv], seed, turn, ev.att.idx * 11 + ev.def.idx + (ev.dmg | 0)); };
