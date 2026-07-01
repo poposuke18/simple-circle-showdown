@@ -426,10 +426,10 @@ window.SCS = window.SCS || {};
       }
       if (meleeOk) return { attack: "MELEE" };
       if (rangedOk) {
-        // チャージ武器（スナイパー）：溜めている間に近接で踏み込まれる距離なら、溜めても中断される→ノーチャージ速射（低命中）で即撃ち。
-        //   安全（敵が一手で近接に届かない）なら通常チャージ。＝狭所では速射が外れがち＝近接に切替える判断が自然に出る。
+        // チャージ武器（スナイパー）：★近接寄りの敵が一手で殴りに来る距離なら、溜めても中断される→ノーチャージ速射で即撃ち。
+        //   ただし相手が射手（近接に来ない）なら中断されないので通常チャージ（精密射撃）。＝スナイパー同士の近距離で速射連発→冗長、を防ぐ。
         if (u.ranged.mode === "charge" && !u.charged) {
-          let nd = Infinity; for (const e of enemiesOf(u)) if (e.alive) { const dd = dist(pos, e); if (dd < nd) nd = dd; }
+          let nd = Infinity; for (const e of enemiesOf(u)) if (e.alive) { const meleeThreat = e.ranged.effRange < 45 || (e.winDist || 99) < 30; if (!meleeThreat) continue; const dd = dist(pos, e); if (dd < nd) nd = dd; }
           if (nd <= u.melee.reach + (S.baseStep || 12) * 1.2) return { attack: "SNAP" };
         }
         return { attack: "RANGED" };
