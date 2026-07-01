@@ -1039,9 +1039,9 @@ window.SCS = window.SCS || {};
             lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
             bi += 2;
           } else {
-            const conn = bi === 0 ? "" : vary(["一方、", "その傍ら、", "時を同じくして、"], seed, turn, bi * 3);
-            const dm = conn ? "" : (a.u ? demeanorOf(a.u) : ""); // ★前置きは上限2＝接続詞を付ける時は気配を落とす（3連スタック防止）
-            const body = a.txt ? a.txt : `${conn}${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dm ? dm + "、" : ""}${actOf(a.u)}`;
+            // ★同時性の接続詞（一方、/時を同じくして、等）は撤去（不自然・ユーザー指摘）。同TURN内で「──」が並ぶ＝同時、は構造で伝わる。
+            const dm = a.u ? demeanorOf(a.u) : "";
+            const body = a.txt ? a.txt : `${a.clause ? a.clause + "、" : ""}${npc(a.u)} は ${dm ? dm + "、" : ""}${actOf(a.u)}`;
             lines.push({ text: `── ${body}。`, cls: bi === 0 ? "cm" : "ex" });
             bi += 1;
           }
