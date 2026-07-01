@@ -900,10 +900,19 @@ window.SCS = window.SCS || {};
             if (m) obs.push({ ord: 5, key: "I", sig: "I" + m.idx + (mv > 0 ? "+" : "-"), text: mv > 0 ? `${npc(m)} に勢いが乗り、${vary(["押し始める", "波に乗る", "攻勢を強める"], seed, turn, 13)}。` : `${npc(m)} は勢いを失い、${vary(["防戦に回る", "気圧されていく"], seed, turn, 13)}。` }); }
           // J) 情景（一瞬の切り取り・低優先・たまに）＝硝煙/薬莢/砂塵で観戦に温度を足す
           if (hsh(seed, turn, 20) % 3 === 0) obs.push({ ord: 8, key: "J", sig: "J" + turn, text: vary(ATMO, seed, turn, 20) });
+          // K) 隊形の維持状況＝プレーヤーが選んだ作戦が機能しているか（規律/協調で遂行度が変わるのを状況説明に露出）。
+          { const FORM_HELD = { line: "横一線で崩れず正対する", wedge: "楔の陣で一点に圧をかける", circle: "円陣で後衛を抱え守る" };
+            const FORM_BROKE = { line: "戦列が乱れ、横の連携が切れかける", wedge: "楔が崩れ、勢いが散る", circle: "円陣が解け、後衛が露出しかける" };
+            for (const tm of ["P", "C"]) { const fk = tm === "P" ? formP : formC; if (fk === "loose" || !FORM_HELD[fk]) continue;
+              const units = (tm === "P" ? P : C).filter((u) => u.alive); if (units.length < 2) continue;
+              let held = 0; for (const u of units) { const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) held++; }
+              const ok = held / units.length >= 0.5, army = tm === "P" ? "あなたの分隊" : "敵分隊", fname = (D.FORMATIONS.find((f) => f.key === fk) || {}).name || fk;
+              obs.push({ ord: 1.5, key: "K" + tm, sig: "K" + tm + fk + (ok ? "h" : "b"), text: ok ? `${army}は${fname}を保ち、${FORM_HELD[fk]}。` : `${army}の${fname}が乱れ——${FORM_BROKE[fk]}。` });
+            } }
           // 選抜：★中身が変わった or 3T以上未掲載の「新鮮」な観測だけを出す（古い事実の水増し再掲はしない＝膠着時に同じ行を連発しない）。
           //   動ある時は複数が新鮮→厚く、膠着時はAだけ→静かに。Aは常時(force)。情報量UPで最大5行。
           for (const o of obs) { const pv = snapSeen[o.key]; o._fresh = o.force || !pv || pv.sig !== o.sig || (turn - pv.turn >= 3); }
-          const dynPri = { C: 4, G: 4, D: 3, H: 3, I: 2, F: 2 };
+          const dynPri = { C: 4, G: 4, KP: 3, D: 3, H: 3, KC: 2, I: 2, F: 2 };
           const show = obs.filter((o) => o._fresh).sort((a, b) => (dynPri[b.key] || 1) - (dynPri[a.key] || 1)).slice(0, 5);
           for (const o of show) snapSeen[o.key] = { sig: o.sig, turn };
           show.sort((a, b) => a.ord - b.ord);   // 表示は情景→緊張の読み順
@@ -948,6 +957,8 @@ window.SCS = window.SCS || {};
           if (u.coop > 0.6 && u.target && u.target._opened != null && turn - u.target._opened <= 1) return vary(["味方が崩した隙を逃さず", "味方の崩しに合わせて", "崩れた敵を仲間と挟もうと"], seed, turn, u.idx + 13);
           if (u.coop < 0.32) return vary(["我流に単騎で", "手柄を求めて単身", "仲間に構わず"], seed, turn, u.idx + 14);
           if (u.target && u.target.alive && isolationOf(u.target) > 45) return `孤立した標的を逃さじと`;
+          // 隊形を保っている体は背景として明示（プレーヤーの作戦が戦闘描写に出る）。★毎ビートは煩いので稀に（状況説明のK観測が主・こちらは差し色）。
+          if (u.form && u.form !== "loose" && hsh(seed, turn, u.idx + 21) % 4 === 0) { const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) { const fn = (D.FORMATIONS.find((f) => f.key === u.form) || {}).name; if (fn) return vary([`${fn}を保ちながら`, `${fn}を崩さず`, `${fn}の一角として`], seed, turn, u.idx + 21); } }
           return "";
         };
         // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
