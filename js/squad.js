@@ -773,7 +773,7 @@ window.SCS = window.SCS || {};
       for (const ev of evs) { if (ev.def && ev.def.alive && ((ev.flank && (ev.hits || 0) > 0) || ev.grabHit || (ev.dmg || 0) >= 0.15 * ev.def.maxHp)) ev.def._opened = turn; }
       // 状態異常DoT＋地形/ハザード（環境ダメージは膠着判定に算入）
       let envDmg = 0;
-      for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}`, cls: u.team === "P" ? "plr" : "cpu" }); } }
+      for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}（残${Math.max(0, Math.round(u.hp))}/${u.maxHp}）`, cls: u.team === "P" ? "plr" : "cpu" }); } }
       // 燃え広がる炎の延焼＋立つ者を焼く
       for (const h of hazards) { if (h.turns <= 0) continue; h.turns--; for (const u of ALL) { if (u.alive && ptInRect(u, h)) { u.hp = Math.max(0, u.hp - h.dmg); envDmg += h.dmg; } } }
       for (const u of ALL) { if (!u.alive) continue; const lv = terrainDmg(u); if (lv) { u.hp = Math.max(0, u.hp - lv); envDmg += lv; } }
@@ -953,6 +953,7 @@ window.SCS = window.SCS || {};
         // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
         const attackedThisTurn = (u) => evs.some((e) => e.def === u && e.att.team !== u.team && e.att.alive && ((e.shots || 0) > 0 || ev_isUlt(e)));
         const ev_isUlt = (e) => !!(e && e.ult && !e.whiff);
+        const hpTag = (u) => `残${Math.max(0, Math.round(u.hp))}/${u.maxHp}`; // 命中後の残HP（数値情報）
         // 手応え（被ダメの深さ・攻撃行の末尾に付す・観測可能な結果のみ）
         const reactOf = (ev) => { if (!ev || !ev.def || !(ev.dmg > 0)) return ""; const f = ev.dmg / (ev.def.maxHp || 100); const lv = ev.def.hp <= 0 ? "huge" : f < 0.08 ? "graze" : f < 0.18 ? "light" : f < 0.32 ? "solid" : f < 0.5 ? "heavy" : "huge"; return vary(REACT[lv], seed, turn, ev.att.idx * 11 + ev.def.idx + (ev.dmg | 0)); };
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
@@ -965,11 +966,11 @@ window.SCS = window.SCS || {};
           // ★回避：実際に攻撃を受けた時だけ「見切って受け流した」。誰も攻撃していないターンは中立の構え（因果捏造を防ぐ）。
           if (ev && ev.dodge) return attackedThisTurn(u) ? `${t}の攻撃を見切り、紙一重で受け流した` : vary(["敵の出方を窺い、身構えた", "隙を見せず構えを取った", "間合いを測り直して様子を見た"], seed, turn, u.idx + 17);
           if (ev && ev.chargeBroke) return `狙いを定める間もなく踏み込まれ、照準が崩された`;
-          if (ev && ev.snap) { const rc = reactOf(ev); return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）${rc ? "、" + rc : ""}` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`; }
+          if (ev && ev.snap) { const rc = reactOf(ev); return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}｜${hpTag(ev.def)}）${rc ? "、" + rc : ""}` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`; }
           if (ev && ev.charging) return `息を整え、${t}に狙いを定める`;
           if (ev && ev.ult && !ev.whiff) return `必殺・${ev.ultName}を解き放った`;
-          if (ev && (ev.attack === "RANGED" || ev.attack === "MELEE") && (ev.hits || 0) > 0) { const cat = evCat(ev), verb = vary(HIT_VERB[cat] || HIT_VERB.bal, seed, turn, u.idx * 13 + (u.target ? u.target.idx : 0)), rc = reactOf(ev); return `${fl2(ev)}${t}${verb}（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）${rc ? "、" + rc : ""}`; }
-          if (ev && (ev.shots || 0) > 0 && (ev.hits || 0) === 0) { const cat = evCat(ev); return `${t}${vary(MISS_VERB[cat] || MISS_VERB.bal, seed, turn, u.idx * 5 + turn)}`; }
+          if (ev && (ev.attack === "RANGED" || ev.attack === "MELEE") && (ev.hits || 0) > 0) { const cat = evCat(ev), verb = vary(HIT_VERB[cat] || HIT_VERB.bal, seed, turn, u.idx * 13 + (u.target ? u.target.idx : 0)), rc = reactOf(ev); const cnt = (ev.shots || 0) > 1 ? `${ev.shots}${ev.attack === "MELEE" ? "撃" : "射"}${ev.hits}中・` : ""; const am = ev.attack === "RANGED" && u.ammo <= 5 ? `・残弾${u.ammo}` : ""; return `${fl2(ev)}${t}${verb}（${cnt}−${ev.dmg}${ev.crit ? "・会心" : ""}${st}｜${hpTag(ev.def)}${am}）${rc ? "、" + rc : ""}`; }
+          if (ev && (ev.shots || 0) > 0 && (ev.hits || 0) === 0) { const cat = evCat(ev), cnt = (ev.shots || 0) > 1 ? `${ev.shots}${ev.attack === "MELEE" ? "撃" : "射"}全外し——` : ""; return `${cnt}${t}${vary(MISS_VERB[cat] || MISS_VERB.bal, seed, turn, u.idx * 5 + turn)}`; }
           if (u.guarding) return `身を割り込ませて盾となった`;
           const dec = decs.get(u);
           if (dec && dec.move === "RETREAT") return `射線を切って退いた`;
@@ -992,7 +993,7 @@ window.SCS = window.SCS || {};
           return "";
         };
         const beats = [];
-        if (focus) { const army = focus.team === "P" ? "あなたの分隊" : "敵分隊", v = isolationOf(focus.tgt) > 45 ? `孤立した ${npc(focus.tgt)}を囲んで各個撃破にかかった` : `${npc(focus.tgt)}へ火力を一点に集中した`; beats.push({ sal: 50, txt: `${army}は ${v}（計 −${Math.min(focus.sum, focus.tgt.maxHp)}）` }); }
+        if (focus) { const army = focus.team === "P" ? "あなたの分隊" : "敵分隊", v = isolationOf(focus.tgt) > 45 ? `孤立した ${npc(focus.tgt)}を囲んで各個撃破にかかった` : `${npc(focus.tgt)}へ火力を一点に集中した`; beats.push({ sal: 50, txt: `${army}は ${v}（${focus.list.length}体で計 −${Math.min(focus.sum, focus.tgt.maxHp)}｜${npc(focus.tgt)} 残${Math.max(0, Math.round(focus.tgt.hp))}/${focus.tgt.maxHp}）` }); }
         for (const u of ALL) {
           if (!u.alive) continue; const ev = evByAtt.get(u);
           if (ev && ev._killed) continue;        // 撃破はKO行が描く
@@ -1076,7 +1077,8 @@ window.SCS = window.SCS || {};
       // ★残存フッターは変化した時だけ（毎ターン70%が無変化＝HUDと重複の冗長を解消）。10%帯で量子化＋5T毎に区切り＋決着。
       { const resSig = `${aliveCount("P")}/${Math.round(teamHpFrac("P") * 5)}|${aliveCount("C")}/${Math.round(teamHpFrac("C") * 5)}`;
         if (resSig !== lastResidual || turn - lastFooterTurn >= 5 || over) {
-          lines.push({ text: `　└ 残存 あなた ${aliveCount("P")}/${P.length}（HP${Math.round(teamHpFrac("P") * 100)}％）・敵 ${aliveCount("C")}/${C.length}（HP${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
+          const hpSum = (t) => (t === "P" ? P : C).reduce((a, u) => a + Math.max(0, Math.round(u.hp)), 0), hpMax = (t) => (t === "P" ? P : C).reduce((a, u) => a + u.maxHp, 0);
+          lines.push({ text: `　└ 残存 あなた ${aliveCount("P")}/${P.length}（HP ${hpSum("P")}/${hpMax("P")}・${Math.round(teamHpFrac("P") * 100)}％）｜敵 ${aliveCount("C")}/${C.length}（HP ${hpSum("C")}/${hpMax("C")}・${Math.round(teamHpFrac("C") * 100)}％）`, cls: "dim" });
           lastResidual = resSig; lastFooterTurn = turn;
         } }
 
