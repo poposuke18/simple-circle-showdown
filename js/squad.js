@@ -22,27 +22,45 @@ window.SCS = window.SCS || {};
   // ===== 描写の語彙（武器カテゴリ別）＋決定論ハッシュ（乱数非消費＝seed/turnで一意に多彩化）=====
   function hsh(a, b, c, d, e) { let h = 2166136261 >>> 0; const ks = [a | 0, b | 0, c | 0, d | 0, e | 0]; for (const k of ks) { h ^= k; h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
   function vary(pool, a, b, c, d, e) { return pool[hsh(a, b, c, d, e) % pool.length]; }
-  const HIT_VERB = {
-    precise: ["を撃ち抜く", "に狙い澄ました一射を見舞う", "に風穴を開ける", "を正確に射抜く"],
-    auto: ["に弾幕を浴びせる", "を掃射で削る", "を射すくめる", "へ雨あられと撃ち込む"],
-    shotgun: ["を至近で薙ぎ払う", "に散弾を叩き込む", "を吹き飛ばす"],
-    flame: ["を業火で包む", "に炎を吹きつける", "を火達磨にする"],
-    mlt: ["を切り刻む", "に刺突を連ねる", "を斬り立てる"],
-    hvy: ["に渾身の一撃を見舞う", "を叩き伏せる", "を打ち砕く"],
-    bal: ["へ斬り込む", "を鋭く突く", "を薙ぎ払う"],
+  const HIT_VERB = { // 一撃（過去形・武器カテゴリ別）＝actOfで使用。バリエーション拡充。
+    precise: ["を狙い澄まして撃ち抜いた", "の急所へ一射を通した", "に風穴を開けた", "を正確に射抜いた", "の隙を逃さず撃ち抜いた", "へ静かに引き金を絞り撃ち込んだ", "を照準の芯で捉え撃ち抜いた"],
+    auto: ["に弾幕を浴びせた", "を掃射で削り取った", "へ雨あられと撃ち込んだ", "を弾雨で射すくめた", "に連射を叩き込んだ", "を弾幕で押し包んだ"],
+    shotgun: ["を至近で薙ぎ払った", "に散弾を叩き込んだ", "を吹き飛ばした", "へゼロ距離の一撃を見舞った", "を散弾で抉った"],
+    flame: ["を業火で包んだ", "に火線を浴びせた", "を火達磨にした", "へ炎を吹きつけた", "を炎の舌で舐めた"],
+    mlt: ["を切り刻んだ", "に刺突を連ねた", "を斬り立てた", "へ手数で押し込んだ", "を細かく刻んだ", "へ二の太刀三の太刀を継いだ"],
+    hvy: ["に渾身の一撃を見舞った", "を叩き伏せた", "を打ち砕いた", "へ全体重の一撃を叩き込んだ", "を唸る刃で薙いだ"],
+    bal: ["へ鋭く斬り込んだ", "を鋭く突いた", "を薙ぎ払った", "へ踏み込みざま斬りつけた", "の胴を払った", "へ半身から斬り上げた"],
+  };
+  const REACT = { // 手応え（被ダメの深さ・攻撃行の末尾に付す）
+    graze: ["掠めるに留まる", "浅い、なお余力を残す", "紙一重で急所を外れる", "軽く弾かれる"],
+    light: ["確かに削った", "浅く抉る手応え", "じわりと効く", "血がにじむ"],
+    solid: ["深々と食い込む", "鈍い衝撃が奔る", "確かな手応え", "体勢が揺らぐ"],
+    heavy: ["たまらず体勢が崩れる", "骨まで届く一撃", "大きくよろめかせる", "膝が折れかける"],
+    huge: ["致命的な深手", "ひとたまりもない", "崩れ落ちる寸前まで追い込む", "戦線に穴が開く一撃"],
+  };
+  const MISS_VERB = { // 外し（過去形・武器カテゴリ別）
+    precise: ["を狙うも、わずかに逸れた", "へ放った一射は的を捉えきれず", "を狙撃するも空を裂いた", "を狙うも紙一重で外した"],
+    auto: ["へ乱射するも捉えきれず", "を狙うも弾は逸れた", "へ撃ち込むも当たらず", "を掃射するも空を薙いだ"],
+    shotgun: ["を狙うも散弾は空を切った", "へ薙ぐも間合いが足りず"],
+    flame: ["へ炎を伸ばすも届かず", "を焼こうとするも空を舐めた"],
+    mlt: ["へ斬りかかるも空を切った", "の残像を斬った", "へ刃を振るうも捉えきれず"],
+    hvy: ["の一撃は空振りに終わった", "を狙うも大きく外した", "の渾身が空を打った"],
+    bal: ["へ斬りつけるもかわされた", "の一手は空を切った", "を狙うも捉えきれず"],
   };
   const KO_VERB = {
-    precise: ["を撃ち倒した", "の急所を撃ち抜いた", "を沈黙させた"],
-    auto: ["を弾幕で薙ぎ倒した", "を撃ち伏せた", "を蜂の巣にした"],
-    shotgun: ["を至近で吹き飛ばした", "を散弾で薙ぎ倒した"],
-    flame: ["を業火に呑んだ", "を焼き尽くした"],
-    mlt: ["を斬り刻んで倒した", "の急所を貫いた"],
-    hvy: ["を一撃のもとに叩き伏せた", "を打ち砕いた"],
-    bal: ["を斬り伏せた", "を討ち取った", "を一刀のもとに倒した"],
+    precise: ["を撃ち倒した", "の急所を撃ち抜いた", "を沈黙させた", "を一射で仕留めた", "の眉間を撃ち抜いた"],
+    auto: ["を弾幕で薙ぎ倒した", "を撃ち伏せた", "を蜂の巣にした", "を弾雨に沈めた"],
+    shotgun: ["を至近で吹き飛ばした", "を散弾で薙ぎ倒した", "をゼロ距離で沈めた"],
+    flame: ["を業火に呑んだ", "を焼き尽くした", "を灰にした"],
+    mlt: ["を斬り刻んで倒した", "の急所を貫いた", "を細切れに斬り伏せた"],
+    hvy: ["を一撃のもとに叩き伏せた", "を打ち砕いた", "を粉砕した"],
+    bal: ["を斬り伏せた", "を討ち取った", "を一刀のもとに倒した", "を袈裟に斬り下ろした"],
   };
-  const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる"];
-  const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。"];
-  const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める"]; // 個体の索敵動作（誰が、を明示）
+  const KO_LEAD = ["渾身の一撃——", "好機を逃さず——", "一瞬の隙を突き——", "刹那の交錯——", "静寂を裂いて——", "とどめとばかりに——"]; // KOのドラマの導入
+  const SKIRMISH = ["両軍が各所で斬り結ぶ", "盤面の各所で撃ち合いが続く", "入り乱れての応酬", "至る所で小競り合いが起きる", "硝煙が視界を霞ませる中の乱戦", "遮蔽を挟んでの睨み合いと牽制"];
+  const MANEUVER = ["両軍、間合いを計り直す。", "睨み合いが続く——誰が先に動くか。", "じりじりと間合いが詰まる。", "各々が射線と退路を探る。", "盤面が静かに動く。", "互いに位置を入れ替え、隙を窺う。", "前衛が圧をかけ、後衛が射点を探す。", "張り詰めた均衡——一手が雪崩を呼ぶ。", "遮蔽から遮蔽へ、影が滑る。", "誰もが引き金に指をかけ、瞬きを惜しむ。", "静寂が張り詰め、砂塵だけが舞う。"];
+  const ATMO = ["硝煙が薄く棚引く。", "薬莢が地に散り、乾いた音を立てる。", "砂塵が視界の端を霞ませる。", "張り詰めた空気が肌を刺す。", "遠くで壁が崩れる音が響く。", "血と硝煙の匂いが漂う。"]; // 情景（一瞬の切り取り）
+  const SEARCH_ACT = ["物陰を窺いながら進む", "遮蔽を伝って間合いを詰める", "視線を巡らせ敵影を探す", "足音を殺して前へ出る", "射線を確保しつつ索敵する", "気配を探りながら歩を進める", "銃を構えたまま角を回り込む", "息を潜め、敵の気配に耳を澄ます"]; // 個体の索敵動作（誰が、を明示）
   const INSTINCT_ACT = ["第六感で敵の気配を辿り、潜む方へ詰める", "勘を頼りに敵の潜伏点へ忍び寄る", "気配の揺らぎを嗅ぎ取り、そちらへ間合いを詰める", "研ぎ澄ました直感で敵の所在を探り当てにかかる"]; // 嗅覚(D1)が鋭い体の索敵（多彩化）
   const SPOT_VERB = ["を発見！", "を視界に捉えた！", "の姿を捉えた！", "の気配を掴んだ！", "を見つけた！"];
   const SNAP_ACC = 0.30; // チャージ武器をノーチャージで即撃ちする時の命中倍率。チャージ＝狙いを定める＝命中を一気に上げる行為なので、溜め無しは圧倒的に当たらない（＝近距離なら近接武器を使う方が良い、という判断が自然に出る）
@@ -877,11 +895,16 @@ window.SCS = window.SCS || {};
           { let r = null; for (const u of all0) if ((u.resolve || 0) >= 1) { r = u; break; }
             if (r) obs.push({ ord: 7, key: "H", sig: "H" + r.idx + "r", text: `${npc(r)} は気迫を満たし、${vary(["必殺の時をうかがう", "解き放つ機を計る"], seed, turn, 11)}。` });
             else { let wd = null, ws = 0.35; for (const u of all0) { const s = u.stamina != null ? u.stamina : 1; if (s < ws) { ws = s; wd = u; } } if (wd) obs.push({ ord: 7, key: "H", sig: "H" + wd.idx + "s", text: `${npc(wd)} は息が上がり、${vary(["動きが鈍り始める", "足が止まりかける"], seed, turn, 12)}。` }); } }
+          // I) 勢いの潮目（流れが大きく傾いた体）＝流れシステムを前状況に露出
+          { let m = null, mv = 0.5; for (const u of all0) { const mm = u.momentum || 0; if (Math.abs(mm) > Math.abs(mv)) { mv = mm; m = u; } }
+            if (m) obs.push({ ord: 5, key: "I", sig: "I" + m.idx + (mv > 0 ? "+" : "-"), text: mv > 0 ? `${npc(m)} に勢いが乗り、${vary(["押し始める", "波に乗る", "攻勢を強める"], seed, turn, 13)}。` : `${npc(m)} は勢いを失い、${vary(["防戦に回る", "気圧されていく"], seed, turn, 13)}。` }); }
+          // J) 情景（一瞬の切り取り・低優先・たまに）＝硝煙/薬莢/砂塵で観戦に温度を足す
+          if (hsh(seed, turn, 20) % 3 === 0) obs.push({ ord: 8, key: "J", sig: "J" + turn, text: vary(ATMO, seed, turn, 20) });
           // 選抜：★中身が変わった or 3T以上未掲載の「新鮮」な観測だけを出す（古い事実の水増し再掲はしない＝膠着時に同じ行を連発しない）。
-          //   動ある時は複数が新鮮→厚く、膠着時はAだけ→静かに。最大4行。Aは常時(force)。
+          //   動ある時は複数が新鮮→厚く、膠着時はAだけ→静かに。Aは常時(force)。情報量UPで最大5行。
           for (const o of obs) { const pv = snapSeen[o.key]; o._fresh = o.force || !pv || pv.sig !== o.sig || (turn - pv.turn >= 3); }
-          const dynPri = { C: 4, G: 4, D: 3, H: 3, F: 2 };
-          const show = obs.filter((o) => o._fresh).sort((a, b) => (dynPri[b.key] || 1) - (dynPri[a.key] || 1)).slice(0, 4);
+          const dynPri = { C: 4, G: 4, D: 3, H: 3, I: 2, F: 2 };
+          const show = obs.filter((o) => o._fresh).sort((a, b) => (dynPri[b.key] || 1) - (dynPri[a.key] || 1)).slice(0, 5);
           for (const o of show) snapSeen[o.key] = { sig: o.sig, turn };
           show.sort((a, b) => a.ord - b.ord);   // 表示は情景→緊張の読み順
           for (const o of show) lines.push({ text: `　${o.text}`, cls: "snap" });
@@ -930,6 +953,8 @@ window.SCS = window.SCS || {};
         // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
         const attackedThisTurn = (u) => evs.some((e) => e.def === u && e.att.team !== u.team && e.att.alive && ((e.shots || 0) > 0 || ev_isUlt(e)));
         const ev_isUlt = (e) => !!(e && e.ult && !e.whiff);
+        // 手応え（被ダメの深さ・攻撃行の末尾に付す・観測可能な結果のみ）
+        const reactOf = (ev) => { if (!ev || !ev.def || !(ev.dmg > 0)) return ""; const f = ev.dmg / (ev.def.maxHp || 100); const lv = ev.def.hp <= 0 ? "huge" : f < 0.08 ? "graze" : f < 0.18 ? "light" : f < 0.32 ? "solid" : f < 0.5 ? "heavy" : "huge"; return vary(REACT[lv], seed, turn, ev.att.idx * 11 + ev.def.idx + (ev.dmg | 0)); };
         // 行動句（同時動作の「XXした」）。名前は粒子に密着（"C-1を"）、主語は "X は " と空白で挟む＝既存ログ体裁に合わせる。
         const actOf = (u) => {
           const ev = evByAtt.get(u), t = u.target ? npc(u.target) : "敵", st = (ev && ev.applyStatus) ? "・" + (D.STATUS_JP[ev.applyStatus.type] || ev.applyStatus.type) : "";
@@ -940,12 +965,11 @@ window.SCS = window.SCS || {};
           // ★回避：実際に攻撃を受けた時だけ「見切って受け流した」。誰も攻撃していないターンは中立の構え（因果捏造を防ぐ）。
           if (ev && ev.dodge) return attackedThisTurn(u) ? `${t}の攻撃を見切り、紙一重で受け流した` : vary(["敵の出方を窺い、身構えた", "隙を見せず構えを取った", "間合いを測り直して様子を見た"], seed, turn, u.idx + 17);
           if (ev && ev.chargeBroke) return `狙いを定める間もなく踏み込まれ、照準が崩された`;
-          if (ev && ev.snap) return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`;
+          if (ev && ev.snap) { const rc = reactOf(ev); return (ev.hits || 0) > 0 ? `${t}へ苦し紛れの即撃ち（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）${rc ? "、" + rc : ""}` : `据銃が間に合わず、${t}へ放った一射は大きく逸れた`; }
           if (ev && ev.charging) return `息を整え、${t}に狙いを定める`;
           if (ev && ev.ult && !ev.whiff) return `必殺・${ev.ultName}を解き放った`;
-          if (ev && ev.attack === "RANGED" && (ev.hits || 0) > 0) return `${t}を狙い撃った（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
-          if (ev && ev.attack === "MELEE" && (ev.hits || 0) > 0) return `${fl2(ev)}${t}へ斬り込んだ（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）`;
-          if (ev && (ev.shots || 0) > 0 && (ev.hits || 0) === 0) return `${t}を狙うも捉えきれず`;
+          if (ev && (ev.attack === "RANGED" || ev.attack === "MELEE") && (ev.hits || 0) > 0) { const cat = evCat(ev), verb = vary(HIT_VERB[cat] || HIT_VERB.bal, seed, turn, u.idx * 13 + (u.target ? u.target.idx : 0)), rc = reactOf(ev); return `${fl2(ev)}${t}${verb}（−${ev.dmg}${ev.crit ? "・会心" : ""}${st}）${rc ? "、" + rc : ""}`; }
+          if (ev && (ev.shots || 0) > 0 && (ev.hits || 0) === 0) { const cat = evCat(ev); return `${t}${vary(MISS_VERB[cat] || MISS_VERB.bal, seed, turn, u.idx * 5 + turn)}`; }
           if (u.guarding) return `身を割り込ませて盾となった`;
           const dec = decs.get(u);
           if (dec && dec.move === "RETREAT") return `射線を切って退いた`;
@@ -983,11 +1007,11 @@ window.SCS = window.SCS || {};
           if (u.engage === "retreat") sal += 3; else if (u.engage === "commit") sal += 2;
           if (ev && (ev.dmg || 0) > 0) sal += Math.min(4, ev.dmg / 15);
           const clause = clauseOf(u); if (clause) sal += 2;
-          if (sal < 3) continue;
+          if (sal < 2) continue; // 情報量UP：閾値を下げて、より多くの体の動きを描く
           beats.push({ sal, u, clause });
         }
         beats.sort((a, b) => b.sal - a.sal);
-        const shown = beats.slice(0, 3);
+        const shown = beats.slice(0, 4); // 情報量UP：1ターンに描く体を3→4に（観戦のボリューム増）
         let bi = 0;
         while (bi < shown.length) {
           const a = shown[bi], b = shown[bi + 1];
@@ -1017,8 +1041,9 @@ window.SCS = window.SCS || {};
       // KO（武器カテゴリ別の決め技・側背面・必殺）
       for (const ev of evs) if (ev._killed) {
         const verb = vary(KO_VERB[evCat(ev)] || KO_VERB.bal, seed, turn, ev.att.idx * 7 + ev.def.idx);
+        const lead = ev.crit ? "会心の一撃——" : ev.flank === "rear" ? "背後を取り——" : ev.flank === "side" ? "側面を突き——" : vary(KO_LEAD, seed, turn, ev.att.idx * 7 + ev.def.idx); // KOにドラマの導入
         const txt = ev.ult ? `── 必殺・${ev.ultName}が炸裂——${npc(ev.att)} が ${npc(ev._killed)}${verb}！`
-          : `── ${npc(ev.att)}、${flankPre(ev)}${npc(ev._killed)}${verb}！`;
+          : `── ${lead}${npc(ev.att)} が ${npc(ev._killed)}${verb}！`;
         lines.push({ text: txt, cls: "cm" });
       }
       for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)}、力尽きて崩れ落ちる。`, cls: "cm" });
