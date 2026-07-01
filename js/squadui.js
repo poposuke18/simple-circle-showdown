@@ -213,6 +213,7 @@ window.SCS = window.SCS || {};
     camp.cleared[st.key] = true;
     camp.lastWin = squad.map((c) => c.slice()); camp.lastWinForm = form;
     saveCamp();
+    if (first) campSel = campFrontier(); // 初制圧なら選択を次の戦場へ（設計に戻った時にそのまま挑める）
     const allDone = CAMP.every((s) => camp.cleared[s.key]);
     append(allDone ? `── 制圧完了！ 全${CAMP.length}戦場を制した——制圧戦、完遂。` : first ? `── 制圧！ 「${st.name}」を下した。次の戦場が開かれる。` : `── 再制圧——「${st.name}」に貫録を見せた。`, "arena");
   }
