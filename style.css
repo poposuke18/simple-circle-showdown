@@ -438,3 +438,27 @@ body.ob-open::before { content: ""; position: fixed; inset: 0; z-index: 10000; b
   .uc-weap { font-size: 9px; }
   select, input[type="number"] { max-width: 52%; }
 }
+
+/* ===== 分隊戦キャンペーン「制圧戦」＋試算＋ディープリンク ===== */
+.sq-modebar { display: flex; gap: 6px; margin: 2px 0 12px; }
+.mtab2 { background: #061b10; color: var(--dim); border: 1px solid var(--line); padding: 5px 14px; font-family: var(--mono); font-size: 11.5px; letter-spacing: 1.5px; cursor: pointer; }
+.mtab2:hover { color: var(--green); border-color: var(--line2); }
+.mtab2.active { color: var(--amber); border-color: var(--amber); background: #141005; text-shadow: 0 0 8px rgba(255, 207, 92, .35); }
+.sq-camp { margin-bottom: 12px; }
+.camp-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.camp-st { border: 1px solid var(--line2); padding: 4px 9px; font-size: 11px; letter-spacing: .5px; color: var(--dim); cursor: pointer; background: rgba(6, 27, 16, .5); }
+.camp-st:hover { color: var(--green); }
+.camp-st.cleared { color: var(--green); border-color: var(--green2); }
+.camp-st.current { color: var(--amber); border-color: var(--amber); text-shadow: 0 0 7px rgba(255, 207, 92, .35); }
+.camp-st.locked { opacity: .38; cursor: default; }
+.camp-st.sel { background: rgba(255, 207, 92, .1); outline: 1px solid var(--amber); }
+.camp-info { border: 1px dashed var(--line2); padding: 9px 12px; font-size: 12px; line-height: 1.75; color: var(--green); }
+.camp-info b { color: var(--amber); letter-spacing: 1px; }
+.camp-boss { color: var(--cpu); border: 1px solid var(--cpu); padding: 0 5px; font-size: 10px; letter-spacing: 2px; }
+.predict-line b { color: var(--amber); }
+.predict-sub { color: var(--dim); font-size: 10.5px; margin-top: 3px; }
+.aadvice li.adv-link { cursor: pointer; text-decoration: underline dotted rgba(255, 207, 92, .5); text-underline-offset: 3px; }
+.aadvice li.adv-link:hover { color: #ffe9b0; }
+.macro.flash { animation: dialflash 1.7s ease 2; }
+@keyframes dialflash { 0%, 100% { background: transparent; } 40% { background: rgba(255, 207, 92, .16); } }
+.sqh-lbl { white-space: nowrap; }

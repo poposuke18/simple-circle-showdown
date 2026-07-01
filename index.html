@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#080b10" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0701l" />
+  <link rel="stylesheet" href="style.css?v=0702a" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
       <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0701l</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0702a</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
 
@@ -82,10 +82,23 @@
     <section id="squad" class="squad hidden">
       <div id="squadDesign">
         <h3>分隊を編成<span class="h3-sub">各戦士カードを選び、3体の人格を設計。役割を補完させて勝つ</span></h3>
+        <div class="sq-modebar" id="sqModeBar">
+          <button id="sqModeFree" class="mtab2 active" type="button">模擬戦</button>
+          <button id="sqModeCamp" class="mtab2" type="button">制圧戦（キャンペーン）</button>
+        </div>
+        <div id="sqCamp" class="sq-camp hidden">
+          <div id="sqCampStrip" class="camp-strip"></div>
+          <div id="sqCampInfo" class="camp-info"></div>
+        </div>
         <div id="sqRoster" class="sq-roster"></div>
         <div id="sqTabs" class="sq-editing"></div>
         <div id="sqBuildCard" class="build-card"></div>
         <div id="sqDials" class="macros"></div>
+        <div class="predict-bar">
+          <button id="sqPredict" class="btn ghost small" type="button">▶ 勝率を試算（20戦）</button>
+          <span class="predict-note">今の編成×条件で20戦の推定（決定論＝同じ設計なら同じ数字）</span>
+        </div>
+        <div id="sqPredictWrap" class="predict hidden" aria-live="polite"></div>
         <div class="cfg-foot" id="sqFoot">
           <label class="fld">戦場<select id="sqArena"></select></label>
           <label class="fld">戦況<select id="sqMod"></select></label>
@@ -152,17 +165,17 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0701l"></script>
-  <script src="js/data.js?v=0701l"></script>
-  <script src="js/derive.js?v=0701l"></script>
-  <script src="js/sim.js?v=0701l"></script>
-  <script src="js/batch.js?v=0701l"></script>
-  <script src="js/squad.js?v=0701l"></script>
-  <script src="js/ui.js?v=0701l"></script>
-  <script src="js/mini.js?v=0701l"></script>
-  <script src="js/story.js?v=0701l"></script>
-  <script src="js/squadui.js?v=0701l"></script>
-  <script src="js/onboard.js?v=0701l"></script>
+  <script src="js/rng.js?v=0702a"></script>
+  <script src="js/data.js?v=0702a"></script>
+  <script src="js/derive.js?v=0702a"></script>
+  <script src="js/sim.js?v=0702a"></script>
+  <script src="js/batch.js?v=0702a"></script>
+  <script src="js/squad.js?v=0702a"></script>
+  <script src="js/ui.js?v=0702a"></script>
+  <script src="js/mini.js?v=0702a"></script>
+  <script src="js/story.js?v=0702a"></script>
+  <script src="js/squadui.js?v=0702a"></script>
+  <script src="js/onboard.js?v=0702a"></script>
   <div id="onboard" class="onboard hidden"></div>
 </body>
 </html>

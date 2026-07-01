@@ -37,7 +37,7 @@ window.SCS = window.SCS || {};
     const now = perfNow();
     for (const e of events) {
       const f = e.from || {}, t = e.to || {};
-      const base = { side: e.side, t0: now, ax: f.x || 0, ay: f.y || 0, bx: t.x || 0, by: t.y || 0, hit: (e.hits || 0) > 0, crit: !!e.crit, whiff: !!e.whiff, dmg: e.dmg || 0, status: e.status || null };
+      const base = { side: e.side, t0: now, ax: f.x || 0, ay: f.y || 0, bx: t.x || 0, by: t.y || 0, aTeam: e.aTeam, aIdx: e.aIdx, hit: (e.hits || 0) > 0, crit: !!e.crit, whiff: !!e.whiff, dmg: e.dmg || 0, status: e.status || null };
       if (e.type === "ranged") fx.push(Object.assign({}, base, { kind: "tracer", dur: 340 }));
       else if (e.type === "melee") fx.push(Object.assign({}, base, { kind: "slash", dur: 320 }));
       else if (e.type === "ult-ranged") fx.push(Object.assign({}, base, { kind: "beam", dur: 540 }));
@@ -168,7 +168,12 @@ window.SCS = window.SCS || {};
       ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = "#ffcf5c"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 7;
       ctx.beginPath(); ctx.arc(SX(d.x), SY(d.y), r, 0, 6.2832); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
-    drawFx((e) => [SX(e.ax), SY(e.ay), SX(e.bx), SY(e.by)]); // 分隊fxは保存field座標で
+    // fxの起点は攻め手ドットの補間表示位置に追従（点がまだ滑っている最中に矢印だけ先に飛ぶズレを防ぐ）
+    drawFx((e) => {
+      let ax = e.ax, ay = e.ay;
+      if (e.aTeam != null && e.aIdx != null) { const t = e.aTeam === "P" ? battle.teams.P : battle.teams.C, u = t && t[e.aIdx], d = u && sdisp.get(u); if (d) { ax = d.x; ay = d.y; } }
+      return [SX(ax), SY(ay), SX(e.bx), SY(e.by)];
+    });
     for (const u of units) { const d = sdisp.get(u); drawSquadUnit(SX(d.x), SY(d.y), u); }
     let conv = true; for (const u of units) { const d = sdisp.get(u); if (Math.abs(u.x - d.x) + Math.abs(u.y - d.y) > 0.1) { conv = false; break; } }
     const lowHp = units.some((u) => u.alive && u.hp / u.maxHp < 0.3);

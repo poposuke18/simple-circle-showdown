@@ -178,6 +178,28 @@ window.SCS = window.SCS || {};
     { key: "circle", name: "円陣", flavor: "後衛を内に抱え前衛が外を向く（キャリー保護）" },
   ];
 
+  // ===== 分隊戦キャンペーン「制圧戦」（[[分隊戦設計]]§12）=====
+  // 名前を持つ8つの敵分隊をホーム戦場・隊形・戦況込みで順に攻略する線形キャンペーン。各ステージが1つのチーム戦概念を教える。
+  // squad = プリセット名 or choices配列。mirror=プレイヤーの直近勝利編成のコピー（隊形も）。
+  const SQUAD_CAMPAIGN = [
+    { key: "strays", name: "はぐれ犬の三匹", flavor: "「群れなんざ要らねぇ。俺が全部食う」", scout: "全員が我流の一匹狼。連携は皆無だが、一対一の腕は立つ。", lesson: "連携なき敵は一体ずつ沈む——集中砲火の基本。",
+      squad: [[3, 3, 1, 1, 0, 0, 0, 2, 3, 1], [3, 2, 1, 0, 0, 1, 0, 2, 3, 2], [2, 3, 0, 1, 0, 0, 0, 3, 3, 1]], form: "散開", arena: "市街の廃墟", mod: "通常" },
+    { key: "redcrow", name: "赤鴉突撃隊", flavor: "「先に殴った方が勝つ。昔からそうだ」", scout: "全員が突撃型。細い橋の上で一気に押し込んでくる。", lesson: "猛攻は正面から受けない——盾で吸い、返す刃で咎める。",
+      squad: ["猪突ガラスキャノン", "重剣の闘士", "猪突ガラスキャノン"], form: "楔", arena: "吊り橋", mod: "通常" },
+    { key: "mistshade", name: "霧の三影", flavor: "「姿なき刃に、名乗りは要らない」", scout: "霧の森に潜む暗殺者と毒手。姿を見せず削ってくる。", lesson: "見えない敵は撃てない——隊形と警戒で奇襲を凌げ。",
+      squad: ["海千山千の暗殺者", "毒手の刺客", "かく乱の火付け"], form: "散開", arena: "深い森", mod: "濃霧" },
+    { key: "stonewall", name: "石壁戦列団", flavor: "「一歩も退かん。それが戦列だ」", scout: "鉄の規律で戦列を組む。正面からの撃ち合いでは崩れない。", lesson: "戦列は正面から割れない——楔で貫くか、側面へ回れ。",
+      squad: [[1, 1, 3, 3, 3, 3, 2, 2, 2, 2], [1, 1, 3, 3, 3, 3, 2, 2, 2, 2], "鉄律の射手"], form: "戦列", arena: "市街の廃墟", mod: "通常" },
+    { key: "pyre", name: "業火の執行人", flavor: "「溶岩も炎も、我らの庭よ」", scout: "火炎放射器×2が溶岩地帯へ誘い込み、火の海ごと焼いてくる。", lesson: "戦場そのものが敵——立ち位置を誤れば焼かれる。",
+      squad: ["かく乱の火付け", "かく乱の火付け", "重剣の闘士"], form: "楔", arena: "溶岩洞窟", mod: "火の海" },
+    { key: "blackpine", name: "黒松の狙撃団", flavor: "「見えた時には、もう終わっている」", scout: "開けた平原に長射程を並べる狙撃団。ここは奴らの庭。", lesson: "開けた戦場の長射程は王者——詰め切るか、撃ち合いを制するか。",
+      squad: ["専守要塞", "毒手の刺客", "鉄律の射手"], form: "散開", arena: "開けた平原", mod: "通常" },
+    { key: "ringkeep", name: "円環の守り手", flavor: "「核は渡さん。外殻を砕いてみせろ」", scout: "円陣の内に射手を抱え、前衛が外殻となる。核は撃たせない。", lesson: "守られた射手は落ちない——盾を剝がし、核を崩せ。",
+      squad: ["重剣の闘士", "専守要塞", "鉄律の射手"], form: "円陣", arena: "中央遮蔽", mod: "通常", boss: true },
+    { key: "mirror", name: "写し身", flavor: "「私は、お前たちの影だ」", scout: "あなたの分隊の完全な写し。編成も、隊形も。", lesson: "最後の敵は、お前自身だ。",
+      squad: null, form: null, arena: "ランダム", mod: "通常", boss: true, mirror: true },
+  ];
+
   // ===== ストーリーモード（[[ストーリーモード設計]]）=====
   // 敵＝看板キャラ：name/flavor(口上)/scout(偵察ヒント)/lesson(教える事)/choices(10択人格)/arena+mod(ホーム固定)/boss。
   // choices=null は鏡（プレイヤーの直近勝利ビルドを実行時に流し込む）。撃破で choices が「流派」プリセットとして解禁。
@@ -209,5 +231,5 @@ window.SCS = window.SCS || {};
     { key: "ch5", title: "第5章 極", theme: "総合と自己理解", enemies: ["ogre", "mirror"] },
   ];
 
-  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS, FORMATIONS, ENEMIES, CHAPTERS };
+  SCS.DATA = { CHOICE_VALUES, MACROS, MICROS, INTERACTIONS, HP, RANGED, MELEE, PRESETS, SIM, TERRAIN, ARENAS, STATUS_JP, MODIFIERS, FORMATIONS, SQUAD_CAMPAIGN, ENEMIES, CHAPTERS };
 })();

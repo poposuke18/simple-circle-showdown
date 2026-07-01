@@ -20,6 +20,53 @@ window.SCS = window.SCS || {};
   let cpuName = "鉄壁分隊", arena = "ランダム", mod = "ランダム", form = "散開";
   let battle = null, autoT = null, lastSeed = null;
 
+  // ===== キャンペーン「制圧戦」（[[分隊戦設計]]§12）＝線形8ステージ・進行はlocalStorage・鏡は直近勝利編成のコピー =====
+  const CAMP = D.SQUAD_CAMPAIGN || [];
+  const CAMP_KEY = "scs_sqcamp_v1";
+  let playMode = "free";           // "free"=模擬戦 / "camp"=制圧戦
+  let campSel = 0;                 // 選択中ステージ
+  let camp = loadCamp();
+  function loadCamp() { try { const j = JSON.parse(localStorage.getItem(CAMP_KEY) || "null"); if (j && j.cleared) return j; } catch (e) {} return { cleared: {}, lastWin: null, lastWinForm: "散開" }; }
+  function saveCamp() { try { localStorage.setItem(CAMP_KEY, JSON.stringify(camp)); } catch (e) {} }
+  const campUnlocked = (i) => i === 0 || !!camp.cleared[CAMP[i - 1].key];
+  const campFrontier = () => { for (let i = 0; i < CAMP.length; i++) if (!camp.cleared[CAMP[i].key]) return i; return CAMP.length - 1; };
+  function resolveCampSquad(st) {
+    if (st.mirror) return (camp.lastWin || squad).map((c) => c.slice());
+    return st.squad.map((s) => (typeof s === "string" ? D.PRESETS[s].slice() : s.slice()));
+  }
+  const campEnemyForm = (st) => st.mirror ? (camp.lastWinForm || "散開") : st.form;
+  function renderCampaign() {
+    const strip = $("sqCampStrip"), info = $("sqCampInfo"); if (!strip || !info) return;
+    strip.innerHTML = "";
+    CAMP.forEach((st, i) => {
+      const cleared = !!camp.cleared[st.key], unlocked = campUnlocked(i);
+      const d = document.createElement("div");
+      d.className = "camp-st" + (cleared ? " cleared" : "") + (!unlocked ? " locked" : "") + (i === campSel ? " sel" : "") + (i === campFrontier() && !cleared ? " current" : "");
+      d.textContent = `${i + 1}. ${st.name} ${cleared ? "［済］" : unlocked ? "" : "［未開放］"}`;
+      if (unlocked) d.onclick = () => { campSel = i; renderCampaign(); };
+      strip.appendChild(d);
+    });
+    const st = CAMP[campSel];
+    if (!st) { info.innerHTML = ""; return; }
+    const sq = resolveCampSquad(st);
+    const rows = sq.map((ch, i) => { const u = SCS.derive.buildUnit("U", ch), role = SCS.ui.styleOf(u); return `　敵${i + 1}：${u.ranged.name}＋${u.melee.name}（HP${u.maxHp}）／${role}`; }).join("<br>");
+    info.innerHTML = `<b>${st.name}</b>${st.boss ? '　<span class="camp-boss">BOSS</span>' : ""}　${st.flavor}<br>` +
+      `偵察：${st.scout}<br>教訓：${st.lesson}<br>` +
+      `ホーム：${st.arena}${st.mod !== "通常" ? "・" + st.mod : ""}・敵隊形〔${st.mirror ? (camp.lastWinForm || "散開") : st.form}〕<br>${rows}`;
+  }
+  function setPlayMode(m) {
+    playMode = m;
+    const fb = $("sqModeFree"), cb = $("sqModeCamp");
+    if (fb) fb.classList.toggle("active", m === "free");
+    if (cb) cb.classList.toggle("active", m === "camp");
+    const campBox = $("sqCamp"); if (campBox) campBox.classList.toggle("hidden", m !== "camp");
+    // 制圧戦＝戦場/戦況/敵は固定（セレクタを隠す）。隊形はプレイヤーの作戦＝常に選べる。
+    for (const id of ["sqArena", "sqMod", "sqCpu"]) { const el = $(id); if (el && el.parentElement) el.parentElement.style.display = m === "camp" ? "none" : ""; }
+    const ch = $("sqCpuHint"); if (ch) ch.style.display = m === "camp" ? "none" : "";
+    if (m === "camp") { campSel = campFrontier(); renderCampaign(); }
+    const pw = $("sqPredictWrap"); if (pw) pw.classList.add("hidden");
+  }
+
   function fillSelect(id, opts, cur, on) {
     const sel = $(id); if (!sel) return; sel.innerHTML = "";
     opts.forEach((o) => { const e = document.createElement("option"); e.value = o; e.textContent = o; sel.appendChild(e); });
@@ -136,8 +183,11 @@ window.SCS = window.SCS || {};
     const seed = fixedSeed != null ? (fixedSeed >>> 0) : (Math.floor(Math.random() * 0x7fffffff) >>> 0);
     lastSeed = seed; // 同条件で再戦できるよう保持（戦場/戦況/敵/隊形はseed由来なので同seedで完全再現）
     const reBtn = $("sqRematch"); if (reBtn) reBtn.style.display = "";
-    const cpuChoices = cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]);
-    battle = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed, arena, mod, form, "ランダム");
+    const st = playMode === "camp" ? CAMP[campSel] : null;
+    const cpuChoices = st ? resolveCampSquad(st) : (cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]));
+    const enemyLabel = st ? st.name : (cpuName === "ランダム" ? "ランダム編成" : cpuName);
+    battle = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed,
+      st ? st.arena : arena, st ? st.mod : mod, form, st ? campEnemyForm(st) : "ランダム");
     if (SCS.mini) SCS.mini.reset();
     $("squadDesign").classList.add("hidden");
     $("squadStage").classList.remove("hidden");
@@ -146,12 +196,25 @@ window.SCS = window.SCS || {};
     const fc = $("sqFormChip"); if (fc) { const pf = battle.formP && battle.formP !== "loose" ? (D.FORMATIONS.find((f) => f.key === battle.formP) || {}).name : null; fc.textContent = pf ? ("陣形：" + pf) : ""; fc.style.display = pf ? "" : "none"; }
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";
     $("sqLog").innerHTML = "";
+    if (st) append(`>> 制圧戦 第${campSel + 1}戦「${st.name}」${st.boss ? "【BOSS】" : ""} — ${st.flavor}`, "arena");
     for (const l of battlefieldBriefing(battle)) append(l.t, l.c);
     for (const l of lineupLines(squad, "P", "あなたの布陣")) append(l.t, l.c);
-    for (const l of lineupLines(cpuChoices, "C", "敵の布陣（" + (cpuName === "ランダム" ? "ランダム編成" : cpuName) + "）")) append(l.t, l.c);
-    append(`>> 分隊戦開始：あなた${SIZE}体 vs ${cpuName}（${SIZE}体）`, "sys");
+    for (const l of lineupLines(cpuChoices, "C", "敵の布陣（" + enemyLabel + "）")) append(l.t, l.c);
+    append(`>> 分隊戦開始：あなた${SIZE}体 vs ${enemyLabel}（${SIZE}体）`, "sys");
     $("sqParamsWrap").classList.add("hidden");
     render();
+  }
+  // キャンペーンの勝利記録：クリア＋直近勝利編成（鏡ボスの素体）を保存
+  function recordCampResult() {
+    if (playMode !== "camp" || !battle || !battle.result) return;
+    const st = CAMP[campSel]; if (!st) return;
+    if (battle.result.winner !== "PLR") { append(`── 敗北——「${st.name}」は落とせなかった。編成を見直し、再び挑め。`, "sys"); return; }
+    const first = !camp.cleared[st.key];
+    camp.cleared[st.key] = true;
+    camp.lastWin = squad.map((c) => c.slice()); camp.lastWinForm = form;
+    saveCamp();
+    const allDone = CAMP.every((s) => camp.cleared[s.key]);
+    append(allDone ? `── 制圧完了！ 全${CAMP.length}戦場を制した——制圧戦、完遂。` : first ? `── 制圧！ 「${st.name}」を下した。次の戦場が開かれる。` : `── 再制圧——「${st.name}」に貫録を見せた。`, "arena");
   }
 
   function render() {
@@ -176,7 +239,7 @@ window.SCS = window.SCS || {};
     r.lines.forEach((l) => append(l.text, l.cls));
     if (SCS.mini) SCS.mini.pushFx(r.events);
     render();
-    if (r.over) { stopAuto(); $("sqParamsWrap").classList.remove("hidden"); renderAnalysis(); }
+    if (r.over) { stopAuto(); recordCampResult(); $("sqParamsWrap").classList.remove("hidden"); renderAnalysis(); }
   }
   function auto() { if (autoT) { stopAuto(); return; } $("sqAuto").textContent = "■ 停止"; autoT = setInterval(() => { if (!battle || battle.over) { stopAuto(); return; } nextStep(); }, 380); }
   function stopAuto() { if (autoT) { clearInterval(autoT); autoT = null; } const b = $("sqAuto"); if (b) b.textContent = "▶ 自動実行"; }
@@ -192,13 +255,43 @@ window.SCS = window.SCS || {};
       for (const c of s.cards) { const tags = [c.counters ? "反撃" + c.counters : "", c.grabs ? "投げ" + c.grabs : "", c.wasFlanked ? "被側背" + c.wasFlanked : ""].filter(Boolean).join("・"); h += `<tr><td>${c.name}<span class="sqc-role">${c.role}</span></td><td>${c.alive ? "生存" : "T" + c.downTurn + "脱落"}・与${c.dealt}/被${c.taken}${c.kills ? "・撃破" + c.kills : ""}${tags ? "・" + tags : ""}</td></tr>`; }
       h += `</table>`;
       if (s.notes.length) h += `<div class="anotes"><b>戦評</b><ul>${s.notes.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
-      if (s.advice && s.advice.length) h += `<div class="aadvice"><b>次の方向性</b><ul>${s.advice.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
+      if (s.advice && s.advice.length) h += `<div class="aadvice"><b>次の方向性</b><ul>${s.advice.map((n) => `<li class="adv-link" title="クリックで設計画面へ（該当ダイヤルを強調）">${n}</li>`).join("")}</ul></div>`;
       return h + `</div>`;
     };
     $("sqParams").innerHTML = `<div class="ameta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン</div><div class="acols">${col(a.plr, "あなたの分隊", true)}${col(a.cpu, "敵分隊", false)}</div><p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。総評と「次の方向性」を手がかりに、人格のダイヤルを回して再設計しよう。</p>`;
   }
 
-  function backToDesign() { stopAuto(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); }
+  function backToDesign() { stopAuto(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); if (playMode === "camp") renderCampaign(); }
+
+  // ===== 勝率試算（設計→試算→出撃の閉ループ）：現在の編成×条件で固定seed20戦＝決定論の推定 =====
+  function estimate() {
+    const N = 20; let w = 0, l = 0, d = 0, tsum = 0;
+    const st = playMode === "camp" ? CAMP[campSel] : null;
+    for (let i = 0; i < N; i++) {
+      const seed = (90210 + i * 7717) >>> 0;
+      const cpuChoices = st ? resolveCampSquad(st) : (cpuName === "ランダム" ? randomCpu(seed) : CPU_SQUADS[cpuName].map((n) => D.PRESETS[n]));
+      const b = SCS.makeSquadBattle(squad.map((c) => c.slice()), cpuChoices.map((c) => c.slice()), seed,
+        st ? st.arena : arena, st ? st.mod : mod, form, st ? campEnemyForm(st) : "ランダム");
+      let g = 0; while (!b.over && g < 60) { b.step(); g++; }
+      tsum += g;
+      const win = b.result && b.result.winner;
+      if (win === "PLR") w++; else if (win === "CPU") l++; else d++;
+    }
+    const wrap = $("sqPredictWrap"); if (!wrap) return;
+    const rate = Math.round((w / N) * 100);
+    const vs = st ? `vs ${CAMP[campSel].name}` : `vs ${cpuName}`;
+    wrap.innerHTML = `<div class="predict-line"><b>推定勝率 ${rate}%</b>（${w}勝${l}敗${d}分・平均${(tsum / N).toFixed(1)}ターン・${vs}）</div><div class="predict-sub">固定20戦の決定論推定。設計を変えて数字がどう動くか試そう。</div>`;
+    wrap.classList.remove("hidden");
+  }
+
+  // ===== 分析→設計ディープリンク：「次の方向性」の〈大パラ名〉を該当ダイヤルへ（クリック→設計画面＋強調） =====
+  const AXIS_ALIASES = [["闘争心", "攻め志向", "慎重"], ["リスク選好", "リスク"], ["冷静さ", "沈着"], ["忍耐", "待ち"], ["規律"], ["順応性", "順応", "観察"], ["誇り", "騎士道"], ["非情さ", "非情"], ["自信"], ["好奇心"]];
+  function axesInText(t) { const out = []; AXIS_ALIASES.forEach((names, i) => { if (names.some((n) => t.includes("〈" + n) || t.includes(n + "〉") || t.includes("〈" + n + "（"))) out.push(i); }); return out; }
+  function flashDials(axes) {
+    const wrap = $("sqDials"); if (!wrap) return;
+    axes.forEach((i) => { const row = wrap.children[i + 1]; if (row) { row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 3400); } });
+    const first = wrap.children[(axes[0] || 0) + 1]; if (first && first.scrollIntoView) first.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   SCS.squad = {
     enter() { buildDesign(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); },
@@ -207,6 +300,10 @@ window.SCS = window.SCS || {};
   function init() {
     $("sqSortie").addEventListener("click", () => sortie());
     { const rb = $("sqRematch"); if (rb) rb.addEventListener("click", () => { if (lastSeed != null) sortie(lastSeed); }); }
+    { const fb = $("sqModeFree"); if (fb) fb.addEventListener("click", () => setPlayMode("free")); }
+    { const cb = $("sqModeCamp"); if (cb) cb.addEventListener("click", () => setPlayMode("camp")); }
+    { const pb = $("sqPredict"); if (pb) pb.addEventListener("click", estimate); }
+    { const pp = $("sqParams"); if (pp) pp.addEventListener("click", (e) => { const li = e.target.closest ? e.target.closest("li.adv-link") : null; if (!li) return; const axes = axesInText(li.textContent || ""); backToDesign(); if (axes.length) flashDials(axes); }); }
     $("sqNext").addEventListener("click", nextStep);
     $("sqAuto").addEventListener("click", auto);
     $("sqAnalyze").addEventListener("click", () => { const w = $("sqParamsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderAnalysis(); });
