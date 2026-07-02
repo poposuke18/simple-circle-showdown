@@ -462,3 +462,28 @@ body.ob-open::before { content: ""; position: fixed; inset: 0; z-index: 10000; b
 .macro.flash { animation: dialflash 1.7s ease 2; }
 @keyframes dialflash { 0%, 100% { background: transparent; } 40% { background: rgba(255, 207, 92, .16); } }
 .sqh-lbl { white-space: nowrap; }
+
+/* 命名＋通算戦績 */
+.sq-name-in { background: #061b10; border: 1px solid var(--line2); color: var(--amber); font-family: var(--mono); font-size: 13px; font-weight: 700; letter-spacing: 1px; padding: 2px 7px; width: 9.5em; }
+.sq-name-in:focus { outline: none; border-color: var(--amber); }
+.sqe-career { color: var(--dim); font-size: 10.5px; margin-left: 10px; letter-spacing: .5px; }
+.sqr-career { display: block; color: var(--dim); font-size: 10px; margin-top: 2px; letter-spacing: .3px; }
+
+/* KOの緩急：レーダー枠フラッシュ（表示のみ） */
+.mini.koflash { animation: koflash .6s ease 1; }
+@keyframes koflash { 0% { box-shadow: 0 0 0 2px var(--amber), 0 0 26px rgba(255, 207, 92, .55), inset 0 0 16px rgba(0, 0, 0, .55); } 100% { box-shadow: inset 0 0 16px rgba(0, 0, 0, .55), 0 0 10px rgba(31, 107, 67, .12); } }
+
+/* 挑戦モード＋戦績 */
+.chal-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 640px) { .chal-wrap { grid-template-columns: 1fr; } }
+.chal-card { border: 1px dashed var(--line2); padding: 9px 12px; font-size: 12px; line-height: 1.75; color: var(--green); }
+.chal-card b { color: var(--amber); letter-spacing: 1px; }
+.chal-card .btn { margin-top: 7px; }
+.chal-done { color: var(--green); border: 1px solid var(--green2); padding: 0 5px; font-size: 10.5px; }
+.chal-open { color: var(--amber); border: 1px solid var(--amber); padding: 0 5px; font-size: 10.5px; }
+.mtab2.rec { margin-left: auto; }
+.rec-panel { margin-bottom: 12px; }
+.rec-io { margin-top: 8px; display: flex; gap: 8px; }
+
+/* 初回デモ */
+.demo-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 2px 0 12px; padding: 8px 10px; border: 1px dashed var(--amber); background: rgba(255, 207, 92, .05); }

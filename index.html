@@ -4,14 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#080b10" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0702b" />
+  <link rel="stylesheet" href="style.css?v=0702c" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
       <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0702b</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0702c</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
 
@@ -82,13 +85,20 @@
     <section id="squad" class="squad hidden">
       <div id="squadDesign">
         <h3>分隊を編成<span class="h3-sub">各戦士カードを選び、3体の人格を設計。役割を補完させて勝つ</span></h3>
+        <div class="demo-bar"><button id="sqDemo" class="btn primary" type="button">▶ はじめての方へ：観戦デモ（30秒）</button><span class="predict-note">厳選の一戦を自動再生——奇襲、集中砲火、そして必殺。</span></div>
         <div class="sq-modebar" id="sqModeBar">
           <button id="sqModeFree" class="mtab2 active" type="button">模擬戦</button>
           <button id="sqModeCamp" class="mtab2" type="button">制圧戦（キャンペーン）</button>
+          <button id="sqModeChal" class="mtab2" type="button">挑戦（デイリー・闘技場）</button>
+          <button id="sqRecords" class="mtab2 rec" type="button" title="総合戦績・戦士別通算・データの書き出し">戦績</button>
         </div>
+        <div id="sqRecordsPanel" class="camp-info rec-panel hidden"></div>
         <div id="sqCamp" class="sq-camp hidden">
           <div id="sqCampStrip" class="camp-strip"></div>
           <div id="sqCampInfo" class="camp-info"></div>
+        </div>
+        <div id="sqChal" class="sq-camp hidden">
+          <div id="sqChalInfo" class="chal-wrap"></div>
         </div>
         <div id="sqRoster" class="sq-roster"></div>
         <div id="sqTabs" class="sq-editing"></div>
@@ -96,7 +106,9 @@
         <div id="sqDials" class="macros"></div>
         <div class="predict-bar">
           <button id="sqPredict" class="btn ghost small" type="button">▶ 勝率を試算（20戦）</button>
-          <span class="predict-note">今の編成×条件で20戦の推定（決定論＝同じ設計なら同じ数字）</span>
+          <button id="sqCodeCopy" class="btn ghost small" type="button" title="この分隊（3体の人格＋隊形）を短いコードにして共有できる">分隊コードをコピー</button>
+          <button id="sqCodeLoad" class="btn ghost small" type="button" title="共有された分隊コード（S1…）を読み込んで編成を再現">コードを読み込む</button>
+          <span class="predict-note">試算＝固定20戦の決定論推定／コード＝編成の共有</span>
         </div>
         <div id="sqPredictWrap" class="predict hidden" aria-live="polite"></div>
         <div class="cfg-foot" id="sqFoot">
@@ -130,7 +142,10 @@
         <div class="controls">
           <button id="sqNext" class="btn">▶ 次の手</button>
           <button id="sqAuto" class="btn primary">▶ 自動実行</button>
+          <button id="sqSpeed" class="btn ghost" title="自動実行の速さを切替">速度 ×1</button>
+          <button id="sqSkip" class="btn ghost" title="残りを一気に進めて決着へ">≫ 決着まで</button>
           <button id="sqAnalyze" class="btn ghost">分隊分析</button>
+          <button id="sqShare" class="btn ghost" title="この一戦を再現するURLをコピー（開いた人は同じ戦いを観戦できる）">URLで共有</button>
           <button id="sqBack" class="btn ghost">設計に戻る</button>
         </div>
         <div id="sqParamsWrap" class="params-wrap hidden"><h3>分隊分析<span class="h3-sub">どの体が活躍し、どの役割が噛み合わなかったか</span></h3><div id="sqParams" class="params"></div></div>
@@ -165,17 +180,18 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0702b"></script>
-  <script src="js/data.js?v=0702b"></script>
-  <script src="js/derive.js?v=0702b"></script>
-  <script src="js/sim.js?v=0702b"></script>
-  <script src="js/batch.js?v=0702b"></script>
-  <script src="js/squad.js?v=0702b"></script>
-  <script src="js/ui.js?v=0702b"></script>
-  <script src="js/mini.js?v=0702b"></script>
-  <script src="js/story.js?v=0702b"></script>
-  <script src="js/squadui.js?v=0702b"></script>
-  <script src="js/onboard.js?v=0702b"></script>
+  <script src="js/rng.js?v=0702c"></script>
+  <script src="js/data.js?v=0702c"></script>
+  <script src="js/derive.js?v=0702c"></script>
+  <script src="js/sim.js?v=0702c"></script>
+  <script src="js/batch.js?v=0702c"></script>
+  <script src="js/squad.js?v=0702c"></script>
+  <script src="js/ui.js?v=0702c"></script>
+  <script src="js/mini.js?v=0702c"></script>
+  <script src="js/story.js?v=0702c"></script>
+  <script src="js/squadui.js?v=0702c"></script>
+  <script src="js/onboard.js?v=0702c"></script>
   <div id="onboard" class="onboard hidden"></div>
+  <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});</script>
 </body>
 </html>
