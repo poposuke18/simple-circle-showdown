@@ -8,18 +8,19 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0702c" />
+  <link rel="stylesheet" href="style.css?v=0704a" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
       <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0702c</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0704a</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
 
     <nav class="mode-bar" id="modeBar">
-      <button id="tabSquad" class="mtab active">分隊戦</button>
+      <button id="tabLineage" class="mtab active">系譜</button>
+      <button id="tabSquad" class="mtab">分隊戦</button>
       <button id="tabFree" class="mtab">自由対戦</button>
       <button id="tabStory" class="mtab">ストーリー</button>
     </nav>
@@ -80,6 +81,43 @@
     </section>
 
     <section id="storyResult" class="story hidden"></section>
+
+    <!-- ===== 系譜モード（新主役）：個体群の世代交代を観察する ===== -->
+    <section id="lineage" class="lineage hidden">
+      <div id="lnGenesis">
+        <h3>個体群を興す<span class="h3-sub">12体の個体群を始め、世代を重ねさせて眺める。勝敗でなく——何が生き残るかを見る。</span></h3>
+        <p class="hint">最大3体まで、始祖を手動で設計できる（残りはランダム）。環境は世代ごとに変わり、あなたは選ばない。世代を進めるたびに、群れの気質がどう動くかだけを見る。</p>
+        <div id="lnFounderRoster" class="sq-roster"></div>
+        <div id="lnFounderTabs" class="sq-editing"></div>
+        <div id="lnBuildCard" class="build-card"></div>
+        <div id="lnDials" class="macros"></div>
+        <div class="cfg-foot" id="lnFoot">
+          <button id="lnAddFounder" class="btn ghost" type="button">＋ 始祖を追加（最大3体）</button>
+          <button id="lnRemoveFounder" class="btn ghost" type="button">− 始祖を減らす</button>
+          <button id="lnBegin" class="btn primary big" type="button">個体群を興す</button>
+        </div>
+      </div>
+      <div id="lnRun" class="hidden">
+        <div class="stage-top">
+          <span class="chips-left"><span class="arena-chip" id="lnGenChip">世代 0</span><span class="mod-chip" id="lnEnvChip"></span></span>
+          <button id="lnReset" class="btn ghost small" type="button">個体群をやめる</button>
+        </div>
+        <div id="lnPopPanel" class="camp-info"></div>
+        <div id="lnEventsPanel" class="chal-card ln-events"></div>
+        <div class="controls">
+          <button id="lnNextGen" class="btn primary" type="button">▶ 次の世代へ</button>
+          <button id="lnWildcard" class="btn ghost" type="button">刺客を投入</button>
+          <button id="lnToggleLog" class="btn ghost" type="button">▸ 見出し戦の詳細</button>
+        </div>
+        <div id="lnHeadlineWrap" class="logwrap hidden"><div id="lnHeadline" class="log"></div></div>
+        <div id="lnWildcardWrap" class="hidden">
+          <div id="lnWcBuildCard" class="build-card"></div>
+          <div id="lnWcDials" class="macros"></div>
+          <button id="lnWcConfirm" class="btn primary" type="button">この刺客を投入</button>
+          <button id="lnWcCancel" class="btn ghost" type="button">やめる</button>
+        </div>
+      </div>
+    </section>
 
     <!-- ===== 分隊戦モード ===== -->
     <section id="squad" class="squad hidden">
@@ -180,17 +218,19 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0702c"></script>
-  <script src="js/data.js?v=0702c"></script>
-  <script src="js/derive.js?v=0702c"></script>
-  <script src="js/sim.js?v=0702c"></script>
-  <script src="js/batch.js?v=0702c"></script>
-  <script src="js/squad.js?v=0702c"></script>
-  <script src="js/ui.js?v=0702c"></script>
-  <script src="js/mini.js?v=0702c"></script>
-  <script src="js/story.js?v=0702c"></script>
-  <script src="js/squadui.js?v=0702c"></script>
-  <script src="js/onboard.js?v=0702c"></script>
+  <script src="js/rng.js?v=0704a"></script>
+  <script src="js/data.js?v=0704a"></script>
+  <script src="js/derive.js?v=0704a"></script>
+  <script src="js/sim.js?v=0704a"></script>
+  <script src="js/batch.js?v=0704a"></script>
+  <script src="js/squad.js?v=0704a"></script>
+  <script src="js/lineage.js?v=0704a"></script>
+  <script src="js/ui.js?v=0704a"></script>
+  <script src="js/mini.js?v=0704a"></script>
+  <script src="js/story.js?v=0704a"></script>
+  <script src="js/squadui.js?v=0704a"></script>
+  <script src="js/lineageui.js?v=0704a"></script>
+  <script src="js/onboard.js?v=0704a"></script>
   <div id="onboard" class="onboard hidden"></div>
   <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});</script>
 </body>

@@ -93,7 +93,7 @@ window.SCS = window.SCS || {};
     return clamp(0.35 + 0.32 * Math.max(0, adapt) + 0.30 * Math.max(0, pride) - 0.25 * Math.max(0, -pride) + 0.20 * Math.max(0, disc) - 0.28 * Math.max(0, conf) - 0.22 * Math.max(0, belli), 0, 1);
   }
 
-  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP) {
+  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP, namesC) {
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
     // 隊形（プレーヤーの作戦・既定=散開）。CPU側未指定はランダム（seed由来＝決定論）。
     const formKey = (name, salt) => { if (name && name !== "ランダム") { const f = D.FORMATIONS.find((x) => x.key === name || x.name === name); if (f) return f.key; } if (!name) return "loose"; return D.FORMATIONS[SCS.makeRNG((seed ^ salt) >>> 0).int(D.FORMATIONS.length)].key; };
@@ -201,7 +201,7 @@ window.SCS = window.SCS || {};
     // ===== 分隊の構築・配置 =====
     function mkUnit(choices, team, idx, n) {
       const u = SCS.derive.buildUnit(`${team}-${idx + 1}`, choices);
-      u.name = team === "P" ? ((namesP && namesP[idx]) || `戦士${idx + 1}`) : `敵${idx + 1}`; // 自軍=命名可（UI側でサニタイズ済のみ渡る）・敵軍=敵N。色で区別。
+      u.name = team === "P" ? ((namesP && namesP[idx]) || `戦士${idx + 1}`) : ((namesC && namesC[idx]) || `敵${idx + 1}`); // 自軍=命名可（UI側でサニタイズ済のみ渡る）。敵軍は既定=敵N・namesC指定時のみ命名可（系譜モード＝両陣営とも個体群の一員で「敵」ではない）。
       const left = team === "P", baseX = left ? Math.max(10, arena.start.p.x) : Math.min(field.w - 10, arena.start.c.x);
       const y = field.h * (idx + 1) / (n + 1);
       const presence = basePresence(u), hold = holdFactor(u), tank = tankRating(u), coop = coopRating(u); // タンク度＝目立つ×持ちこたえる／協調性＝チームプレイ度

@@ -43,20 +43,31 @@ window.SCS = window.SCS || {};
     if (story && (v === "map" || v === "scout" || v === "design")) $("paramsWrap").classList.add("hidden"); // 分析はbattle/result時のみ（ui.jsが決着で展開）
   }
 
-  // ---- モード切替（自由対戦 / ストーリー / 分隊戦）----
+  // ---- モード切替（系譜 / 分隊戦 / 自由対戦 / ストーリー）----
   function setMode(m) {
     mode = m;
     $("tabFree").classList.toggle("active", m === "free");
     $("tabStory").classList.toggle("active", m === "story");
     const sq = $("tabSquad"); if (sq) sq.classList.toggle("active", m === "squad");
+    const ln = $("tabLineage"); if (ln) ln.classList.toggle("active", m === "lineage");
+    if (m === "lineage") { // 系譜：新主役。1v1・分隊戦を全て隠し #lineage を表示
+      SCS.ui.clearStory();
+      if (SCS.squad) SCS.squad.leave();
+      ["storyHome", "storyScout", "storyResult", "stage", "config", "paramsWrap", "squad"].forEach((id) => show(id, false));
+      show("lineage", true);
+      if (SCS.lineageUI) SCS.lineageUI.enter();
+      return;
+    }
+    if (SCS.lineageUI) SCS.lineageUI.leave();
     if (m === "squad") { // 分隊戦：1v1系を全て隠し #squad を表示
       SCS.ui.clearStory();
-      ["storyHome", "storyScout", "storyResult", "stage", "config", "paramsWrap"].forEach((id) => show(id, false));
+      ["storyHome", "storyScout", "storyResult", "stage", "config", "paramsWrap", "lineage"].forEach((id) => show(id, false));
       show("squad", true);
       if (SCS.squad) SCS.squad.enter();
       return;
     }
     if (SCS.squad) SCS.squad.leave();
+    show("lineage", false);
     if (m === "free") { SCS.ui.clearStory(); setView("free"); }
     else { SCS.ui.clearStory(); curEnemy = null; renderHome(); }
   }
@@ -187,7 +198,8 @@ window.SCS = window.SCS || {};
     $("tabFree").addEventListener("click", () => setMode("free"));
     $("tabStory").addEventListener("click", () => setMode("story"));
     { const sq = $("tabSquad"); if (sq) sq.addEventListener("click", () => setMode("squad")); }
-    setMode("squad"); // 既定＝分隊戦（メインモード）。1v1は自由対戦/ストーリータブから
+    { const ln = $("tabLineage"); if (ln) ln.addEventListener("click", () => setMode("lineage")); }
+    setMode("lineage"); // 既定＝系譜（新主役）。分隊戦・1v1は各タブから
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

@@ -487,3 +487,16 @@ body.ob-open::before { content: ""; position: fixed; inset: 0; z-index: 10000; b
 
 /* 初回デモ */
 .demo-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 2px 0 12px; padding: 8px 10px; border: 1px dashed var(--amber); background: rgba(255, 207, 92, .05); }
+
+/* 系譜モード（個体群の世代交代を観察） */
+.ln-bar-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+.ln-bar-lbl { flex: 0 0 72px; color: var(--dim); font-size: 11px; letter-spacing: .3px; }
+.ln-bar { flex: 1; height: 8px; border: 1px solid var(--line2); background: rgba(0, 0, 0, .3); border-radius: 2px; overflow: hidden; }
+.ln-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green2), var(--amber)); }
+.ln-bar-val { flex: 0 0 28px; color: var(--green2); font-size: 11px; text-align: right; }
+.ln-roster { margin: 8px 0; line-height: 2; }
+.ln-indiv { display: inline-block; border: 1px solid var(--line2); border-radius: 3px; padding: 1px 6px; margin: 1px 3px 1px 0; font-size: 11px; color: var(--green); }
+.ln-dominant { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+.ln-events { margin-top: 10px; }
+.ln-ev-list { margin: 4px 0 0; padding-left: 18px; }
+.ln-ev-list li { margin: 3px 0; }
