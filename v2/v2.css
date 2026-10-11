@@ -294,3 +294,42 @@ button { font-family: inherit; color: inherit; }
 .sp-lbl2 { margin-top: 26px; margin-bottom: 12px; }
 .rs-banner.spec { border-color: var(--rc, #8fe6ff); box-shadow: 0 0 26px color-mix(in srgb, var(--rc, #8fe6ff) 55%, transparent); letter-spacing: 4px; padding: 0 40px; }
 .w-vs.long { font-size: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* リーグ（v2.k5.league）*/
+.t-logo { top: 190px; }
+.t-menu { top: 450px; gap: 16px; }
+.mbtn { height: 84px; }
+.ic-league { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 3h10v5a5 5 0 01-10 0z M3 4h3v3a3 3 0 01-3-3z M18 4h3a3 3 0 01-3 3z M11 13h2v4h4v3H7v-3h4z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 3h10v5a5 5 0 01-10 0z M3 4h3v3a3 3 0 01-3-3z M18 4h3a3 3 0 01-3 3z M11 13h2v4h4v3H7v-3h4z'/%3E%3C/svg%3E"); }
+.lg-season { margin-left: auto; font-family: "Russo One", sans-serif; font-size: 28px; color: var(--dim); }
+.lg-table { left: 40px; top: 120px; width: 1060px; height: 800px; padding: 18px 28px; }
+.lg-row { display: grid; grid-template-columns: 70px 1fr 80px 70px 70px 70px 100px; align-items: center; height: 88px; border-bottom: 1px solid rgba(140,190,255,.14); font-size: 25px; }
+.lg-row:last-child { border-bottom: 0; }
+.lg-row.h { height: 44px; font-size: 19px; color: var(--dim); font-weight: 700; }
+.lg-row b { font-family: "Russo One", sans-serif; font-weight: 400; text-align: center; }
+.lg-row .rk { font-family: "Russo One", sans-serif; font-size: 30px; text-align: center; }
+.lg-row .nm { display: flex; align-items: center; gap: 16px; font-weight: 900; }
+.lg-row .tks, .lg-vs .tks { display: flex; gap: 6px; font-style: normal; }
+.lg-row .tk-xs, .lg-vs .tk-xs { width: 44px; height: 44px; border-width: 5px; }
+.lg-row .pt { font-size: 30px; color: #fff; }
+.lg-row.me { background: rgba(60,140,255,.14); box-shadow: inset 4px 0 0 #58aeff; border-radius: 8px; }
+.lg-side { left: 1130px; top: 120px; width: 750px; height: 800px; padding: 24px 30px; overflow: hidden; }
+.lg-h { font-size: 34px; font-weight: 900; letter-spacing: 3px; }
+.lg-h2 { margin: 22px 0 8px; font-size: 21px; font-weight: 700; color: var(--dim); }
+.lg-next { margin-top: 14px; border: 2px solid var(--rc); border-radius: 14px; padding: 16px 18px; background: rgba(12,24,40,.75); box-shadow: 0 0 18px color-mix(in srgb, var(--rc) 40%, transparent); }
+.lg-vs { display: flex; align-items: center; gap: 16px; font-size: 32px; font-weight: 900; }
+.lg-vs .tks { margin-left: auto; }
+.lg-where { display: flex; align-items: center; gap: 18px; margin-top: 14px; font-size: 22px; font-weight: 700; }
+.lg-where img { width: 210px; height: 118px; object-fit: cover; border-radius: 10px; border: 1.5px solid rgba(140,190,255,.35); }
+.lg-where .chip { margin-left: 14px; }
+.lg-m { display: grid; grid-template-columns: 1fr 56px 56px 1fr; align-items: center; gap: 6px; height: 46px; font-size: 21px; border-bottom: 1px solid rgba(140,190,255,.1); }
+.lg-m span:last-child { text-align: right; }
+.lg-m .vs { grid-column: 2 / 4; text-align: center; font-style: normal; font-family: "Russo One", sans-serif; color: var(--dim); }
+.lg-m .r { font-style: normal; text-align: center; font-weight: 900; border-radius: 6px; padding: 2px 0; }
+.lg-m .r-w { background: rgba(255,200,60,.22); color: #ffd866; } .lg-m .r-l { color: #8a96a8; } .lg-m .r-d { color: #cfdcef; }
+.lg-m .win { font-weight: 900; }
+.lg-m.me { color: #bfe0ff; }
+.lg-final { text-align: center; padding: 30px 0 10px; }
+.lg-final small { font-size: 24px; color: var(--dim); font-weight: 700; }
+.lg-final b { display: block; font-family: "Russo One", sans-serif; font-size: 120px; font-weight: 400; line-height: 1.1; color: #fff; text-shadow: 0 0 24px rgba(90,170,255,.5); }
+.lg-final b span { font-family: "Noto Sans JP", sans-serif; font-size: 40px; font-weight: 900; margin-left: 6px; }
+.lg-champ { margin-top: 8px; font-size: 24px; font-weight: 900; color: #ffd866; }

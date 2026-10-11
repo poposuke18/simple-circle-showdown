@@ -29,13 +29,13 @@
 
   // ===== 画面切り替え =====
   let cur = "title";
-  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
+  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", league: "scLeague", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
   function go(name) {
     if (!SC[name]) return;
     if (cur === "edit") St.save();
     cur = name;
     Object.entries(SC).forEach(([k, id]) => $(id).classList.toggle("on", k === name));
-    ({ squad: enterSquad, prep: enterPrep, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
+    ({ squad: enterSquad, prep: enterPrep, league: enterLeague, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
   }
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { e.preventDefault(); go(b.getAttribute("data-go")); } });
 
@@ -265,6 +265,41 @@
     startRun(`${A.name} VS ${B.name}`);
   }
   $("sGo").addEventListener("click", () => spectate(false));
+
+  // ===== リーグ：あなた＋ライバル7部隊の総当たり7節（v2.k5.league）=====
+  const Lg = SCS2.league;
+  const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } return L; };
+  const lgName = (k) => (k === "you" ? "あなたの部隊" : Lg.rivalOf(k).name);
+  const lgToks = (k) => (k === "you" ? St.data.squad.map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
+  const MOD_IC = { 通常: "sun", 濃霧: "fog", 灼熱: "heat" };
+  function enterLeague() {
+    const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L);
+    $("lgSeason").textContent = `シーズン ${L.season}`;
+    $("lgTable").innerHTML = `<div class="lg-row h"><span>順位</span><span>部隊</span><b>試合</b><b>勝</b><b>分</b><b>敗</b><b>勝点</b></div>`
+      + order.map((k, i) => { const t = L.table[k]; return `<div class="lg-row ${k === "you" ? "me" : ""}"><span class="rk">${i + 1}</span><span class="nm"><i class="tks">${lgToks(k)}</i>${esc(lgName(k))}</span><b>${t.p}</b><b>${t.w}</b><b>${t.d}</b><b>${t.l}</b><b class="pt">${t.pts}</b></div>`; }).join("");
+    const last = L.log[L.log.length - 1], mark = (m, side) => (m.res === "d" ? "分" : (m.res === "a") === (side === "a") ? "勝" : "負");
+    const lastHtml = last ? `<div class="lg-h2">第${L.log.length}節の結果</div>` + last.map((m) => `<div class="lg-m ${m.a === "you" || m.b === "you" ? "me" : ""}"><span class="${mark(m, "a") === "勝" ? "win" : ""}">${esc(lgName(m.a))}</span><i class="r r-${{ 勝: "w", 負: "l", 分: "d" }[mark(m, "a")]}">${mark(m, "a")}</i><i class="r r-${{ 勝: "w", 負: "l", 分: "d" }[mark(m, "b")]}">${mark(m, "b")}</i><span class="${mark(m, "b") === "勝" ? "win" : ""}">${esc(lgName(m.b))}</span></div>`).join("") : "";
+    if (done) {
+      const rank = order.indexOf("you") + 1;
+      $("lgSide").innerHTML = `<div class="lg-final"><small>最終順位</small><b>${rank}<span>位</span></b><div class="lg-champ">優勝　${esc(lgName(order[0]))}</div></div>` + lastHtml;
+      $("lgGo").textContent = "新しいシーズン";
+    } else {
+      const nm = Lg.nextMatch(L), foe = nm.foe, ar = Wd.arenaFor(foe), others = Lg.schedule(L.season)[L.round].filter((p) => !p.includes("you"));
+      $("lgSide").innerHTML = `<div class="lg-h">第${L.round + 1}節</div>
+        <div class="lg-next" style="--rc:${foe.pal.rimA}"><div class="lg-vs"><span>${esc(foe.name)}</span><span class="tks">${lgToks(foe.key)}</span></div>
+          <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}<span class="chip wchip on"><i class="wic wic-${MOD_IC[foe.mod] || "sun"}"></i>${esc(foe.mod)}</span></div></div></div>
+        <div class="lg-h2">ほかの試合</div>${others.map(([a, b]) => `<div class="lg-m"><span>${esc(lgName(a))}</span><i class="vs">VS</i><span>${esc(lgName(b))}</span></div>`).join("")}` + lastHtml;
+      $("lgGo").textContent = "試合へ";
+    }
+  }
+  $("lgGo").addEventListener("click", () => {
+    const L = lgData();
+    if (L.round >= Lg.ROUNDS) { St.data.league = Lg.fresh(L.season + 1); St.save(); enterLeague(); return; }
+    const foe = Lg.nextMatch(L).foe, sq = St.data.squad;
+    sortieCfg = { league: true, mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.squad.map((c) => c.slice()), emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
+      seed: newSeed(), arena: Wd.arenaFor(foe), mod: foe.mod, formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal } };
+    startRun(`第${L.round + 1}節　VS ${foe.name}`);
+  });
   function setPause(p) { paused = p; $("icPause").setAttribute("d", paused ? "M16 12 L36 24 L16 36 Z" : "M17 13 V35 M31 13 V35"); $("icPause").style.fill = paused ? "#8fe0ff" : "none"; }
   $("wPause").onclick = () => setPause(!paused);
   $("wSpeed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("wSpd").textContent = "×" + speed; };
@@ -302,6 +337,7 @@
     if (ended) { if (skip) showResult(); return; }
     ended = true; endAt = clock; result = outcome();
     if (!sortieCfg.spec) St.record(sortieCfg.rival.key, result);
+    if (sortieCfg.league && !sortieCfg.leagueDone) { sortieCfg.leagueDone = true; SCS2.league.finishRound(lgData(), result); St.save(); }   // 同じ節のほかの試合もここで決まる
     $("wEndMain").textContent = bannerOf(result); $("wEnd").classList.add("show");
     updWatch();
     if (skip) showResult();
@@ -365,6 +401,7 @@
       const cx = clamp((Math.max(...xs) + Math.min(...xs)) / 2, 282 / z, W - 282 / z), cy = clamp((Math.max(...ys) + Math.min(...ys)) / 2, 158 / z, H - 158 / z);
       return { h, z, cx, cy, rp: SCS2.insight.makeReplay(run.snaps, h.t - 2, h.t + 1, h.t) };
     });
+    $("rsAgain").textContent = sortieCfg.league ? "リーグへ" : "もう一度";
     resClock = 0; go("result"); drawCards();
   }
   let replays = [], resClock = 0;
@@ -377,7 +414,7 @@
   }
   function frameResult(dt) { resClock += dt; drawCards(); }
   $("rsCards").addEventListener("click", (e) => { const c = e.target.closest(".hl"); if (c) openWhy(hls[+c.dataset.i]); });
-  $("rsAgain").addEventListener("click", () => sortie(false));
+  $("rsAgain").addEventListener("click", () => (sortieCfg && sortieCfg.league ? go("league") : sortie(false)));
 
   // ===== なぜ、そう動いた？ =====
   const cvWhy = reg($("cvWhy"), 1278, 738);

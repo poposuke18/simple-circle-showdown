@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Noto+Sans+JP:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="v2.css?b=1011d4">
+<link rel="stylesheet" href="v2.css?b=1011d5">
 </head>
 <body>
 <div id="stage">
@@ -24,6 +24,7 @@
     <div class="t-logo">S.C.S. AI</div>
     <nav class="t-menu">
       <button class="mbtn hot" data-go="prep"><span class="ic ic-go"></span>出撃</button>
+      <button class="mbtn" data-go="league"><span class="ic ic-league"></span>リーグ</button>
       <button class="mbtn" data-go="spec"><span class="ic ic-eye"></span>観戦</button>
       <button class="mbtn" data-go="squad"><span class="ic ic-squad"></span>部隊</button>
       <button class="mbtn" data-go="records"><span class="ic ic-rec"></span>記録</button>
@@ -76,6 +77,18 @@
     <div class="foot">
       <button class="btn" data-go="squad">部隊へ</button>
       <button class="btn hot big" id="pGo">送り出す</button>
+    </div>
+  </section>
+
+  <!-- リーグ（あなた＋ライバル7部隊の総当たり）-->
+  <section id="scLeague" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">リーグ</span><span class="lg-season" id="lgSeason"></span></header>
+    <div class="pnl lg-table" id="lgTable"></div>
+    <div class="pnl lg-side" id="lgSide"></div>
+    <div class="foot">
+      <button class="btn" data-go="title">タイトルへ</button>
+      <button class="btn hot big" id="lgGo">試合へ</button>
     </div>
   </section>
 
@@ -165,13 +178,14 @@
 <script src="../js/rng.js"></script>
 <script src="../js/data.js"></script>
 <script src="../js/derive.js"></script>
-<script src="../js/squad.js?b=1011d4"></script>
-<script src="js/world.js?b=1011d4"></script>
-<script src="js/store.js?b=1011d4"></script>
-<script src="js/board.js?b=1011d4"></script>
-<script src="js/runner.js?b=1011d4"></script>
-<script src="js/insight.js?b=1011d4"></script>
-<script src="js/app.js?b=1011d4"></script>
+<script src="../js/squad.js?b=1011d5"></script>
+<script src="js/world.js?b=1011d5"></script>
+<script src="js/store.js?b=1011d5"></script>
+<script src="js/board.js?b=1011d5"></script>
+<script src="js/runner.js?b=1011d5"></script>
+<script src="js/insight.js?b=1011d5"></script>
+<script src="js/league.js?b=1011d5"></script>
+<script src="js/app.js?b=1011d5"></script>
 <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("../sw.js", { scope: "../" }).catch(function () {});</script>
 </body>
 </html>
