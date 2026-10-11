@@ -10,7 +10,12 @@ window.SCS2 = window.SCS2 || {};
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const circ = (c, x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); };
-  const teamCol = (P, a) => (P ? `rgba(80,170,255,${a})` : `rgba(255,80,80,${a})`);
+  const DEF_P = { rgb: "80,170,255", rimA: "#58aeff", rimB: "#0f4fcf", side: "#082a6e", fx: "120,200,255", dot: "#3d9bff" };
+  const DEF_C = { rgb: "255,80,80", rimA: "#ff6262", rimB: "#b3161c", side: "#5e0b10", fx: "255,110,110", dot: "#ff4d4d" };
+  const PALS = { P: DEF_P, C: DEF_C };                             // いま描いている戦いの両軍の色（描く前に usePal）
+  const usePal = (pal) => { PALS.P = (pal && pal.P) || DEF_P; PALS.C = (pal && pal.C) || DEF_C; };
+  const palT = (P) => (P ? PALS.P : PALS.C);
+  const teamCol = (P, a) => `rgba(${palT(P).rgb},${a})`;
 
   const IMGS = {};
   function img(src) { let im = IMGS[src]; if (!im) { im = new Image(); im.onload = () => { if (SCS2.board.onLoad) SCS2.board.onLoad(); }; im.src = src; IMGS[src] = im; } return im.complete && im.naturalWidth ? im : null; }
@@ -171,10 +176,10 @@ window.SCS2 = window.SCS2 || {};
   // ===== 駒 =====
   function token(ctx, x, y, r, o) {                                                            // o: {team, emb, dead, hpf, ang, hit, dim}
     const P = o.team === "P", dead = !!o.dead;
-    const rimA = dead ? "#71767e" : P ? "#58aeff" : "#ff6262", rimB = dead ? "#3b3f45" : P ? "#0f4fcf" : "#b3161c", side = dead ? "#24272c" : P ? "#082a6e" : "#5e0b10";
+    const pp = o.pal || palT(P), rimA = dead ? "#71767e" : pp.rimA, rimB = dead ? "#3b3f45" : pp.rimB, side = dead ? "#24272c" : pp.side;
     ctx.save();
     if (dead) ctx.globalAlpha = 0.82;
-    if (!dead) { ctx.shadowColor = teamCol(P, 0.75); ctx.shadowBlur = r * 0.55; ctx.fillStyle = side; circ(ctx, x, y + r * 0.07, r); ctx.fill(); }
+    if (!dead) { ctx.shadowColor = `rgba(${pp.rgb},.75)`; ctx.shadowBlur = r * 0.55; ctx.fillStyle = side; circ(ctx, x, y + r * 0.07, r); ctx.fill(); }
     ctx.shadowColor = "rgba(0,0,0,.7)"; ctx.shadowBlur = r * 0.4; ctx.shadowOffsetY = r * 0.22;
     ctx.fillStyle = side; circ(ctx, x, y + r * 0.17, r); ctx.fill();
     ctx.shadowColor = "transparent";
@@ -224,7 +229,7 @@ window.SCS2 = window.SCS2 || {};
     for (let i = fx.length - 1; i >= 0; i--) {
       const f = fx[i], p = (st.clock - f.t0) / f.dur; if (p < 0) continue; if (p > 1) { fx.splice(i, 1); continue; }
       const P = f.team === "P", ax = f.va.x * PX, ay = f.va.y * PX, bx = f.vb.x * PX, by = f.vb.y * PX, d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
-      const col = P ? "120,200,255" : "255,110,110";
+      const col = palT(P).fx;
       ctx.globalCompositeOperation = "lighter";
       if (f.kind === "tracer") {
         const h = clamp(p * 1.7, 0, 1), tl = clamp(p * 1.7 - 0.45, 0, 1), al = p > 0.7 ? (1 - p) / 0.3 : 1;
@@ -239,7 +244,7 @@ window.SCS2 = window.SCS2 || {};
         ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(bx, by); ctx.stroke(); ctx.shadowBlur = 0; ctx.strokeStyle = `rgba(255,255,255,${al})`; ctx.lineWidth = 5; ctx.stroke();
       } else if (f.kind === "slash") {
         const ang = Math.atan2(uy, ux), cx = bx - ux * R * 0.4, cy = by - uy * R * 0.4, rr = R * 1.45, sw = 2.3, a0 = ang - sw / 2 - Math.PI / 2 + 0.4, a1 = a0 + sw * clamp(p * 2.2, 0, 1), al = p > 0.55 ? (1 - p) / 0.45 : 1;
-        const sc = P ? "140,220,255" : "255,90,130";
+        const sc = palT(P).fx;
         ctx.shadowColor = `rgba(${sc},1)`; ctx.shadowBlur = 18;
         for (let k = 0; k < 3; k++) { ctx.strokeStyle = k === 2 ? `rgba(255,255,255,${al})` : `rgba(${sc},${(0.55 + k * 0.2) * al})`; ctx.lineWidth = [16, 9, 3][k]; ctx.beginPath(); ctx.arc(cx, cy, rr - k * 3, a0, a1); ctx.stroke(); }
       } else if (f.kind === "burst") {
@@ -313,7 +318,7 @@ window.SCS2 = window.SCS2 || {};
   }
 
   function drawBoard(ctx, st) {
-    usePX(st.arena);
+    usePX(st.arena); usePal(st.pal);
     drawMap(ctx, st); drawWeatherGround(ctx, st);
     drawFormation(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
@@ -327,13 +332,13 @@ window.SCS2 = window.SCS2 || {};
   }
   // ミニマップ（地図の縮小＋駒の点＋カメラ枠）
   function drawMini(mctx, mw, mh, st, cam) {
-    usePX(st.arena); const k = mw / W, m = img(st.arena.mini);
+    usePX(st.arena); usePal(st.pal); const k = mw / W, m = img(st.arena.mini);
     if (m) mctx.drawImage(m, 0, 0, mw, mh); else { mctx.fillStyle = "#1c2a1c"; mctx.fillRect(0, 0, mw, mh); }
     mctx.fillStyle = "rgba(4,10,20,.25)"; mctx.fillRect(0, 0, mw, mh);
     for (const v of st.views) {
       const x = v.x * PX * k, y = v.y * PX * k;
       if (!v.alive) { mctx.strokeStyle = "rgba(200,200,200,.7)"; mctx.lineWidth = 1.5; mctx.beginPath(); mctx.moveTo(x - 3, y - 3); mctx.lineTo(x + 3, y + 3); mctx.moveTo(x + 3, y - 3); mctx.lineTo(x - 3, y + 3); mctx.stroke(); continue; }
-      mctx.fillStyle = v.team === "P" ? "#3d9bff" : "#ff4d4d"; mctx.strokeStyle = "#fff"; mctx.lineWidth = 1.2; circ(mctx, x, y, 5); mctx.fill(); mctx.stroke();
+      mctx.fillStyle = palT(v.team === "P").dot; mctx.strokeStyle = "#fff"; mctx.lineWidth = 1.2; circ(mctx, x, y, 5); mctx.fill(); mctx.stroke();
     }
     if (cam) { mctx.strokeStyle = "rgba(255,255,255,.9)"; mctx.lineWidth = 1.6; mctx.strokeRect((cam.x - W / 2 / cam.z) * k, (cam.y - H / 2 / cam.z) * k, (W / cam.z) * k, (H / cam.z) * k); }
   }
@@ -352,5 +357,5 @@ window.SCS2 = window.SCS2 || {};
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }
 
-  SCS2.board = { W, H, R, usePX, get PX() { return PX; }, img, emb, token, icon, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, teamCol, circ };
+  SCS2.board = { W, H, R, usePX, usePal, get PX() { return PX; }, img, emb, token, icon, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, teamCol, circ };
 })();

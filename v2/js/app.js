@@ -11,7 +11,8 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const cleanName = (s) => String(s || "").replace(/[<>&"'`\\]/g, "").trim().slice(0, 10);
   const axName = (i) => D.MACROS[i].name.replace(/\(.*\)/, "");
-  const tkHtml = (team, emb, cls) => `<div class="tk ${team === "C" ? "c" : ""} ${cls || ""}"><img src="assets/emblem/${emb}.png" alt=""></div>`;
+  const palCss = (p) => (p ? ` style="--rim:${p.rimA};--side:${p.side};--glow:rgba(${p.rgb},.45)"` : "");
+  const tkHtml = (team, emb, cls, pal) => `<div class="tk ${team === "C" ? "c" : ""} ${cls || ""}"${palCss(pal)}><img src="assets/emblem/${emb}.png" alt=""></div>`;
   const ACT_OF = { 射撃: "射撃中", 集中: "集中砲火", 斬: "斬り込み", 背後: "背後を突く", 側面: "側面を突く", 剝がし: "引き剝がし", かばう: "かばう", 盾: "盾になる", 遮蔽: "物陰に", 立て直し: "立て直し",
     退避: "退避中", 必殺: "必殺", 攻勢: "攻勢", 詰め: "詰め寄る", 装填: "装填中", 温存: "機を待つ", 索敵: "索敵中", 様子見: "様子見", 待機: "待機", 戦闘不能: "戦闘不能" };
 
@@ -28,13 +29,13 @@
 
   // ===== 画面切り替え =====
   let cur = "title";
-  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
+  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
   function go(name) {
     if (!SC[name]) return;
     if (cur === "edit") St.save();
     cur = name;
     Object.entries(SC).forEach(([k, id]) => $(id).classList.toggle("on", k === name));
-    ({ squad: enterSquad, prep: enterPrep, records: enterRecords, title: enterTitle })[name]?.();
+    ({ squad: enterSquad, prep: enterPrep, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
   }
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { e.preventDefault(); go(b.getAttribute("data-go")); } });
 
@@ -48,7 +49,7 @@
     const g = SCS.makeRNG((Date.now() & 0x7fffffff) >>> 0), n = Wd.RIVALS.length, a = g.int(n); let b = g.int(n - 1); if (b >= a) b++;
     const pool = Wd.RIVALS.filter((r) => !r.mirror), A = pool[a % pool.length], Bv = pool[b % pool.length] === A ? pool[(b + 1) % pool.length] : pool[b % pool.length];
     demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: Wd.ARENAS[g.int(Wd.ARENAS.length)], mod: "通常", formP: A.form, formC: Bv.form });
-    demoClock = 0; demoEnd = 0;
+    demo.pal = { P: A.pal, C: Bv.pal }; demoClock = 0; demoEnd = 0;
   }
   function enterTitle() { if (!demo) newDemo(); }
   function frameTitle(dt) {
@@ -56,7 +57,7 @@
     demoClock += dt; demo.tick(demoClock, dt, 1);
     if (demo.battle.over) { if (!demoEnd) demoEnd = demoClock; else if (demoClock - demoEnd > 3000) newDemo(); }
     const o = cvTitle, c = o.ctx; Bd.view(c, o.s, W, H, demo.cam.x, demo.cam.y, demo.cam.z);
-    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: "通常", arena: demo.arena });
+    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: "通常", arena: demo.arena, pal: demo.pal });
   }
 
   // ===== 部隊 =====
@@ -161,7 +162,7 @@
   function recOf(k) { const r = St.data.records[k]; return r ? `${r.w}勝 ${r.l}敗${r.d ? ` ${r.d}分` : ""}` : "初対戦"; }
   function enterPrep() {
     $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
-      <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm")).join("")}</div></div>`).join("");
+      <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm", r.pal)).join("")}</div></div>`).join("");
     selectRival(rivalI, true);
     const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
     $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
@@ -171,7 +172,7 @@
     rivalI = i; const r = Wd.RIVALS[i];
     document.querySelectorAll("#rvList .rv").forEach((x) => x.classList.toggle("on", +x.dataset.i === i));
     $("rvName").textContent = r.name; $("rvRec").textContent = recOf(r.key); $("rvFlavor").textContent = r.flavor; $("rvScout").textContent = r.scout;
-    $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e)).join("");
+    $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e, "", r.pal)).join("");
     if (!keepMod || !pMod) pMod = r.mod;
     if (!keepMod || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
     $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === pArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
@@ -202,21 +203,68 @@
     else { const o = curOrder().slice(); [o[placeSel], o[r]] = [o[r], o[placeSel]]; St.data.order = o; St.save(); placeSel = -1; }
     renderPlace();
   });
-  $("pGo").addEventListener("click", () => sortie());
+  $("pGo").addEventListener("click", () => { if (sortieCfg) sortieCfg.spec = false; sortie(); });
 
   // ===== 観戦 =====
   let run = null, sortieCfg = null, ended = false, endAt = 0, result = null;
   const cvWatch = reg($("cvWatch"), W, H), cvMini = reg($("cvMini"), 276, 153);
+  const newSeed = () => ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
   function sortie(sameSeed) {
+    if (sortieCfg && sortieCfg.spec) return spectate(sameSeed);
     const r = Wd.RIVALS[rivalI], sq = St.data.squad, foe = foeOf(r);
-    const seed = sameSeed && sortieCfg ? sortieCfg.seed : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
+    const seed = sameSeed && sortieCfg ? sortieCfg.seed : newSeed();
     sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r, orderP: St.data.order ? St.data.order.slice() : null };
-    run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
-    $("wVs").textContent = `VS ${r.name}`; $("wSub").textContent = `${sortieCfg.arena.name}・${sortieCfg.mod}`;
-    $("wEnd").classList.remove("show"); setPause(false);
-    go("watch"); updWatch();
+      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: r.pal } };
+    startRun(`VS ${r.name}`);
   }
+  function startRun(vs) {
+    run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
+    $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = `${sortieCfg.arena.name}・${sortieCfg.mod}`;
+    $("wEnd").classList.remove("show"); setPause(false);
+    buildHud(); go("watch"); updWatch();
+  }
+  // 観戦中の表示：ターン＋両軍3体ずつの駒とHP（v2.k6.hud）。駒を押すとその駒に注目
+  let hudEls = [];
+  function buildHud() {
+    hudEls = [];
+    for (const tm of ["P", "C"]) {
+      const box = $(tm === "P" ? "huP" : "huC"), pal = sortieCfg.pal[tm];
+      box.innerHTML = run.views.filter((v) => v.team === tm).map((v) => `<button class="hu" data-id="${v.id}">${tkHtml(tm, v.emb, "tk-xs", pal)}<i class="hu-hp"><b style="background:${pal.rimA}"></b></i></button>`).join("");
+      box.querySelectorAll(".hu").forEach((el) => hudEls.push({ el, tk: el.querySelector(".tk"), bar: el.querySelector("b"), v: run.views.find((x) => x.id === el.dataset.id), w: -1, dead: false, on: false }));
+    }
+  }
+  function updHud() {
+    for (const h of hudEls) {
+      const w = h.v.alive ? Math.round(clamp(h.v.hp / h.v.maxHp, 0, 1) * 100) : 0; if (w !== h.w) { h.w = w; h.bar.style.width = w + "%"; }
+      if (!h.v.alive !== h.dead) { h.dead = !h.v.alive; h.tk.classList.toggle("dead", h.dead); }
+      const on = run.focus === h.v; if (on !== h.on) { h.on = on; h.el.classList.toggle("on", on); }
+    }
+  }
+  $("huP").parentElement.addEventListener("click", (e) => { const b = e.target.closest(".hu"); if (!b || !run) return; const v = run.views.find((x) => x.id === b.dataset.id); if (v && v.alive) { run.setFocus(v, clock); updWatch(); } });
+
+  // ===== 観戦する：ライバル同士を戦わせて眺める（記録に残らない・v2.k3.spectate）=====
+  const SPEC = Wd.RIVALS.filter((r) => !r.mirror);
+  let specA = 0, specB = 1, sArena = null, sMod = null;
+  function enterSpec() {
+    if (sArena == null) { const g = SCS.makeRNG(newSeed()); specA = g.int(SPEC.length); specB = (specA + 1 + g.int(SPEC.length - 1)) % SPEC.length; sArena = Wd.arenaFor(SPEC[specB]); sMod = SPEC[specB].mod; }
+    renderSpec();
+  }
+  function renderSpec() {
+    const col = (side, sel, other) => SPEC.map((r, i) => `<div class="sp-rv ${i === sel ? "on" : ""} ${i === other ? "off" : ""}" data-s="${side}" data-i="${i}" style="--rc:${r.pal.rimA}"><b>${esc(r.name)}</b><span class="sp-tks">${r.emb.map((e) => tkHtml(side === "A" ? "P" : "C", e, "tk-xs", r.pal)).join("")}</span></div>`).join("");
+    $("spA").innerHTML = col("A", specA, specB); $("spB").innerHTML = col("B", specB, specA);
+    $("sArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === sArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
+    $("sMod").innerHTML = Wd.MODS.map((m) => `<span class="chip wchip ${m === sMod ? "on" : ""}" data-m="${esc(m)}"><i class="wic wic-${({ 通常: "sun", 濃霧: "fog", 灼熱: "heat" })[m] || "sun"}"></i>${esc(m)}</span>`).join("");
+  }
+  for (const id of ["spA", "spB"]) $(id).addEventListener("click", (e) => { const c = e.target.closest(".sp-rv"); if (!c || c.classList.contains("off")) return; if (c.dataset.s === "A") specA = +c.dataset.i; else specB = +c.dataset.i; renderSpec(); });
+  $("sArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; sArena = Wd.ARENAS[+c.dataset.a]; renderSpec(); });
+  $("sMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; sMod = c.dataset.m; renderSpec(); });
+  function spectate(same) {
+    const A = SPEC[specA], B = SPEC[specB];
+    sortieCfg = { spec: true, mine: { choices: A.squad.map((c) => c.slice()), emb: A.emb, names: A.names }, foe: { choices: B.squad.map((c) => c.slice()), emb: B.emb, names: uniqNames(A.names, B.names) },
+      seed: same && sortieCfg ? sortieCfg.seed : newSeed(), arena: sArena || Wd.PLAZA, mod: sMod || "通常", formP: A.form, formC: B.form, rival: B, rivalA: A, orderP: null, pal: { P: A.pal, C: B.pal } };
+    startRun(`${A.name} VS ${B.name}`);
+  }
+  $("sGo").addEventListener("click", () => spectate(false));
   function setPause(p) { paused = p; $("icPause").setAttribute("d", paused ? "M16 12 L36 24 L16 36 Z" : "M17 13 V35 M31 13 V35"); $("icPause").style.fill = paused ? "#8fe0ff" : "none"; }
   $("wPause").onclick = () => setPause(!paused);
   $("wSpeed").onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; $("wSpd").textContent = "×" + speed; };
@@ -226,9 +274,9 @@
   $("wSkip").onclick = () => { if (!run) return; run.finish(clock); endBattle(true); };
   function updWatch() {
     if (!run) return; const b = run.battle;
-    $("cP").textContent = b.teams.P.filter((u) => u.alive).length; $("cC").textContent = b.teams.C.filter((u) => u.alive).length; $("cT").textContent = b.turn;
+    $("cT").textContent = b.turn;
     const v = run.focus; if (!v) return;
-    $("fTk").className = "tk tk-lg" + (v.team === "C" ? " c" : ""); $("fTk").querySelector("img").src = `assets/emblem/${v.emb}.png`;
+    const fp = sortieCfg.pal[v.team]; $("fTk").className = "tk tk-lg" + (v.team === "C" ? " c" : ""); $("fTk").style.cssText = `--rim:${fp.rimA};--side:${fp.side};--glow:rgba(${fp.rgb},.45)`; $("fTk").querySelector("img").src = `assets/emblem/${v.emb}.png`;
     $("fName").textContent = v.name; $("fWord").textContent = v.words.join("・");
     $("fHp").style.width = (clamp(v.hp / v.maxHp, 0, 1) * 100).toFixed(1) + "%"; $("fHpT").textContent = `${Math.max(0, Math.round(v.hp))} / ${v.maxHp}`;
     $("fAct").textContent = ACT_OF[v.label] || v.label || "待機";
@@ -242,17 +290,19 @@
     if (run.battle.over && !ended) endBattle(false);
     if (ended && !paused && clock - endAt > 2600) showResult();
     const o = cvWatch, c = o.ctx; Bd.view(c, o.s, W, H, run.cam.x, run.cam.y, run.cam.z);
-    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
+    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
+    updHud();
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
     const vg = c.createRadialGradient(W / 2, H / 2, H * 0.38, W / 2, H / 2, H * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.55)"); c.fillStyle = vg; c.fillRect(0, 0, W, H);
-    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: sortieCfg.arena }, run.cam);
+    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: sortieCfg.arena, pal: sortieCfg.pal }, run.cam);
   }
+  const bannerOf = (r) => (sortieCfg.spec ? (r === "d" ? "引き分け" : `${(r === "w" ? sortieCfg.rivalA : sortieCfg.rival).name} の勝ち`) : { w: "勝利", l: "敗北", d: "引き分け" }[r]);
   function outcome() { const r = run.battle.result || {}; return r.type === "draw" ? "d" : r.winner === "PLR" ? "w" : "l"; }
   function endBattle(skip) {
     if (ended) { if (skip) showResult(); return; }
     ended = true; endAt = clock; result = outcome();
-    St.record(sortieCfg.rival.key, result);
-    $("wEndMain").textContent = { w: "勝利", l: "敗北", d: "引き分け" }[result]; $("wEnd").classList.add("show");
+    if (!sortieCfg.spec) St.record(sortieCfg.rival.key, result);
+    $("wEndMain").textContent = bannerOf(result); $("wEnd").classList.add("show");
     updWatch();
     if (skip) showResult();
   }
@@ -295,8 +345,9 @@
   function showResult() {
     if (cur === "result" || !run) return;
     const r = result || outcome(), an = run.battle.getAnalysis();
-    $("rsBanner").textContent = { w: "勝利", l: "敗北", d: "引き分け" }[r]; $("rsBanner").className = "rs-banner " + { w: "", l: "lose", d: "draw" }[r];
-    $("rsVerdict").textContent = `${an.plr.verdict}　（${run.battle.turn} ターン・VS ${sortieCfg.rival.name}）`;
+    $("rsBanner").textContent = bannerOf(r); $("rsBanner").className = "rs-banner " + (sortieCfg.spec ? "spec" : { w: "", l: "lose", d: "draw" }[r]);
+    if (sortieCfg.spec) { $("rsBanner").style.cssText = r === "d" ? "" : `--rc:${sortieCfg.pal[r === "w" ? "P" : "C"].rimA}`; $("rsVerdict").textContent = `${run.battle.turn} ターン・${sortieCfg.rivalA.name} VS ${sortieCfg.rival.name}`; }
+    else { $("rsBanner").style.cssText = ""; $("rsVerdict").textContent = `${an.plr.verdict}　（${run.battle.turn} ターン・VS ${sortieCfg.rival.name}）`; }
     hls = findHighlights(run.snaps);
     $("rsCards").style.gridTemplateColumns = `repeat(${Math.max(1, hls.length)}, 600px)`;
     $("rsCards").innerHTML = hls.length ? hls.map((h, i) => `<div class="hl ${h.surprise ? "sp" : ""}" data-i="${i}"><div class="hl-cv"><canvas></canvas><span class="hl-rp">REPLAY</span></div><div class="hl-cap">${esc(h.cap)}</div><div class="hl-sub">${esc(h.sub ? h.sub + "・" : "")}ターン ${run.snaps[h.t].turn}</div></div>`).join("")
@@ -304,7 +355,8 @@
     for (let i = CVS.length - 1; i >= 0; i--) if (!document.body.contains(CVS[i].cv)) CVS.splice(i, 1);
     cardCvs.length = 0; document.querySelectorAll("#rsCards canvas").forEach((cv) => cardCvs.push(reg(cv, 564, 317)));
     const last = run.snaps[run.snaps.length - 1];
-    $("rsStrip").innerHTML = last.units.filter((u) => u.team === "P").map((u) => `<div class="rs-u">${tkHtml("P", u.emb, u.alive ? "" : "dead")}<div>${esc(u.name)}<small>${u.alive ? `残り HP ${Math.max(0, Math.round(u.hp))}` : "倒れた"}</small></div></div>`).join("");
+    const stripT = sortieCfg.spec && r === "l" ? "C" : "P";                                        // 観戦では勝った側を並べる
+    $("rsStrip").innerHTML = last.units.filter((u) => u.team === stripT).map((u) => `<div class="rs-u">${tkHtml(stripT, u.emb, u.alive ? "" : "dead", sortieCfg.pal[stripT])}<div>${esc(u.name)}<small>${u.alive ? `残り HP ${Math.max(0, Math.round(u.hp))}` : "倒れた"}</small></div></div>`).join("");
     replays = hls.map((h) => {                                                                // 見どころは動きで繰り返す（前2ターン〜後1ターン・決め手はゆっくり）
       const PX = pxOf(sortieCfg.arena), sn = run.snaps[h.t], sub = sn.units.find((u) => u.id === h.id), oth = h.other ? sn.units.find((u) => u.id === h.other) : null;
       const pts = [sub].concat(oth ? [oth] : []).concat(h.t > 0 ? [run.snaps[h.t - 1].units.find((u) => u.id === h.id)] : []).filter(Boolean);
@@ -320,7 +372,7 @@
     replays.forEach((r, i) => {
       const o = cardCvs[i]; if (!o) return; r.rp.tick(resClock); const vs = r.rp.views, sub = vs.find((v) => v.id === r.h.id);
       Bd.view(o.ctx, o.s, 564, 317, r.cx, r.cy, r.z);
-      Bd.drawBoard(o.ctx, { clock: resClock, views: vs, fx: r.rp.fx, pops: r.rp.pops, focus: null, highlight: sub && sub.alive ? sub : null, whyOn: true, obstacles: run.snaps[r.h.t].obstacles, hazards: run.snaps[r.h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
+      Bd.drawBoard(o.ctx, { clock: resClock, views: vs, fx: r.rp.fx, pops: r.rp.pops, focus: null, highlight: sub && sub.alive ? sub : null, whyOn: true, obstacles: run.snaps[r.h.t].obstacles, hazards: run.snaps[r.h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     });
   }
   function frameResult(dt) { resClock += dt; drawCards(); }
@@ -349,9 +401,9 @@
     const z = clamp(Math.min(1278 / (x1 - x0 + 600), 738 / (y1 - y0 + 420)), 0.66, 1.25);
     const cx = clamp((x0 + x1) / 2, 639 / z, W - 639 / z), cy = clamp((y0 + y1) / 2, 369 / z, H - 369 / z);
     const o = cvWhy; Bd.view(o.ctx, o.s, 1278, 738, cx, cy, z);
-    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
+    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     const TAG = ["", "きっかけ", "した事", "その結果"];
-    $("whySide").innerHTML = `<div class="ws-head">${tkHtml(sub.team, sub.emb)}<div><div class="ws-name">${esc(sub.name)}</div><div class="ws-cap">${esc(why.cap)}</div></div></div>`
+    $("whySide").innerHTML = `<div class="ws-head">${tkHtml(sub.team, sub.emb, "", sortieCfg.pal[sub.team])}<div><div class="ws-name">${esc(sub.name)}</div><div class="ws-cap">${esc(why.cap)}</div></div></div>`
       + `<div class="ws-chain">` + steps.map((st, i) => `<div class="ws-step"><b class="ws-n">${st.n}</b><div><small>${TAG[i + 1] || ""}</small><p>${esc(st.text)}</p></div></div>`).join(`<i class="ws-arrow"></i>`) + `</div>`;
     $("whyTurn").textContent = `ターン ${snap.turn}`;
   }

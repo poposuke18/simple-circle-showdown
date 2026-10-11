@@ -113,15 +113,30 @@ window.SCS2 = window.SCS2 || {};
   const MODS = ["通常", "濃霧", "灼熱"];                                                // 戦場に見える天気だけ（v2.fx.dec：サドンデス・一触即発は外した）
   const FORMS = D.FORMATIONS.map((f) => f.name);
 
+  // ===== 部隊の色（v2.k7.color）：あなたは青、相手は部隊ごとの色 =====
+  const PAL = {
+    blue:   { rgb: "80,170,255",  rimA: "#58aeff", rimB: "#0f4fcf", side: "#082a6e", fx: "120,200,255", dot: "#3d9bff" },
+    red:    { rgb: "255,80,80",   rimA: "#ff6262", rimB: "#b3161c", side: "#5e0b10", fx: "255,110,110", dot: "#ff4d4d" },
+    orange: { rgb: "255,140,40",  rimA: "#ff9433", rimB: "#c25200", side: "#5a2600", fx: "255,175,95",  dot: "#ff8c26" },
+    purple: { rgb: "180,110,255", rimA: "#b98cff", rimB: "#6a2ccf", side: "#2e1160", fx: "205,155,255", dot: "#a970ff" },
+    steel:  { rgb: "170,190,210", rimA: "#c9d5e2", rimB: "#5d6b7c", side: "#262d36", fx: "205,220,235", dot: "#aab9ca" },
+    magenta:{ rgb: "255,80,170",  rimA: "#ff5cb0", rimB: "#b0126a", side: "#4f0630", fx: "255,145,205", dot: "#ff4fa8" },
+    green:  { rgb: "70,210,120",  rimA: "#55d987", rimB: "#127a3a", side: "#08361a", fx: "125,232,165", dot: "#3ccf72" },
+    gold:   { rgb: "255,210,70",  rimA: "#ffdd55", rimB: "#b89200", side: "#4f3d00", fx: "255,228,135", dot: "#ffd633" },
+    silver: { rgb: "220,228,240", rimA: "#eef2f8", rimB: "#8a96a8", side: "#3a404a", fx: "236,242,250", dot: "#dfe6f0" },
+  };
+  const COL_OF = { strays: "orange", redcrow: "red", mistshade: "purple", stonewall: "steel", pyre: "magenta", blackpine: "green", ringkeep: "gold", mirror: "silver" };
+  const YOU = PAL.blue;
+
   // ===== 相手：元のゲームの分隊戦キャンペーンの部隊（外の現実）=====
   const resolve = (x) => (Array.isArray(x) ? x.slice() : (D.PRESETS[x] || D.PRESETS[Object.keys(D.PRESETS)[0]]).slice());
   function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   const RIVALS = D.SQUAD_CAMPAIGN.map((c) => {
-    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, mod: "通常", arena: null }; // 写し身＝出撃時にあなたの部隊を写す
+    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, mod: "通常", arena: null, pal: PAL[COL_OF[c.key] || "silver"] }; // 写し身＝出撃時にあなたの部隊を写す
     const squad = c.squad.map(resolve), emb = assignEmblems(squad), g = SCS.makeRNG(hashStr(c.key)), used = new Set();
     const names = emb.map((e) => { let n; do n = EMB_NAME[e] + "-" + (1 + g.int(9)); while (used.has(n)); used.add(n); return n; });
     const mod = MODS.includes(c.mod) ? c.mod : "通常";
-    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", mod, arena: c.arena };
+    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", mod, arena: c.arena, pal: PAL[COL_OF[c.key] || "red"] };
   });
 
   // ===== 既定の部隊（初めて開いた時）=====
@@ -131,5 +146,5 @@ window.SCS2 = window.SCS2 || {};
     { name: "FROST-4", emb: "frost", choices: D.PRESETS["鉄律の射手"].slice() },
   ];
 
-  SCS2.world = { PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
+  SCS2.world = { PAL, YOU,  PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
 })();
