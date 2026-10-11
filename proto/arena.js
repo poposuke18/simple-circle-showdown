@@ -67,7 +67,7 @@
   let S = 1, clock = 0, lastReal = 0, speed = 1, paused = false, whyOn = true;
   let battle = null, views = [], seed = (Number(Q.get("seed")) || (Date.now() & 0x7fffffff)) >>> 0, battleNo = 0, kills = 0;
   let turnStart = 0, nextTurnAt = 0, overAt = 0, focus = null, focusUntil = 0, focusLock = 0, lastLines = [], hist = [], why = "";
-  const TURN = 1000, fx = [], ZOOM = 1.25, cam = { x: W / 2, y: H / 2 }; // 自動カメラ：戦いの中心を少し寄って追う（キービジュの寄りの画角）
+  const TURN = 1000, fx = [], cam = { x: W / 2, y: H / 2, z: 1.15 }; // 自動カメラ：生き残りが全員収まる範囲で寄る（固まれば寄り・散れば引き＝キービジュの寄りの画角）
 
   function newBattle() {
     battleNo++;
@@ -340,7 +340,7 @@
       if (!v.u.alive) { mctx.strokeStyle = "rgba(200,200,200,.7)"; mctx.lineWidth = 1.5; mctx.beginPath(); mctx.moveTo(x - 3, y - 3); mctx.lineTo(x + 3, y + 3); mctx.moveTo(x + 3, y - 3); mctx.lineTo(x - 3, y + 3); mctx.stroke(); continue; }
       mctx.fillStyle = v.u.team === "P" ? "#3d9bff" : "#ff4d4d"; mctx.strokeStyle = "#fff"; mctx.lineWidth = 1.2; circ(mctx, x, y, 5); mctx.fill(); mctx.stroke();
     }
-    mctx.strokeStyle = "rgba(255,255,255,.9)"; mctx.lineWidth = 1.6; mctx.strokeRect((cam.x - W / 2 / ZOOM) * k, (cam.y - H / 2 / ZOOM) * k, (W / ZOOM) * k, (H / ZOOM) * k); // カメラの範囲
+    mctx.strokeStyle = "rgba(255,255,255,.9)"; mctx.lineWidth = 1.6; mctx.strokeRect((cam.x - W / 2 / cam.z) * k, (cam.y - H / 2 / cam.z) * k, (W / cam.z) * k, (H / cam.z) * k); // カメラの範囲
   }
 
   function frame(real) { tick(real); requestAnimationFrame(frame); }
@@ -359,11 +359,16 @@
       if (Math.hypot(v.x - px, v.y - py) > 0.02 && Math.hypot(v.tx - v.fx, v.ty - v.fy) > 2.5) v.trail.push({ x: v.x, y: v.y, t: clock });
       while (v.trail.length && clock - v.trail[0].t > 520) v.trail.shift();
     }
-    const al = views.filter((v) => v.u.alive); let gx = W / 2, gy = H / 2;
-    if (al.length) { let sx = 0, sy = 0, n = 0; for (const v of al) { const w = v === focus ? 2.5 : 1; sx += v.x * PX * w; sy += v.y * PX * w; n += w; } gx = sx / n; gy = sy / n + 40; }
-    const hw = W / 2 / ZOOM, hh = H / 2 / ZOOM, cf = clamp(dt * speed * 0.0025, 0, 1);
+    const al = views.filter((v) => v.u.alive); let gx = W / 2, gy = H / 2, gz = 1;
+    if (al.length) {
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const v of al) { x0 = Math.min(x0, v.x * PX); x1 = Math.max(x1, v.x * PX); y0 = Math.min(y0, v.y * PX); y1 = Math.max(y1, v.y * PX); }
+      gx = (x0 + x1) / 2; gy = (y0 + y1) / 2 + 30;                                              // 上はロゴ・下はパネルの分だけ余白を取る
+      gz = clamp(Math.min(W / (x1 - x0 + 2 * 230), H / (y1 - y0 + 470)), 1, 1.32);
+    }
+    const cf = clamp(dt * speed * 0.0022, 0, 1); cam.z += (gz - cam.z) * cf;
+    const hw = W / 2 / cam.z, hh = H / 2 / cam.z;
     cam.x = clamp(cam.x + (gx - cam.x) * cf, hw, W - hw); cam.y = clamp(cam.y + (gy - cam.y) * cf, hh, H - hh);
-    ctx.setTransform(S * ZOOM, 0, 0, S * ZOOM, S * (W / 2 - cam.x * ZOOM), S * (H / 2 - cam.y * ZOOM));
+    ctx.setTransform(S * cam.z, 0, 0, S * cam.z, S * (W / 2 - cam.x * cam.z), S * (H / 2 - cam.y * cam.z));
     drawMap(); drawAim(); drawTrails();
     views.filter((v) => !v.u.alive).forEach(drawToken);
     views.filter((v) => v.u.alive).sort((a, b) => a.y - b.y).forEach(drawToken);
