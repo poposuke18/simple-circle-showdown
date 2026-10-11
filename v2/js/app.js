@@ -149,7 +149,7 @@
     selectRival(rivalI, true);
     const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
     $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
-    $("pMine").innerHTML = `<span class="lbl">あなたの部隊</span>` + St.data.squad.map((f) => tkHtml("P", f.emb, "tk-sm") + `<span class="nm">${esc(f.name)}</span>`).join("");
+    renderPlace();
   }
   function selectRival(i, keepMod) {
     rivalI = i; const r = Wd.RIVALS[i];
@@ -161,10 +161,31 @@
     $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === pArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
     $("pMod").innerHTML = Wd.MODS.map((m) => `<span class="chip wchip ${m === pMod ? "on" : ""}" data-m="${esc(m)}"><i class="wic wic-${({ 通常: "sun", 濃霧: "fog", 灼熱: "heat" })[m] || "sun"}"></i>${esc(m)}</span>`).join("");
   }
-  $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) selectRival(+c.dataset.i, false); });
+  $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) { selectRival(+c.dataset.i, false); renderPlace(); } });
   $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".acard").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pMod = c.dataset.m; $("pMod").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
-  $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
+  $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); renderPlace(); });
+  // ===== 配置：隊形の図の上で3体の位置を入れ替える（敵は右）。入れ替えていない時は間合いの短い駒が前（エンジンの既定）=====
+  const SLOT_XY = { 散開: [[-0.2, -1], [0.25, 0], [-0.1, 1]], 戦列: [[0, -1], [0, 0], [0, 1]], 楔: [[1, 0], [-0.6, 0.8], [-0.6, -0.8]], 円陣: [[0.6, -0.45], [0.6, 0.45], [-0.9, 0]] };
+  let placeSel = -1;
+  function autoOrder() {                                                                    // 既定の並び＝エンジンと同じ（相手に対する間合いの短い順）
+    const r = Wd.RIVALS[rivalI], foe = foeOf(r), sq = St.data.squad;
+    const b = SCS.makeSquadBattle(sq.map((f) => f.choices.slice()), foe.choices.map((c) => c.slice()), 1, (pArena || Wd.PLAZA).name, "通常", "散開", "散開");
+    return b.teams.P.slice().sort((p, q) => p.winDist - q.winDist).map((u) => u.idx);
+  }
+  const curOrder = () => St.data.order || autoOrder();
+  function renderPlace() {
+    const box = $("pPlace"); if (!box) return;
+    const xy = SLOT_XY[St.data.form] || SLOT_XY["散開"], ord = curOrder(), sq = St.data.squad, U = 52, cx0 = 128, cy0 = 84;
+    box.innerHTML = `<i class="pl-foe"></i>` + ord.map((si, rank) => { const [x, y] = xy[rank], f = sq[si];
+      return `<button class="pl-slot ${placeSel === rank ? "sel" : ""}" data-r="${rank}" title="${esc(f.name)}" style="left:${cx0 + x * U - 29}px;top:${cy0 + y * U - 29}px">${tkHtml("P", f.emb, "tk-sm")}</button>`; }).join("");
+  }
+  $("pPlace").addEventListener("click", (e) => {
+    const b = e.target.closest(".pl-slot"); if (!b) return; const r = +b.dataset.r;
+    if (placeSel < 0) placeSel = r; else if (placeSel === r) placeSel = -1;
+    else { const o = curOrder().slice(); [o[placeSel], o[r]] = [o[r], o[placeSel]]; St.data.order = o; St.save(); placeSel = -1; }
+    renderPlace();
+  });
   $("pGo").addEventListener("click", () => sortie());
 
   // ===== 観戦 =====
@@ -174,7 +195,7 @@
     const r = Wd.RIVALS[rivalI], sq = St.data.squad, foe = foeOf(r);
     const seed = sameSeed && sortieCfg ? sortieCfg.seed : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
     sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r };
+      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r, orderP: St.data.order ? St.data.order.slice() : null };
     run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
     $("wVs").textContent = `VS ${r.name}`; $("wSub").textContent = `${sortieCfg.arena.name}・${sortieCfg.mod}`;
     $("wEnd").classList.remove("show"); setPause(false);

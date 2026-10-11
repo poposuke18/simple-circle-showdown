@@ -72,7 +72,7 @@ window.SCS2 = window.SCS2 || {};
       const us = st.views.filter((v) => v.team === tm && v.alive && v.formHeld); if (us.length < 2) continue;
       const fk = us[0].form, P = tm === "P", edges = [];
       if (fk === "line") { const s2 = us.slice().sort((a, b) => a.y - b.y); for (let i = 1; i < s2.length; i++) edges.push([s2[i - 1], s2[i]]); }
-      else if (fk === "wedge") { const s2 = us.slice().sort((a, b) => a.winDist - b.winDist); for (let i = 1; i < s2.length; i++) edges.push([s2[0], s2[i]]); }
+      else if (fk === "wedge") { const s2 = us.slice().sort((a, b) => a.rank - b.rank); for (let i = 1; i < s2.length; i++) edges.push([s2[0], s2[i]]); }
       else { for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) edges.push([us[i], us[j]]); }
       ctx.save(); ctx.lineCap = "round"; ctx.shadowColor = teamCol(P, 0.9); ctx.shadowBlur = 10;
       for (const [a, b] of edges) {

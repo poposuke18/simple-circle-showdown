@@ -214,3 +214,13 @@ button { font-family: inherit; color: inherit; }
 .fic-line { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='4' r='3'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Ccircle cx='12' cy='20' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='4' r='3'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Ccircle cx='12' cy='20' r='3'/%3E%3C/svg%3E"); }
 .fic-wedge { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); }
 .fic-circle { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); }
+
+/* 隊形と配置（敵は右）。駒を2つ順に押すと入れ替わる */
+.pr-form { grid-template-columns: 110px 300px 1fr; align-items: center; }
+.fchips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.place { position: relative; height: 168px; border: 1.5px solid rgba(140,190,255,.3); border-radius: 12px; background: rgba(8,18,32,.75) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='26'%3E%3Cpath d='M26 0H0V26' fill='none' stroke='rgba(140,190,255,.08)'/%3E%3C/svg%3E"); margin-left: 14px; }
+.pl-foe { position: absolute; right: 14px; top: 50%; width: 0; height: 0; transform: translateY(-50%); border-top: 16px solid transparent; border-bottom: 16px solid transparent; border-left: 22px solid rgba(255,90,90,.75); filter: drop-shadow(0 0 8px rgba(255,80,80,.6)); }
+.pl-slot { position: absolute; width: 58px; height: 58px; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 50%; transition: transform .15s, left .2s, top .2s; }
+.pl-slot:hover { transform: scale(1.08); }
+.pl-slot.sel { box-shadow: 0 0 0 4px #8fe6ff, 0 0 22px rgba(95,210,255,.8); }
+.pl-slot .tk { pointer-events: none; }

@@ -13,7 +13,7 @@ window.SCS2 = window.SCS2 || {};
   // cfg: {mine:{choices[],emb[],names[]}, foe:{...}, seed, arena, mod, formP, formC}
   SCS2.makeRunner = function (cfg) {
     const W = SCS2.board.W, H = SCS2.board.H, R = SCS2.board.R, FW = cfg.arena.w, FH = cfg.arena.h, PX = W / FW;
-    const battle = SCS.makeSquadBattle(cfg.mine.choices.map((c) => c.slice()), cfg.foe.choices.map((c) => c.slice()), cfg.seed, cfg.arena.name, cfg.mod, cfg.formP, cfg.formC, cfg.mine.names.slice(), cfg.foe.names.slice(), { formation: 0.6 }); // 隊形が配置と動きに効く（分隊戦設計§17）
+    const battle = SCS.makeSquadBattle(cfg.mine.choices.map((c) => c.slice()), cfg.foe.choices.map((c) => c.slice()), cfg.seed, cfg.arena.name, cfg.mod, cfg.formP, cfg.formC, cfg.mine.names.slice(), cfg.foe.names.slice(), { formation: 0.6, orderP: cfg.orderP || null }); // 隊形が配置と動きに効く・あなたの部隊は配置した順（分隊戦設計§17）
     const views = battle.teams.P.concat(battle.teams.C).map((u) => {
       const P = u.team === "P", a = Math.atan2(u.faceY, u.faceX);
       return { u, id: u.team + u.idx, team: u.team, idx: u.idx, name: u.name, emb: (P ? cfg.mine.emb : cfg.foe.emb)[u.idx], words: SCS2.world.wordsOf((P ? cfg.mine.choices : cfg.foe.choices)[u.idx]),
@@ -21,6 +21,10 @@ window.SCS2 = window.SCS2 || {};
         trail: [], icon: "dots", iconT: -1e9, hitT: -1e9, koT: 0 };
     });
     const byU = new Map(views.map((v) => [v.u, v]));
+    for (const tm of ["P", "C"]) {                                                            // 隊形の中の順（あなたの部隊は配置した順・相手は間合いの短い順）＝隊形の線の描き方に使う
+      const us = views.filter((v) => v.team === tm), ord = tm === "P" && cfg.orderP ? cfg.orderP : us.slice().sort((a, b) => a.u.winDist - b.u.winDist).map((v) => v.idx);
+      us.forEach((v) => { v.rank = ord.indexOf(v.idx); });
+    }
     const fx = [], pops = [], snaps = [], hist = [];
     let turnStart = 0, nextAt = 600, overAt = 0, kills = 0, focus = null, focusUntil = 0, focusLock = 0;
     const cam = { x: W / 2, y: H / 2, z: 1.1 };

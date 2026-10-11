@@ -95,6 +95,7 @@ window.SCS = window.SCS || {};
 
   SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP, namesC, opts) {
     const FORM2 = !!(opts && opts.formation);                                      // v2：隊形が初期配置と動きに効く（[[分隊戦設計]]§17）。旧来の呼び出しは opts なし＝不変
+    const ORDER_P = (opts && Array.isArray(opts.orderP) && opts.orderP.length === teamPChoices.length) ? opts.orderP.slice() : null; // v2：プレーヤーが配置した隊形の順
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
     // 隊形（プレーヤーの作戦・既定=散開）。CPU側未指定はランダム（seed由来＝決定論）。
     const formKey = (name, salt) => { if (name && name !== "ランダム") { const f = D.FORMATIONS.find((x) => x.key === name || x.name === name); if (f) return f.key; } if (!name) return "loose"; return D.FORMATIONS[SCS.makeRNG((seed ^ salt) >>> 0).int(D.FORMATIONS.length)].key; };
@@ -287,9 +288,10 @@ window.SCS = window.SCS || {};
     // 役割で前後に配置：近接寄り(winDist小)は前線へ・遠距離寄り(winDist大)は後方へ＝後衛(射手)が前衛に守られる編成が成立
     for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.y = q.y; u.x = q.x; }
     if (FORM2) for (const team of [P, C]) {                                            // 隊形どおりに並べて始める（散開は今まで通り広く散る）
-      const fk = team[0] && team[0].form; if (!fk || fk === "loose") continue;
+      const fk = team[0] && team[0].form; if (!fk) continue;
+      if (fk === "loose") { if (team === P && ORDER_P) rankedOf(team).forEach((u, rank) => { const q = pushOutObstacle(u.x, cy(field.h * (rank + 1) / (team.length + 1))); u.x = q.x; u.y = q.y; }); continue; } // 散開：配置した順に上・中・下
       const left = team === P, sx = left ? arena.start.p.x : arena.start.c.x, sy = left ? arena.start.p.y : arena.start.c.y, fwd = left ? 1 : -1, n = team.length;
-      const ranked = team.slice().sort((a, b) => a.winDist - b.winDist);
+      const ranked = rankedOf(team);
       ranked.forEach((u, rank) => { const off = formSlot(fk, rank, n); if (!off) return; const q = pushOutObstacle(cx(sx + off.fx * 12 * fwd), cy(sy + off.fy * 12)); u.x = q.x; u.y = q.y; });
     }
 
@@ -499,10 +501,12 @@ window.SCS = window.SCS || {};
       if (ks.length) return cen(ks);
       return tm === "P" ? { x: arena.start.c.x, y: arena.start.c.y } : { x: arena.start.p.x, y: arena.start.p.y };
     }
+    // 隊形の中の順（位置）：プレーヤーが配置した順（opts.orderP・あなたの部隊だけ）、無ければ間合いの短い順＝近接が前
+    function rankedOf(units) { const tm = units[0] && units[0].team; if (tm === "P" && ORDER_P) return ORDER_P.map((i) => units.find((u) => u.idx === i)).filter(Boolean); return units.slice().sort((p, q) => p.winDist - q.winDist); }
     function formSlot2(u) {
       if (!u.form || u.form === "loose") return null;
       const al = alliesOf(u).filter((a) => a.alive), n = al.length; if (n <= 1) return null;
-      const rank = al.slice().sort((p, q) => p.winDist - q.winDist).indexOf(u), off = formSlot(u.form, rank, n); if (!off) return null;
+      const rank = rankedOf(al).indexOf(u), off = formSlot(u.form, rank, n); if (!off) return null;
       const g = cen(al), f = teamFace(u.team); let fx = f.x - g.x, fy = f.y - g.y; const l = Math.hypot(fx, fy) || 1; fx /= l; fy /= l;
       const SP = 12;
       return { x: cx(g.x + fx * off.fx * SP - fy * off.fy * SP), y: cy(g.y + fy * off.fx * SP + fx * off.fy * SP), g };
@@ -997,7 +1001,7 @@ window.SCS = window.SCS || {};
           // K) 隊形の維持状況
           { for (const tm of ["P", "C"]) { const fk = tm === "P" ? formP : formC; if (fk === "loose" || !FORM_HELD[fk]) continue;
               const units = (tm === "P" ? P : C).filter((u) => u.alive); if (units.length < 2) continue;
-              let held = 0; for (const u of units) { const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) held++; }
+              let held = 0; for (const u of units) { if (FORM2) { if (u._formHeld) held++; continue; } const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) held++; }
               const ok = held / units.length >= 0.5, army = tm === "P" ? "あなたの分隊" : "敵分隊", fname = (D.FORMATIONS.find((f) => f.key === fk) || {}).name || fk;
               obs.push({ ord: 1.5, key: "K" + tm, sig: "K" + tm + fk + (ok ? "h" : "b"), text: ok ? `${army}は${fname}を保ち、${FORM_HELD[fk]}。` : `${army}の${fname}が乱れ——${FORM_BROKE[fk]}。` });
             } }
@@ -1046,7 +1050,7 @@ window.SCS = window.SCS || {};
           if (u.coop < 0.32) return vary(["我流に単騎で", "手柄を求めて単身", "仲間に構わず"], seed, turn, u.idx + 14);
           if (u.target && u.target.alive && isolationOf(u.target) > 45) return `孤立した標的を逃さじと`;
           // 隊形を保っている体は背景として明示（プレーヤーの作戦が戦闘描写に出る）。★毎ビートは煩いので稀に（状況説明のK観測が主・こちらは差し色）。
-          if (u.form && u.form !== "loose" && hsh(seed, turn, u.idx + 21) % 4 === 0) { const slot = formSlotWorld(u); if (slot && dist(u, slot) < 18) { const fn = (D.FORMATIONS.find((f) => f.key === u.form) || {}).name; if (fn) return vary([`${fn}を保ちながら`, `${fn}を崩さず`, `${fn}の一角として`], seed, turn, u.idx + 21); } }
+          if (u.form && u.form !== "loose" && hsh(seed, turn, u.idx + 21) % 4 === 0) { const slot = FORM2 ? (u._formHeld ? u : null) : formSlotWorld(u); if (slot && dist(u, slot) < 18) { const fn = (D.FORMATIONS.find((f) => f.key === u.form) || {}).name; if (fn) return vary([`${fn}を保ちながら`, `${fn}を崩さず`, `${fn}の一角として`], seed, turn, u.idx + 21); } }
           return "";
         };
         // このターンに u が敵の実攻撃（射撃/必殺）の的になったか＝回避の「見切り」が因果として成立するかの判定
