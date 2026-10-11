@@ -432,7 +432,7 @@ window.SCS = window.SCS || {};
         if (iAmSupport) { for (const a of alliesOf(u)) { if (a.alive && a !== u && isBackline(a) && dist(e, a) <= imminentBand(e)) { peel = true; break; } } }
         if (peel) v += 0.6 + u.micros.D1 * 0.4;
         if (u.target === e && e.alive) v += 0.4 + u.micros.B4 * 0.3; // ヒステリシス（規律）＝狙いを定めた的を無駄に変えない
-        if (BRAIN[u.team] === "v3") v += focusBonus3(u, e);                                 // 分隊の頭の狙う順（v3 のチームだけ）
+        if (BRAIN[u.team] === "v3") v += focusBonus3(u, e) + oppBonus3(u, e);              // 分隊の頭の狙う順・隙を突く（v3 のチームだけ）
         if (v > bv) { bv = v; best = e; bestPeel = peel; }
       }
       u.peeling = bestPeel; // ラベル用（_focusCount は step でターゲット確定後に一括集計＝リングと同基準）
@@ -706,8 +706,7 @@ window.SCS = window.SCS || {};
     //   6通りの一歩でなく、歩いて数ターン以内の候補地（輪・目標の周りの弧・遮蔽の縁）を道のり込みで比べ、
     //   「着くまでの道中」と「着いてから」の見込みを足して目的地を選ぶ。目的地はしばらく保つ（規律で長く）。
     //   思考の深さ（何ターン先まで）と広さ（候補の数）は性格の cog から＝冷静・規律・順応ほど深く、好奇心ほど広く。
-    const GAMMA3 = 0.8;                                                                   // 先の見込みの割り引き
-    const V3C = Object.assign({ cover: 1, peek: 1, flank: 1, noise: 1, terrain: 1, kite: 1, hmax: 4, hfix: 0, pred: 1, focus: 0, exactLos: 1, ptgt: 1, eng: 1 }, (opts && opts.v3) || {});   // 調整用（既定値＝設計の値）
+    const V3C = Object.assign({ cover: 0.81, peek: 1.04, flank: 1.092, noise: 1.502, terrain: 1.204, kite: 0.986, hmax: 4, hfix: 0, pred: 1, focus: 0, exactLos: 1, ptgt: 1, eng: 1, opp: 0, sync: 0, lan: 0, search: 0, inst: 0.5, tgtw: 1, kill: 0, shoot: 1, blur: 5, atk: 1, def: 0.838, gamma: 0.818, stick: 1, predw: 1.047, engc: 1.317, engr: 0.932, range: 1.123, sep: 0.972 }, (opts && opts.v3) || {});   // 既定値＝新旧対戦で自動調整した値（[[AI思考エンジン設計]] ai3.m.tune）
     const horizonOf = (u) => V3C.hfix || clamp(u.cog.searchDepth, 1, V3C.hmax);
     function fieldFrom(u) { return NAV ? navField({ x: u.x, y: u.y }) : null; }           // u までの道のり（格子・回り道込み）
     function pathLenFrom(F, u, p) { if (!F) return dist(u, p); const v = F[cellOf(p)]; return v === Infinity ? Infinity : v * NC; }
@@ -787,6 +786,18 @@ window.SCS = window.SCS || {};
       }).sort((a, b) => b.prio - a.prio);
       return { order: rows, assigned: new Map() };
     }
+    // 隙を突く（v3）：装填中の射手・狙いを定めている狙撃手（一撃で狙いが崩れる）を、届く体ほど狙う。好機の食いつきC3・相手読みD1で強く。
+    //   近接寄りは「すぐ届くか」を見る（遠い敵を追い回さない）
+    function oppBonus3(u, e) {
+      if (!V3C.opp) return 0;
+      const m = u.micros, d = dist(u, e), st = stepLen(u, u), reach = u.melee.reach + st;
+      let v = 0;
+      const canHitSoon = d <= reach || (u.ammo > 0 && d <= u.ranged.effRange && losClear(u, e));
+      if (canHitSoon && e.charged) v += 0.7 + m.C3 * 0.5 + m.D1 * 0.3;                     // 狙いを定めている狙撃手＝今叩けば崩れる
+      if (canHitSoon && e.reloadLeft > 0) v += 0.4 + m.C3 * 0.4;                            // 装填中＝撃ち返せない
+      if (u.winDist < 30) v -= clamp((pathDist(u, e) - reach) / st, 0, 4) * 0.22;           // 近接寄り：何ターンも追う相手は後回し
+      return v;
+    }
     function focusBonus3(u, e) {
       const pl = plan3[u.team]; if (!pl) return 0;
       const adhere = clamp(0.3 + u.micros.B4 * 0.8 + u.coop * 0.9 - (1 - u.coop) * 0.5, 0, 1.6);   // 従う度合い：規律・協調（一匹狼はほぼ従わない）
@@ -803,8 +814,9 @@ window.SCS = window.SCS || {};
     function threat3(u, pos, wP) {                                                          // 今の位置と次のターンの予測位置からの脅威を、相手読みで混ぜる（射線は格子で覚えたもの）
       let a = 0, b = 0;
       for (const e of knownEnemies(u)) {
-        const d0 = dist(pos, e); a += expEx(e, u, e, pos, d0, losC(e, pos));
-        if (wP > 0) { const q = predictPos3(e, 1), d1 = dist(pos, q); b += expEx(e, u, q, pos, d1, losC(q, pos)); }
+        const tw = V3C.tgtw >= 1 || e.target === u || !e.target ? 1 : V3C.tgtw;                 // 自分を狙っている敵は全部、他を狙っている敵は乗り換えうる分だけ
+        const d0 = dist(pos, e); a += expEx(e, u, e, pos, d0, losC(e, pos)) * tw;
+        if (wP > 0) { const q = predictPos3(e, 1), d1 = dist(pos, q); b += expEx(e, u, q, pos, d1, losC(q, pos)) * tw; }
       }
       return wP > 0 ? a * (1 - wP) + b * wP : a;
     }
@@ -815,13 +827,15 @@ window.SCS = window.SCS || {};
       if (V3C.ptgt && wP > 0) { const tq = predictPos3(tgt, 1), dq = dist(np, tq); offense = offense * (1 - wP) + expEx(u, tgt, np, tq, dq, losC(np, tq)) * wP; }   // 先回り：目標が動いた先を撃つ
       if (moving && los2 && atk.attack === "RANGED") offense *= u.ranged.moveAccuracy;
       const threat = threat3(u, np, wP);
-      const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22;
+      const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22 * V3C.range;
       const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
-      const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
+      const sep = sepPenalty(u, np) * V3C.sep, hz = hazardAt(np) + terrainDmg(np) * 1.5;
       const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * c.guardScale : 0;
       const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0;
       const formTerm = formSlotPos ? (FORM2 ? -dist(np, formSlotPos) * formW : -(dist(np, formSlotPos) / maxDist) * 22 * formW) : 0;
-      return { v: offense * c.wAtk - threat * c.wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm, threat };
+      // 体力に対する重さで見る（V3C.lan）：手負いの目標への一撃ほど価値があり、手負いの自分ほど被弾が重い（上限2.5倍）
+      const fT = V3C.lan ? clamp(Math.sqrt(tgt.maxHp / Math.max(tgt.hp, 15)), 1, 2.5) : 1, fU = V3C.lan ? clamp(Math.sqrt(u.maxHp / Math.max(u.hp, 15)), 1, 2.5) : 1;
+      return { v: offense * c.wAtk * fT - threat * c.wDef * fU + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm, threat: threat * fU, off: offense };
     }
 
     // ===== 段3：交戦判断（v3）＝その場の撃ち合いの勝ち負けを見積もる（[[AI思考エンジン設計]]）=====
@@ -836,33 +850,112 @@ window.SCS = window.SCS || {};
       for (const e of foes) { let best = 0; for (const a of allies) best = Math.max(best, reachDps3(e, a)); dT += best; hT += e.hp; }
       const ratio = (dU * hU + 1) / (dT * hT + 1) * (0.8 + m.C4 * 0.4);                     // >1＝この撃ち合いは勝てる（強気ほど甘く見る）
       const tgtLow = u.target ? (1 - clamp(u.target.hp / u.target.maxHp, 0, 1)) : 0;
-      let commit = Math.log(ratio) * (0.9 + m.C2 * 0.8) + tgtLow * (0.3 + m.A6 * 0.4) + (u.resolve > 0.7 ? 0.3 : 0) + (1 - m.A1) * 0.15 - (1 - hpFrac) * 0.3;
-      let retreat = -Math.log(ratio) * (0.6 + m.C1 * 0.8) + (1 - hpFrac) * (0.4 + m.C1 * 0.8) - m.C6 * (hpFrac < 0.35 ? 1.0 : 0.4) - u.resolve * 0.2 - 0.1;
+      let commit = Math.log(ratio) * (0.9 + m.C2 * 0.8) * V3C.engc + tgtLow * (0.3 + m.A6 * 0.4) + (u.resolve > 0.7 ? 0.3 : 0) + (1 - m.A1) * 0.15 - (1 - hpFrac) * 0.3;
+      let retreat = -Math.log(ratio) * (0.6 + m.C1 * 0.8) * V3C.engr + (1 - hpFrac) * (0.4 + m.C1 * 0.8) - m.C6 * (hpFrac < 0.35 ? 1.0 : 0.4) - u.resolve * 0.2 - 0.1;
       const stick = 0.12 + m.B4 * 0.18;
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
     }
+
+    // ===== 段4：見えない敵を探す（[[AI思考エンジン設計]] ai3.s4）=====
+    //   チームごとの「敵がいそうな所」の地図（格子）。毎ターン広がり（敵は動く）、味方の視界に入って誰もいなかった所は消え、
+    //   見えた敵・聞こえた銃声の所に積もる。見えていない時は、いそうな所のうち近い所へ探しに行く（味方と同じ所は避ける）。
+    //   旧い頭の「第六感＝本当の敵の重心へ寄せる」は、相手読みD1の勘として弱めて残す。
+    const belief3 = { P: null, C: null }, lastShots3 = { P: [], C: [] };   // lastShots3[tm]＝そのチームに聞こえた敵の銃声（前のターン）
+    function initBelief3(tm) {
+      const b = new Float32Array(GW * GH), home = tm === "P" ? arena.start.c : arena.start.p;
+      for (let c = 0; c < GW * GH; c++) { if (navBlocked && navBlocked[c]) continue; const p = cellPt(c), d = Math.hypot(p.x - home.x, p.y - home.y); b[c] = Math.exp(-(d * d) / (2 * 22 * 22)); }
+      return b;
+    }
+    function seenByTeam3(tm, c) {                                                            // その格子が今、味方のだれかの視界に入っているか
+      const p = cellPt(c);
+      for (const u of (tm === "P" ? P : C)) {
+        if (!u.alive) continue; const dx = p.x - u.x, dy = p.y - u.y, d = Math.hypot(dx, dy) || 0.001;
+        if (d > u.sightR * 0.9) continue;
+        if ((u.faceX * dx + u.faceY * dy) / d < Math.cos(u.sightHalf) && d > 6) continue;   // コーンの外（ごく近くは気配で分かる）
+        if (losClear(u, p)) return true;
+      }
+      return false;
+    }
+    function updateBelief3(tm, heard) {
+      let b = belief3[tm]; if (!b) b = belief3[tm] = initBelief3(tm);
+      // ① 広がる（敵は1ターンに一歩ぶん動ける＝7〜17単位＝格子4〜8個）：3×3 で V3C.blur 回ならす
+      for (let it = 0; it < V3C.blur; it++) {
+        const nb = new Float32Array(GW * GH);
+        for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+          const c = j * GW + i; if (navBlocked && navBlocked[c]) continue; let s0 = 0, n0 = 0;
+          for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue; const n = nj * GW + ni; if (navBlocked && navBlocked[n]) continue; s0 += b[n]; n0++; }
+          nb[c] = n0 ? s0 / n0 : 0;
+        }
+        b = nb;
+      }
+      // ② 見えている所で誰もいなかった所は消す（見えている敵の所は残す）
+      const seenEnemyCells = new Set(); for (const [e] of known[tm]) if (e.alive && known[tm].get(e).lastSeen === turn) seenEnemyCells.add(cellOf(e));
+      for (let c = 0; c < GW * GH; c++) { if (b[c] < 1e-4 || seenEnemyCells.has(c)) continue; if (seenByTeam3(tm, c)) b[c] *= 0.05; }
+      // ③ 見えた敵・聞こえた銃声の所に積もる
+      for (const c of seenEnemyCells) b[c] += 2;
+      for (const h of heard) b[cellOf(h)] += 1.2;
+      belief3[tm] = b;
+    }
+    function search3(u) {
+      const b = belief3[u.team]; if (!b) return decide(u);
+      let sp = null, seen = -1;
+      for (const info of known[u.team].values()) if (info.lastSeen > seen) { seen = info.lastSeen; sp = { x: info.x, y: info.y }; } // 見失った直後は最後の位置を最優先（今までどおり）
+      if (!sp || turn - seen > 1) {
+        const F = fieldFrom(u), st = stepLen(u, u), others = alliesOf(u).filter((a) => a !== u && a.alive && a._search3);
+        let bestC = -1, bv = -Infinity;
+        for (let c = 0; c < GW * GH; c += 2) {                                               // 半分の格子だけ見る（速さのため・決定論）
+          const w = b[c]; if (w < 1e-3) continue;
+          const p = cellPt(c), pd = pathLenFrom(F, u, p); if (pd === Infinity) continue;
+          let v = Math.log(w + 1e-4) - pd / (st * 6);                                       // いそうで、近い所
+          for (const a of others) if (Math.hypot(p.x - a._search3.x, p.y - a._search3.y) < 20) v -= 0.8;   // 味方と同じ所を探さない
+          if (v > bv) { bv = v; bestC = c; }
+        }
+        if (bestC >= 0) {
+          const p = cellPt(bestC), inst = clamp(u.micros.D1 * V3C.inst, 0, 0.95), ec = cenLive(enemiesOf(u));   // 勘（相手読み）が鋭い体ほど本当の気配へ寄る
+          sp = ec ? { x: p.x + (ec.x - p.x) * inst, y: p.y + (ec.y - p.y) * inst } : p;
+        }
+      }
+      if (!sp) return decide(u);
+      u._search3 = sp;
+      if (FORM2) { const sl = formSlot2(u); if (sl) { const h = holdOf(u); if (h > 0.45 && dist(u, sl) > 10) sp = { x: sl.x, y: sl.y }; else sp = { x: sp.x + (sl.x - sl.g.x) * h, y: sp.y + (sl.y - sl.g.y) * h }; } }
+      if (Math.hypot(sp.x - u.x, sp.y - u.y) < 6) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null, searchDir: sp };
+      const np = applyMove(u, sp, "ADVANCE");
+      return { move: "ADVANCE", attack: "NONE", newPos: np, target: null, searchDir: sp };
+    }
     function decide3(u) {
       const tgt = u.target;
-      if (!tgt) return decide(u);                                                           // 索敵は今の頭（段4で作り直す）
+      if (!tgt) return V3C.search ? search3(u) : decide(u);                                 // 見えている敵がいない＝探す（段4）
       const c = prepDecide(u, tgt), fp = c.fp, m = u.micros, H = horizonOf(u), st = stepLen(u, u) * (u._closing ? 1.25 : 1);
+      c.wAtk *= V3C.atk; c.wDef *= V3C.def;                                                   // 全体の倍率（調整用・性格の重みの上に乗る）
       const F = fieldFrom(u), f = faceOf3(tgt);
       // 性格の重み（挙動24・非公開）：遮蔽物利用B1＝隠れと覗き撃ち／狡猾D4・相手読みD1＝回り込みの欲／カイトB2＝近接の敵から間合いを保つ／予測不能D3＝読まれにくい揺らぎ
-      const wP = clamp(0.35 + m.D1 * 0.55, 0, 0.9);                                         // 予測を信じる度合い（相手読み）
-      const coverW = 1 + m.B1 * 0.7 * V3C.cover, peekW = m.B1 * 5 * V3C.peek, flankW = (0.7 + m.D4 * 0.9 + m.D1 * 0.4) * V3C.flank, noiseW = m.D3 * 2.5 * V3C.noise;
+      const wP = clamp((0.35 + m.D1 * 0.55) * V3C.predw, 0, 0.95);                          // 予測を信じる度合い（相手読み）
+      const shooter = V3C.shoot ? clamp((u.winDist - 18) / 30, 0, 1) : 1;                     // 射手ほど遮蔽を使う（近接は寄って殴るのが仕事）
+      const coverW = 1 + m.B1 * 0.7 * V3C.cover * shooter, peekW = m.B1 * 5 * V3C.peek * shooter, flankW = (0.7 + m.D4 * 0.9 + m.D1 * 0.4) * V3C.flank, noiseW = m.D3 * 2.5 * V3C.noise;
       const meleeFoe = knownEnemies(u).some((e) => e.melee.reach + stepLen(e, e) * 1.2 >= dist(u, e) && (e.winDist || 99) < 30);
       const kite = u.ranged.effRange > u.melee.reach + 15 && meleeFoe ? m.B2 * V3C.kite : 0;
+      let allyOnTgt = 0; for (const a of alliesOf(u)) if (a !== u && a.alive && a._exp3 && a._exp3.t === tgt && a._exp3.turn === turn) allyOnTgt += a._exp3.d;
+      const killVal = V3C.kill ? expEx0(tgt, u, 20, true) * 2 * V3C.kill : 0;
+      // 足並み：生きている味方の目標までの平均距離より、自分がどれだけ前に出ているか（攻勢の時は待たない）
+      const syncW = V3C.sync && u.engage !== "commit" ? clamp(u.coop * 1.2 + m.B4 * 0.4 - 0.3, 0, 1.2) : 0;
+      let allyGap = 0; { let s0 = 0, n0 = 0; for (const a of alliesOf(u)) if (a.alive && a !== u) { s0 += dist(a, fp); n0++; } if (n0) allyGap = s0 / n0 - dist(u, fp); }
       const memo = new Map();
       const U = (pos, moving) => {
         const key = cellOf(pos) * 2 + (moving ? 1 : 0); if (memo.has(key)) return memo.get(key);
         const d2 = dist(pos, fp), los2 = losC(pos, fp), atk = chooseAttack(u, tgt, pos, d2, los2);
         const ua = utilAt3(u, tgt, c, pos, d2, los2, atk, moving, V3C.pred ? wP : 0), thr = ua.threat;   // 脅威は動いた後の敵の位置も見込む（段2）
         let v = ua.v;
+        if (killVal && ua.off > 0 && allyOnTgt + ua.off >= tgt.hp) v += killVal * clamp((allyOnTgt + ua.off - tgt.hp * 0.8) / (tgt.hp * 0.4 + 1), 0, 1);   // 味方と合わせて倒しきれる
         v -= thr * c.wDef * (coverW - 1 + kite * 0.6);                                       // 隠れたがる性格ほど射線に身を晒すのを嫌う
         if (los2 && atk.attack !== "NONE") { let others = 0; for (const e of knownEnemies(u)) if (e !== tgt && dist(e, pos) <= e.ranged.effRange + e.ranged.falloff && losC(e, pos)) others++; if (!others) v += peekW; } // 覗き撃ち：目標は撃てて他からは隠れる
         const ft = flankVs3(pos, tgt, f); v += (ft === 2 ? 6 : ft === 1 ? 2.2 : 0) * flankW;  // 回り込み（目標の向きから見た側面・背後）
         if (kite) v -= Math.max(0, 22 - d2) * kite * 0.6;                                    // 近接の敵には近寄らせない
+        if (syncW > 0 && d2 > u.melee.reach + 2) {                                         // 足並み：味方より先に敵の射程に踏み込まない（協調が高いほど待つ）
+          let inRange = 0; for (const e of knownEnemies(u)) if (dist(e, pos) <= e.ranged.effRange && losC(e, pos)) inRange++;
+          if (inRange && allyGap > 6) v -= Math.min(allyGap, 30) * 0.18 * syncW;
+        }
         if (terrainAt(pos) === T.forest) v += (m.D5 * 2 + m.B1 * 1.5) * V3C.terrain;          // 茂みに身を潜める
         if (terrainAt(pos) === T.highground) v += (m.D5 * 1.5 + m.B6 * 1.5) * V3C.terrain;    // 高所を取る
         memo.set(key, v); return v;
@@ -873,8 +966,8 @@ window.SCS = window.SCS || {};
         const pts = stay ? [] : pathPoints(F, u, p, st, H);
         const s1 = stay ? { x: u.x, y: u.y } : pushOutObstacle(pts[0].x, pts[0].y);              // 今ターンの一歩＝道の最初の1ターン分（候補ごとに道探しをやり直さない）
         let v = U(s1, !stay) + (stay ? 0.2 : 0), g = 1;
-        for (let t = 2; t <= H; t++) { g *= GAMMA3; const q = pts[t - 1] || p, arrived = dist(q, p) < 0.5; v += g * U(arrived ? p : q, !arrived); }
-        if (u._plan && u._plan.tgt === tgt && dist(p, u._plan) < 3) v += 1.5 + m.B4 * 4;     // 決めた目的地はしばらく保つ（規律で長く）
+        for (let t = 2; t <= H; t++) { g *= V3C.gamma; const q = pts[t - 1] || p, arrived = dist(q, p) < 0.5; v += g * U(arrived ? p : q, !arrived); }
+        if (u._plan && u._plan.tgt === tgt && dist(p, u._plan) < 3) v += (1.5 + m.B4 * 4) * V3C.stick;   // 決めた目的地はしばらく保つ（規律で長く）
         if (noiseW) v += ((hsh(turn, u.idx * 31 + (u.team === "P" ? 0 : 7), Math.round(p.x), Math.round(p.y), 17) % 1000) / 1000 - 0.5) * noiseW; // 予測不能：決定論の揺らぎ
         if (!best || v > best.v) best = { v, p, s1 };
       }
@@ -892,6 +985,7 @@ window.SCS = window.SCS || {};
       else if (moved && thrHere > 3 && thrNew < thrHere * 0.6) why = "cover";
       else if (!moved && los2) { let others = 0; for (const e of knownEnemies(u)) if (e !== tgt && dist(e, u) <= e.ranged.effRange + e.ranged.falloff && losC(e, u)) others++; if (!others && knownEnemies(u).length > 1) why = "peek"; }
       if (!why && !moved && wP > 0) { const tq = predictPos3(tgt, 1); if (dist(tq, u) < dist(tgt, u) - 3) why = "wait"; }
+      u._exp3 = { t: tgt, turn, d: expEx(u, tgt, np, fp, d2, los2) * (moved && atk.attack === "RANGED" ? u.ranged.moveAccuracy : 1) };   // この後に決める味方が見る「この駒の見込み」
       const dec = { v: best.v, move, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2, plan: u._plan ? { x: u._plan.x, y: u._plan.y } : null, why3: why };
       return finishDecide(u, tgt, c, dec);
     }
@@ -1008,6 +1102,7 @@ window.SCS = window.SCS || {};
       // 0) 索敵
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
+      if (V3C.search) for (const tm of ["P", "C"]) if (BRAIN[tm] === "v3" && !fogless) updateBelief3(tm, lastShots3[tm]);
       // 1) ターゲット選定（発見済みのみ・固定順＝決定論）
       for (const tm of ["P", "C"]) plan3[tm] = BRAIN[tm] === "v3" ? planTeam3(tm) : null;
       for (const u of ALL) if (u.alive) { u.target = pickTarget(u); const pl = plan3[u.team]; if (pl && u.target) pl.assigned.set(u.target, (pl.assigned.get(u.target) || 0) + reachDps3(u, u.target) * 2.5); }
@@ -1076,6 +1171,8 @@ window.SCS = window.SCS || {};
         else if (ev.attack === "RANGED" && ev.shots > 0) events.push({ side, team: u.team, aTeam: u.team, aIdx: u.idx, type: "ranged", from, to, hits: ev.hits || 0, dmg: ev.dmg || 0, crit: !!ev.crit, whiff: (ev.hits || 0) === 0, status: ev.applyStatus ? ev.applyStatus.type : null });
         else if (ev.attack === "MELEE" && ev.shots > 0) events.push({ side, team: u.team, aTeam: u.team, aIdx: u.idx, type: "melee", from, to, hits: ev.hits || 0, dmg: ev.dmg || 0, crit: !!ev.crit, whiff: (ev.hits || 0) === 0 });
       }
+      lastShots3.P = []; lastShots3.C = [];
+      for (const ev of evs) if (ev.att && (ev.attack === "RANGED" || ev.attack === "SNAP" || (ev.ult && ev.ultRn)) && (ev.shots || 0) > 0) (ev.att.team === "P" ? lastShots3.C : lastShots3.P).push({ x: ev.att.x, y: ev.att.y });
       // 5.5) 崩し三すくみ解決：受け不能だが、標的が①回避した②自分を殴って当てた③相互崩し(組み合い)だと潰れる。盾/棒立ち/リロードには通る。
       const grabDone = new Set();
       const addAcc = (tgt, dmg, from) => { const a = acc.get(tgt) || { dmg: 0, status: [], kbFrom: null }; a.dmg += dmg; if (from) a.kbFrom = a.kbFrom || from; acc.set(tgt, a); };

@@ -29,7 +29,7 @@ window.SCS2 = window.SCS2 || {};
     let turnStart = 0, nextAt = 600, overAt = 0, kills = 0, focus = null, focusUntil = 0, focusLock = 0;
     const cam = { x: W / 2, y: H / 2, z: 1.1, vw: cfg.vw || W, vh: cfg.vh || H, m: cfg.vw ? 160 : 0 };               // vw×vh＝戦場を映す枠の大きさ
 
-    function sync(v) { const u = v.u; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; v.winDist = u.winDist; } // hidden＝敵にまだ見つかっていない
+    function sync(v) { const u = v.u; v.plan = u.alive && u._plan ? { x: u._plan.x, y: u._plan.y } : null; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; v.winDist = u.winDist; } // hidden＝敵にまだ見つかっていない
     function separate(snap) {
       const minD = (R * 2 * 0.92) / PX, pts = views.map((v) => ({ v, x: v.u.x, y: v.u.y }));
       for (let it = 0; it < 6; it++) for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {

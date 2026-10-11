@@ -205,6 +205,15 @@ window.SCS2 = window.SCS2 || {};
     if (ghost || bush) ctx.restore();
     if (ghost) { ctx.save(); ctx.strokeStyle = teamCol(v.team === "P", 0.85); ctx.lineWidth = 3; ctx.setLineDash([7, 7]); ctx.lineDashOffset = st.clock / 50; circ(ctx, v.x * PX + sh, v.y * PX, R + 6); ctx.stroke(); ctx.restore(); }
   }
+  // 注目している駒が向かおうとしている所（v3 の頭の目的地）：細い点線と小さな印
+  function drawPlan(ctx, st, v) {
+    if (!v.plan) return; const x0 = v.x * PX, y0 = v.y * PX, x1 = v.plan.x * PX, y1 = v.plan.y * PX; if (Math.hypot(x1 - x0, y1 - y0) < R * 1.6) return;
+    const P = v.team === "P"; ctx.save(); ctx.lineCap = "round";
+    ctx.strokeStyle = teamCol(P, 0.55); ctx.lineWidth = 3; ctx.setLineDash([2, 11]); ctx.lineDashOffset = -st.clock / 60;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = teamCol(P, 0.75); ctx.lineWidth = 2.5; const k = 9; ctx.beginPath(); ctx.moveTo(x1 - k, y1); ctx.lineTo(x1 + k, y1); ctx.moveTo(x1, y1 - k); ctx.lineTo(x1, y1 + k); ctx.stroke();
+    circ(ctx, x1, y1, 14); ctx.stroke(); ctx.restore();
+  }
   function drawRing(ctx, st, v, strong) {
     if (!v) return;
     const x = v.x * PX, y = v.y * PX, P = v.team === "P";
@@ -319,7 +328,7 @@ window.SCS2 = window.SCS2 || {};
     st.views.filter((v) => !v.alive).forEach((v) => drawToken(ctx, st, v));
     const live = st.views.filter((v) => v.alive).sort((a, b) => a.y - b.y);
     live.forEach((v) => drawUnder(ctx, st, v)); live.forEach((v) => { drawToken(ctx, st, v); drawOver(ctx, st, v); });
-    if (st.focus && st.focus.alive) drawRing(ctx, st, st.focus);
+    if (st.focus && st.focus.alive) { drawPlan(ctx, st, st.focus); drawRing(ctx, st, st.focus); }
     if (st.highlight) drawRing(ctx, st, st.highlight, true);
     drawFx(ctx, st); drawWeather(ctx, st); drawBubbles(ctx, st); drawArrows(ctx, st); drawPops(ctx, st);
   }
