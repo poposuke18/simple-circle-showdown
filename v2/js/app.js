@@ -217,7 +217,9 @@
     startRun(`VS ${r.name}`);
   }
   function startRun(vs) {
-    sortieCfg.vw = FW; sortieCfg.vh = FH; run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
+    sortieCfg.vw = FW; sortieCfg.vh = FH; run = SCS2.makeRunner(sortieCfg);
+    const heat = sortieCfg.mod === "灼熱"; $("scWatch").classList.toggle("heat", heat); $("rsCards").classList.toggle("heat", heat); $("cvWhy").parentElement.classList.toggle("heat", heat);   // 灼熱＝枠が赤く光る（v2.fx.heat2）
+    clock = 0; paused = false; ended = false; endAt = 0; result = null;
     $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = sortieCfg.arena.name;
     $("wEnd").classList.remove("show"); setPause(false);
     buildHud(); go("watch"); updWatch();

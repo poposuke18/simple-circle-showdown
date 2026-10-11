@@ -46,7 +46,7 @@ window.SCS2 = window.SCS2 || {};
       ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; circ(ctx, cx, cy, r); ctx.fill(); ctx.globalCompositeOperation = "source-over";
     }
   }
-  // ===== 天気（[[v2ゲーム設計]] v2.fx.spec）：濃霧＝流れる濃い霧／灼熱＝陽炎と照り返し =====
+  // ===== 天気（[[v2ゲーム設計]] v2.fx.spec）：濃霧＝流れる濃い霧。灼熱は戦場には描かず、枠が赤く光る（v2.fx.heat2・画面の CSS）=====
   function drawWeather(ctx, st) {
     const t = st.clock;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();                               // 天気は地図の中だけ（地図の外の余白にはかけない）
@@ -58,29 +58,10 @@ window.SCS2 = window.SCS2 || {};
         const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(222,232,240,${0.30 + 0.08 * Math.sin(t / 1700 + i)})`); g.addColorStop(1, "rgba(222,232,240,0)");
         ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
       }
-    } else if (st.mod === "灼熱") {
-      ctx.save(); ctx.globalCompositeOperation = "lighter";                                   // 陽炎：ゆらぐ筋が上へ流れる
-      for (let i = 0; i < 14; i++) {
-        const y = H - ((t * 0.06 + i * (H / 14)) % (H + 60)), a = 0.07 + 0.05 * Math.sin(t / 420 + i * 1.3);
-        ctx.strokeStyle = `rgba(255,225,180,${a})`; ctx.lineWidth = 4 + (i % 3) * 2; ctx.beginPath();
-        for (let x = 0; x <= W; x += 30) ctx.lineTo(x, y + Math.sin(x / 70 + t / 220 + i) * 9);
-        ctx.stroke();
-      }
-      for (let i = 0; i < 40; i++) {                                                         // 舞い上がる熱気の粒
-        const x = (i * 157 + Math.sin(t / 900 + i) * 40) % W, y = H - ((t * (0.03 + (i % 5) * 0.01) + i * 97) % (H + 40));
-        ctx.fillStyle = `rgba(255,210,150,${0.18 + 0.12 * Math.sin(t / 300 + i)})`; circ(ctx, x, y, 2 + (i % 3)); ctx.fill();
-      }
-      ctx.restore();
     }
     ctx.restore();
   }
-  function drawWeatherGround(ctx, st) {                                                       // 地面にかかる色（駒より下）：灼熱＝焼けた色と照り返し
-    if (st.mod !== "灼熱") return; const t = st.clock;
-    ctx.save(); ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = "rgba(255,120,20,.55)"; ctx.fillRect(0, 0, W, H); ctx.restore();
-    ctx.fillStyle = "rgba(255,150,60,.10)"; ctx.fillRect(0, 0, W, H);
-    const gl = ctx.createRadialGradient(W * 0.82, -120, 0, W * 0.82, -120, 1100); gl.addColorStop(0, `rgba(255,240,190,${0.5 + 0.05 * Math.sin(t / 900)})`); gl.addColorStop(0.45, "rgba(255,210,140,.18)"); gl.addColorStop(1, "rgba(255,200,120,0)");
-    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
-  }
+
   // ===== 隊形：位置を保っている味方どうしを細い線で結ぶ（戦列＝横並び・楔＝先頭から両翼・円陣＝三角）=====
   function drawFormation(ctx, st) {
     for (const tm of ["P", "C"]) {
@@ -332,7 +313,6 @@ window.SCS2 = window.SCS2 || {};
     if (st.bleed) drawBleed(ctx, st);
     drawMap(ctx, st);
     if (st.bleed) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 24; ctx.strokeStyle = "rgba(4,10,18,.9)"; ctx.lineWidth = 6; ctx.strokeRect(-3, -3, W + 6, H + 6); ctx.restore(); }   // 地図の縁
-    drawWeatherGround(ctx, st);
     drawFormation(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);

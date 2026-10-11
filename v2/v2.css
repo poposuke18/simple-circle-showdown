@@ -387,3 +387,16 @@ button { font-family: inherit; color: inherit; }
 .w-focus .f-name span { white-space: nowrap; flex: none; }
 .w-focus .f-name small { min-width: 0; }
 #cvWatch { background: #050b14; }
+
+/* 灼熱：枠が赤く光るだけ（v2.fx.heat2）*/
+@keyframes heatPulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
+#scWatch .glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: 0; pointer-events: none; transition: opacity .4s; }
+#scWatch.heat .glass::before { opacity: 1; box-shadow: inset 0 0 0 16px #1a0805, inset 0 0 0 18px rgba(255,105,60,.95), inset 0 0 52px 24px rgba(255,55,25,.55); animation: heatPulse 2.6s ease-in-out infinite; }
+.rs-cards.heat .hl-cv::after, .why-map.heat::after { content: ""; position: absolute; pointer-events: none; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(255,105,60,.95), inset 0 0 30px 8px rgba(255,55,25,.55); animation: heatPulse 2.6s ease-in-out infinite; }
+.rs-cards.heat .hl-cv::after { inset: 0; }
+.why-map.heat::after { inset: 10px; }
+#scWatch.heat .glass::before { box-shadow: inset 0 0 0 16px #2a0a05, inset 0 0 0 19px rgba(255,95,50,1), inset 0 0 90px 30px rgba(255,45,15,.6); }
+#scWatch.heat .w-side { border-right-color: rgba(255,95,50,.9); box-shadow: 6px 0 30px rgba(255,50,20,.45); }
+@keyframes heatPulse2 { 0%, 100% { opacity: 1; } 50% { opacity: .78; } }
+#scWatch.heat .glass::before { box-shadow: inset 0 0 0 16px #3a0806, inset 0 0 0 20px rgba(255,60,40,1), inset 0 0 26px 22px rgba(255,30,20,.75), inset 0 0 120px 40px rgba(255,20,10,.5); animation: heatPulse2 2.4s ease-in-out infinite; }
+.rs-cards.heat .hl-cv::after, .why-map.heat::after { box-shadow: inset 0 0 0 3px rgba(255,60,40,1), inset 0 0 22px 10px rgba(255,30,20,.6); animation: heatPulse2 2.4s ease-in-out infinite; }
