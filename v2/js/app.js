@@ -185,7 +185,7 @@
   let placeSel = -1;
   function autoOrder() {                                                                    // 既定の並び＝エンジンと同じ（相手に対する間合いの短い順）
     const r = Wd.RIVALS[rivalI], foe = foeOf(r), sq = St.data.squad;
-    const b = SCS.makeSquadBattle(sq.map((f) => f.choices.slice()), foe.choices.map((c) => c.slice()), 1, (pArena || Wd.PLAZA).name, "通常", "散開", "散開");
+    const b = SCS.makeSquadBattle3(sq.map((f) => f.choices.slice()), foe.choices.map((c) => c.slice()), 1, (pArena || Wd.PLAZA).name, "通常", "散開", "散開");
     return b.teams.P.slice().sort((p, q) => p.winDist - q.winDist).map((u) => u.idx);
   }
   const curOrder = () => St.data.order || autoOrder();

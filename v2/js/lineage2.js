@@ -36,7 +36,7 @@ window.SCS2 = window.SCS2 || {};
       const a = order.slice(bi * 6, bi * 6 + 3), b = order.slice(bi * 6 + 3, bi * 6 + 6);
       const fa = W.FORMS[rng.int(W.FORMS.length)], fb = W.FORMS[rng.int(W.FORMS.length)];
       const nm = (xs, t) => xs.map((x, i) => `${x.fam}${t}${i}`);
-      const battle = SCS.makeSquadBattle(a.map((x) => x.choices.slice()), b.map((x) => x.choices.slice()), (L.seed ^ Math.imul(gen + 1, 0x41c64e6d) ^ Math.imul(bi + 1, 0xb5297a4d)) >>> 0, A.name, W.modOf(A), fa, fb, nm(a, "a"), nm(b, "b"), { formation: 0.6 });
+      const battle = SCS.makeSquadBattle3(a.map((x) => x.choices.slice()), b.map((x) => x.choices.slice()), (L.seed ^ Math.imul(gen + 1, 0x41c64e6d) ^ Math.imul(bi + 1, 0xb5297a4d)) >>> 0, A.name, W.modOf(A), fa, fb, nm(a, "a"), nm(b, "b"), { formation: 0.6, brain: { P: "v3", C: "v3" } });
       let n = 0; while (!battle.over && n++ < 200) battle.step();
       a.forEach((x, i) => (fit[x.id] = fitnessOf(battle.teams.P[i]))); b.forEach((x, i) => (fit[x.id] = fitnessOf(battle.teams.C[i])));
     }
