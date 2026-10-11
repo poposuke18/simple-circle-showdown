@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S.C.S. AI</title>
+<!-- v2（Obsidian [[v2ゲーム設計]]）：仕込んで、手を離して眺める。戦闘エンジンは ../js/squad.js を無改変で使う -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Noto+Sans+JP:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="v2.css?b=1011c1">
+</head>
+<body>
+<div id="stage">
+
+  <!-- タイトル -->
+  <section id="scTitle" class="sc on">
+    <canvas class="cv-full" id="cvTitle"></canvas>
+    <div class="dim"></div>
+    <div class="t-logo">S.C.S. AI</div>
+    <div class="t-sub">仕込んで、手を離す。</div>
+    <nav class="t-menu">
+      <button class="mbtn hot" data-go="prep"><span class="ic ic-go"></span>出撃</button>
+      <button class="mbtn" data-go="squad"><span class="ic ic-squad"></span>部隊</button>
+      <button class="mbtn" data-go="records"><span class="ic ic-rec"></span>記録</button>
+    </nav>
+  </section>
+
+  <!-- 部隊 -->
+  <section id="scSquad" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">部隊</span></header>
+    <div class="sq-cards" id="sqCards"></div>
+    <div class="foot">
+      <button class="btn" data-go="title">タイトルへ</button>
+      <button class="btn hot" data-go="prep">出撃準備へ</button>
+    </div>
+  </section>
+
+  <!-- 性格を決める（キービジュ案8-1＋8-2の一行） -->
+  <section id="scEdit" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span></header>
+    <div class="pnl ed-left">
+      <canvas id="cvCore"></canvas>
+      <input class="ed-name" id="edName" maxlength="10" spellcheck="false" autocomplete="off">
+      <div class="ed-body">
+        <div class="ed-hp"><span>HP</span><b id="edHp">0</b></div>
+        <div class="ed-weaps weaps" id="edWeaps"></div>
+      </div>
+    </div>
+    <div class="pnl ed-right" id="edRows"></div>
+    <div class="ed-line">どう動くかは、戦わせてみるまでわからない。</div>
+    <div class="foot foot-ed"><button class="btn" data-go="squad">部隊へ戻る</button></div>
+  </section>
+
+  <!-- 出撃準備 -->
+  <section id="scPrep" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">出撃準備</span></header>
+    <div class="pnl pr-list" id="rvList"></div>
+    <div class="pnl pr-detail">
+      <div class="rv-head"><div class="rv-name" id="rvName"></div><div class="rv-rec" id="rvRec"></div></div>
+      <div class="rv-flavor" id="rvFlavor"></div>
+      <div class="rv-tokens" id="rvTokens"></div>
+      <div class="rv-scout" id="rvScout"></div>
+      <div class="pr-row"><div class="pr-lbl">戦場</div><div class="chips"><span class="chip on">遺跡の円形広場</span></div></div>
+      <div class="pr-row"><div class="pr-lbl">戦況</div><div class="chips" id="pMod"></div></div>
+      <div class="pr-row"><div class="pr-lbl">隊形</div><div class="chips" id="pForm"></div></div>
+      <div class="pr-mine" id="pMine"></div>
+    </div>
+    <div class="foot">
+      <button class="btn" data-go="squad">部隊へ</button>
+      <button class="btn hot big" id="pGo">送り出す</button>
+    </div>
+  </section>
+
+  <!-- 観戦 -->
+  <section id="scWatch" class="sc">
+    <canvas class="cv-full" id="cvWatch"></canvas>
+    <div class="glass"></div>
+    <header class="w-logo"><div class="w-logo-main">S.C.S. AI</div></header>
+    <div class="pnl w-battle"><div class="w-vs" id="wVs"></div><div class="w-sub" id="wSub"></div></div>
+    <div class="pnl w-count">
+      <div class="row"><i class="dot dot-p"></i><span>青</span><b id="cP">3</b></div>
+      <div class="row"><i class="dot dot-c"></i><span>赤</span><b id="cC">3</b></div>
+      <div class="row"><i class="dot dot-t"></i><span>ターン</span><b id="cT">0</b></div>
+    </div>
+    <div class="pnl w-mini"><canvas id="cvMini"></canvas></div>
+    <div class="pnl w-btns">
+      <button id="wPause" class="bt bt-cyan" title="一時停止"><svg viewBox="0 0 48 48"><path id="icPause" d="M17 13 V35 M31 13 V35"/></svg></button>
+      <button id="wSpeed" class="bt bt-red" title="速度"><span id="wSpd">×1</span></button>
+      <button id="wBub" class="bt bt-blue on" title="吹き出し"><svg viewBox="0 0 48 48"><path d="M10 12 H38 V30 H24 L16 37 V30 H10 Z"/><path d="M20 19 H28 M24 19 V24"/></svg></button>
+      <button id="wFocus" class="bt bt-ice" title="注目を切り替える"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="11"/><path d="M24 6 V14 M24 34 V42 M6 24 H14 M34 24 H42"/></svg></button>
+      <button id="wSkip" class="bt bt-gold" title="結果へ"><svg viewBox="0 0 48 48"><path d="M12 13 L26 24 L12 35 Z M26 13 L40 24 L26 35 Z"/></svg></button>
+    </div>
+    <div class="pnl w-focus">
+      <div class="tk tk-lg" id="fTk"><img alt=""></div>
+      <div class="f-mid">
+        <div class="f-name"><span id="fName">—</span><small id="fWord"></small></div>
+        <div class="bar"><i class="hp" id="fHp"></i><em id="fHpT"></em></div>
+        <div class="f-why" id="fWhy"></div>
+      </div>
+      <div class="f-act" id="fAct">待機</div>
+    </div>
+    <div class="w-end" id="wEnd"><div class="w-end-main" id="wEndMain"></div></div>
+  </section>
+
+  <!-- 結果とハイライト -->
+  <section id="scResult" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span></header>
+    <div class="rs-banner" id="rsBanner"></div>
+    <div class="rs-verdict" id="rsVerdict"></div>
+    <div class="rs-cards" id="rsCards"></div>
+    <div class="pnl rs-strip" id="rsStrip"></div>
+    <div class="foot">
+      <button class="btn" data-go="title">タイトルへ</button>
+      <button class="btn" data-go="squad">部隊へ</button>
+      <button class="btn hot" id="rsAgain">もう一度</button>
+    </div>
+  </section>
+
+  <!-- なぜ、そう動いた？ -->
+  <section id="scWhy" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd why-hd"><span class="why-bar"></span><span class="why-title">なぜ、そう動いた？</span><span class="hd-logo r">S.C.S. AI</span></header>
+    <div class="pnl why-map"><canvas id="cvWhy"></canvas></div>
+    <div class="pnl why-side" id="whySide"></div>
+    <div class="pnl why-tl">
+      <button class="bt bt-cyan sm" id="whyPlay"><svg viewBox="0 0 48 48"><path id="icWhyPlay" d="M16 12 L36 24 L16 36 Z"/></svg></button>
+      <input type="range" id="whyRange" min="0" max="1" value="0">
+      <div class="why-turn" id="whyTurn"></div>
+      <button class="btn" id="whyBack">結果へ戻る</button>
+    </div>
+  </section>
+
+  <!-- 記録 -->
+  <section id="scRecords" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">記録</span></header>
+    <div class="pnl rec-table" id="recTable"></div>
+    <div class="foot"><button class="btn" data-go="title">タイトルへ</button></div>
+  </section>
+
+</div>
+
+<script src="../js/rng.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/derive.js"></script>
+<script src="../js/squad.js"></script>
+<script src="js/world.js?b=1011c1"></script>
+<script src="js/store.js?b=1011c1"></script>
+<script src="js/board.js?b=1011c1"></script>
+<script src="js/runner.js?b=1011c1"></script>
+<script src="js/app.js?b=1011c1"></script>
+</body>
+</html>
