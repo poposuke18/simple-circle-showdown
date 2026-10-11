@@ -388,6 +388,13 @@ window.SCS = window.SCS || {};
     setPredictContext(ctx) { predictCtx = ctx; markPredictStale(); }, // ② ストーリー設計時：試算の相手＝この敵のホーム
     buildCardHtml: (choices) => buildCardHtml(choices), // 分隊戦UIが各体のカルテに使う
     styleOf: (u) => styleLabel(u, u.choices).tag,        // 分隊分析の役割ラベル
+    styleKey: (u) => styleLabel(u, u.choices).k,         // 分隊編成の役割バランス（前衛/後衛/万能の数え分け・表示のみ）
+    cardParts(choices) {                                 // 分隊編成の3列カード用（buildCardHtml と同じ中身を部品で返す。非公開ライン内）
+      const u = SCS.derive.buildUnit("U", choices), sty = styleLabel(u, choices);
+      const traits = [];
+      for (const i of TRAIT_PRIORITY) { if (choices[i] === 0 || choices[i] === 3) traits.push(D.MACROS[i].poles[choices[i]]); if (traits.length >= 3) break; }
+      return { u, tag: sty.tag, k: sty.k, hpPct: Math.round(((u.maxHp - 70) / 60) * 92 + 8), traits, trade: TRADEOFF[sty.k] };
+    },
     macroHint: (i) => MACRO_HINT[i] || "",
     nextStep, auto,
   };

@@ -8,13 +8,13 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="stylesheet" href="style.css?v=0704a" />
+  <link rel="stylesheet" href="style.css?v=1011a" />
 </head>
 <body>
   <div class="app">
     <header class="app-head">
       <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 0704a</span></h1>
+      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 1011a</span></h1>
       <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
     </header>
 
@@ -122,7 +122,7 @@
     <!-- ===== 分隊戦モード ===== -->
     <section id="squad" class="squad hidden">
       <div id="squadDesign">
-        <h3>分隊を編成<span class="h3-sub">各戦士カードを選び、3体の人格を設計。役割を補完させて勝つ</span></h3>
+        <h3>分隊を編成<span class="h3-sub">3体の人格を並べて設計。言葉を押して性格を選び、役割を補完させて勝つ</span></h3>
         <div class="demo-bar"><button id="sqDemo" class="btn primary" type="button">▶ はじめての方へ：観戦デモ（30秒）</button><span class="predict-note">厳選の一戦を自動再生——奇襲、集中砲火、そして必殺。</span></div>
         <div class="sq-modebar" id="sqModeBar">
           <button id="sqModeFree" class="mtab2 active" type="button">模擬戦</button>
@@ -138,10 +138,9 @@
         <div id="sqChal" class="sq-camp hidden">
           <div id="sqChalInfo" class="chal-wrap"></div>
         </div>
-        <div id="sqRoster" class="sq-roster"></div>
-        <div id="sqTabs" class="sq-editing"></div>
-        <div id="sqBuildCard" class="build-card"></div>
-        <div id="sqDials" class="macros"></div>
+        <!-- 分隊編成（キービジュ採用 [[分隊戦設計]]§14）：3体を横並びの3列。各列＝光る丸＋名札＋10軸×4つの言葉＋HP/武器 -->
+        <div class="sq-axhelp"><button id="sqAxTog" class="dial-hints-tog" type="button"></button><div id="sqAxHelp" class="sq-axhelp-body"></div></div>
+        <div id="sqCols" class="sq-cols"></div>
         <div class="predict-bar">
           <button id="sqPredict" class="btn ghost small" type="button">▶ 勝率を試算（20戦）</button>
           <button id="sqCodeCopy" class="btn ghost small" type="button" title="この分隊（3体の人格＋隊形）を短いコードにして共有できる">分隊コードをコピー</button>
@@ -149,12 +148,13 @@
           <span class="predict-note">試算＝固定20戦の決定論推定／コード＝編成の共有</span>
         </div>
         <div id="sqPredictWrap" class="predict hidden" aria-live="polite"></div>
-        <div class="cfg-foot" id="sqFoot">
+        <div class="cfg-foot sq-foot" id="sqFoot">
+          <div id="sqRoleBal" class="sq-rolebal"></div>
           <label class="fld">戦場<select id="sqArena"></select></label>
           <label class="fld">戦況<select id="sqMod"></select></label>
           <label class="fld">隊形<select id="sqForm"></select></label>
           <label class="fld">敵分隊<select id="sqCpu"></select></label>
-          <button id="sqSortie" class="btn primary big">出撃（3対3）</button>
+          <button id="sqSortie" class="btn primary big sq-sortie">出撃（3対3）</button>
           <button id="sqRematch" class="btn ghost" style="display:none" title="戦場・戦況・敵・隊形を固定したまま、設計だけ変えて同じ戦いをやり直す">↻ 同条件で再戦</button>
         </div>
         <p class="hint" id="sqFormHint"></p>
@@ -162,9 +162,12 @@
         <p class="hint">3体の人格＝編成。前衛(壁/近接)が射線と肉薄を引き受け、後衛(射手)が安全に削る——前衛が落ちると後衛が裸に。隊形は緩い癖＝規律/忍耐/協調の高い体ほど守り、一匹狼は破って突出する。最後に立っていた分隊の勝ち。</p>
       </div>
       <div id="squadStage" class="hidden">
-        <div class="stage-top"><span class="chips-left"><span class="arena-chip" id="sqArenaChip">—</span><span class="mod-chip" id="sqModChip"></span><span class="mod-chip" id="sqFormChip" style="display:none"></span></span><span class="turn-chip" id="sqTurn">TURN 0</span></div>
+        <div class="stage-top"><span class="chips-left"><span class="arena-chip" id="sqArenaChip">—</span><span class="mod-chip" id="sqModChip"></span><span class="mod-chip" id="sqFormChip" style="display:none"></span></span></div>
+        <!-- 観戦（キービジュ採用 [[分隊戦設計]]§14）：大きな戦場を左、ターン・チームHP・各体・ログの縦パネルを右 -->
+        <div class="sq-battle">
+        <div class="sqb-map">
         <div class="track-wrap">
-          <canvas id="miniSquad" class="mini"></canvas>
+          <canvas id="miniSquad" class="mini big" data-big="1"></canvas>
           <div class="track-foot">
             <span class="lg p">● あなた</span>
             <span class="foot-tog"><button id="sqConeTog" class="key-tog" type="button">視界 OFF</button><button id="sqKeyTog" class="key-tog" type="button">▸ 見方</button></span>
@@ -175,8 +178,14 @@
           <div class="key-col"><b>レーダー</b><span>点＝各戦士（番号）　矢印＝向き</span><span>線＝狙う相手（破線＝遮蔽で射線なし）</span><span>輪＝集中砲火を浴びている　X＝撃破</span><span>箱＝遮蔽（壊れると薄くなる）</span><span>扇＝視界（中に敵が入り射線が通れば発見）</span><span>薄い体＝まだ敵に発見されていない（気配を消す）</span><span>色地帯＝地形（茂み/瓦礫/沼地/高所…立つと効果）</span><span>オレンジの揺らぎ＝炎・溶岩（立つと焼かれる）</span><span>光の筋・ビーム＝射撃・必殺の着弾</span></div>
           <div class="key-col"><b>戦法ラベル</b><span>盾＝火力を引きつける前衛　かばう＝身代わり</span><span>集中＝集中砲火　剝がし＝後衛を守る</span><span>索敵＝敵を探す　詰め・攻勢＝前へ　様子見＝牽制</span><span>退避・立て直し＝引いて立て直す</span><span>射撃・斬＝攻撃中　装填＝リロード</span><span>必殺＝必殺技　温存＝切り札を待つ</span><span>背後・側面＝側背面を取る　遮蔽＝壁に遮られ撃てない</span></div>
         </div>
-        <div id="sqHud" class="sq-hud"></div>
-        <div class="logwrap"><div id="sqLog" class="log"></div></div>
+        </div>
+        <aside class="sqb-side">
+          <div class="sqb-turn" id="sqTurn">ターン 0</div>
+          <div id="sqTeamHp" class="sqb-teamhp"></div>
+          <div id="sqHud" class="sq-hud"></div>
+          <div class="logwrap sqb-log"><div class="sqb-loghd">バトルログ</div><div id="sqLog" class="log"></div></div>
+        </aside>
+        </div>
         <div class="controls">
           <button id="sqNext" class="btn">▶ 次の手</button>
           <button id="sqAuto" class="btn primary">▶ 自動実行</button>
@@ -218,20 +227,26 @@
     </section>
   </div>
 
-  <script src="js/rng.js?v=0704a"></script>
-  <script src="js/data.js?v=0704a"></script>
-  <script src="js/derive.js?v=0704a"></script>
-  <script src="js/sim.js?v=0704a"></script>
-  <script src="js/batch.js?v=0704a"></script>
-  <script src="js/squad.js?v=0704a"></script>
-  <script src="js/lineage.js?v=0704a"></script>
-  <script src="js/ui.js?v=0704a"></script>
-  <script src="js/mini.js?v=0704a"></script>
-  <script src="js/story.js?v=0704a"></script>
-  <script src="js/squadui.js?v=0704a"></script>
-  <script src="js/lineageui.js?v=0704a"></script>
-  <script src="js/onboard.js?v=0704a"></script>
+  <script src="js/rng.js?v=1011a"></script>
+  <script src="js/data.js?v=1011a"></script>
+  <script src="js/derive.js?v=1011a"></script>
+  <script src="js/sim.js?v=1011a"></script>
+  <script src="js/batch.js?v=1011a"></script>
+  <script src="js/squad.js?v=1011a"></script>
+  <script src="js/lineage.js?v=1011a"></script>
+  <script src="js/ui.js?v=1011a"></script>
+  <script src="js/mini.js?v=1011a"></script>
+  <script src="js/story.js?v=1011a"></script>
+  <script src="js/squadui.js?v=1011a"></script>
+  <script src="js/lineageui.js?v=1011a"></script>
+  <script src="js/onboard.js?v=1011a"></script>
   <div id="onboard" class="onboard hidden"></div>
+  <!-- タイトル画面（キービジュ採用 [[分隊戦設計]]§14・GPT 3）：セッションに1回。共有リプレイURLでは出さない -->
+  <div id="titleSplash" class="title-splash hidden" role="dialog" aria-label="タイトル画面">
+    <img src="assets/title.jpg" alt="S.C.S. AI — Simple Circle Showdown" />
+    <div class="ts-press">▶ クリックで開始</div>
+  </div>
+  <script src="js/title.js?v=1011a"></script>
   <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});</script>
 </body>
 </html>

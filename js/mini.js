@@ -11,6 +11,7 @@ window.SCS = window.SCS || {};
   let fx = []; // ③ 戦闘エフェクト（寿命付き・描画専用）。step()のevents由来＝決定論を壊さない
   let squadMode = false; const sdisp = new Map(); // 分隊戦：ユニット別の補間位置
   let showCones = false; // ビジョンコーン表示（既定Off・トグルでOn）
+  let BIGU = 1; // 大きな戦場（data-big）では分隊の丸・番号・集中砲火の輪を一回り大きく（キービジュ GPT 2 採用）
   const COL_P = "#5cc8ff", COL_C = "#ff5e5e";
   const perfNow = () => (typeof performance !== "undefined" ? performance.now() : 0);
   // 地形ゾーンの色（テキストの「茂みに紛れ/瓦礫を盾に/高所/溶岩」と整合させる）
@@ -61,21 +62,30 @@ window.SCS = window.SCS || {};
     const cssW = cv.clientWidth;
     if (!cssW) return false; // 非表示（ストーリーのマップ/スカウト等）＝ループ停止（再表示時にsyncで再開）
     const f = battle.field;
-    const cssH = Math.max(110, Math.min(190, Math.round(cssW * 0.46))); // 安定した横長レーダー
+    // data-big="1"（分隊戦の観戦＝キービジュ採用の大きな戦場）：戦場の縦横比で高さを決め、丸・線・エフェクトを US 倍で描く
+    const big = !!(cv.dataset && cv.dataset.big === "1");
+    let cssH;
+    if (big) {
+      const maxH = Math.max(260, Math.min(680, Math.round((window.innerHeight || 800) * 0.72)));
+      cssH = Math.max(240, Math.min(maxH, Math.round(cssW * (f.h / f.w)) + 24));
+    } else cssH = Math.max(110, Math.min(190, Math.round(cssW * 0.46))); // 安定した横長レーダー
+    const US = big ? Math.max(1, Math.min(2.6, cssW / 420)) : 1;
+    BIGU = big ? 1.6 : 1;
     const dpr = window.devicePixelRatio || 1;
     if (cv.style.height !== cssH + "px") cv.style.height = cssH + "px";
     const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
     ctx = cv.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.setTransform(dpr * US, 0, 0, dpr * US, 0, 0); // 描画は仮想座標（vW×vH）＝全要素が US 倍に
+    const vW = cssW / US, vH = cssH / US;
+    ctx.clearRect(0, 0, vW, vH);
 
     // レターボックス：戦場の実縦横比を保ったまま中央に配置（正方形寄りの戦場が横に伸びる歪みを防ぐ）
-    const pad = 8, availW = cssW - pad * 2, availH = cssH - pad * 2;
+    const pad = 8, availW = vW - pad * 2, availH = vH - pad * 2;
     const scale = Math.min(availW / f.w, availH / f.h);
     const drawW = f.w * scale, drawH = f.h * scale;
-    const ox = Math.round((cssW - drawW) / 2), oy = Math.round((cssH - drawH) / 2);
+    const ox = Math.round((vW - drawW) / 2), oy = Math.round((vH - drawH) / 2);
     const SX = (x) => ox + (x / f.w) * drawW, SY = (y) => oy + (y / f.h) * drawH;
 
     // 地形ゾーン（全域の床＋個別ゾーン。テキストの地形描写と整合）
@@ -164,7 +174,7 @@ window.SCS = window.SCS || {};
     for (const [tu, n] of focusN) {
       if (n < 2) continue;
       const d = sdisp.get(tu); if (!d) continue;
-      const t = perfNow() / 1000, r = 7 + Math.sin(t * 4) * 1.2; // アンバー単色＝キルオーダー警告（CRT一貫）
+      const t = perfNow() / 1000, r = (7 + Math.sin(t * 4) * 1.2) * BIGU; // アンバー単色＝キルオーダー警告（CRT一貫）
       ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = "#ffcf5c"; ctx.shadowColor = "#ffcf5c"; ctx.shadowBlur = 7;
       ctx.beginPath(); ctx.arc(SX(d.x), SY(d.y), r, 0, 6.2832); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
@@ -203,17 +213,17 @@ window.SCS = window.SCS || {};
   }
   function drawSquadUnit(x, y, u) {
     const col = ushade(u);
-    if (u.hp <= 0) { ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x - 3.5, y - 3.5); ctx.lineTo(x + 3.5, y + 3.5); ctx.moveTo(x + 3.5, y - 3.5); ctx.lineTo(x - 3.5, y + 3.5); ctx.stroke(); ctx.globalAlpha = 1; return; }
+    if (u.hp <= 0) { ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = col; ctx.beginPath(); const q = 3.5 * BIGU; ctx.moveTo(x - q, y - q); ctx.lineTo(x + q, y + q); ctx.moveTo(x + q, y - q); ctx.lineTo(x - q, y + q); ctx.stroke(); ctx.globalAlpha = 1; return; }
     const ghost = battle.spotted && !battle.spotted(u); // 敵に発見されていない＝薄く中空で描く（観戦者には見えるが"気配を消している"＝奇襲の予兆）
     const fl = Math.hypot(u.faceX, u.faceY) || 1, ux = u.faceX / fl, uy = u.faceY / fl;
     ctx.globalAlpha = ghost ? 0.4 : 1;
-    ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9, y + uy * 9); ctx.stroke();
-    const low = u.hp / u.maxHp < 0.3, t = perfNow() / 1000, r = low ? 3.6 + Math.sin(t * 6) * 1.1 : 3.4;
+    ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9 * BIGU, y + uy * 9 * BIGU); ctx.stroke();
+    const low = u.hp / u.maxHp < 0.3, t = perfNow() / 1000, r = (low ? 3.6 + Math.sin(t * 6) * 1.1 : 3.4) * BIGU;
     ctx.shadowColor = col; ctx.shadowBlur = ghost ? 2 : 9;
     if (ghost) { ctx.lineWidth = 1.2; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.stroke(); }
     else { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
     ctx.shadowBlur = 0;
-    ctx.fillStyle = ghost ? col : "#03060a"; ctx.globalAlpha = ghost ? 0.7 : 1; ctx.font = "bold 6px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.5);
+    ctx.fillStyle = ghost ? col : "#03060a"; ctx.globalAlpha = ghost ? 0.7 : 1; ctx.font = "bold " + (6 * BIGU).toFixed(1) + "px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.5);
     ctx.globalAlpha = 1;
   }
 

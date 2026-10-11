@@ -9,7 +9,6 @@ window.SCS = window.SCS || {};
   const SIZE = 3;
   const DEFAULT = [D.PRESETS["重剣の闘士"], D.PRESETS["鉄律の射手"], D.PRESETS["海千山千の暗殺者"]]; // 補完的な叩き台（壁/射手/遊撃）
   let squad = DEFAULT.map((c) => c.slice());
-  let active = 0;
   let hintsOn = true; // 各ダイヤルの効果説明をインライン表示（初見が各軸の意味を掴めるよう既定ON・トグルで消せる）
   const CPU_SQUADS = {
     "鉄壁分隊": ["専守要塞", "鉄律の射手", "毒手の刺客"],
@@ -258,7 +257,7 @@ window.SCS = window.SCS || {};
     fillSelect("sqCpu", Object.keys(CPU_SQUADS).concat(["ランダム"]), cpuName, (v) => { cpuName = v; renderCpuHint(); });
     fillSelect("sqForm", D.FORMATIONS.map((f) => f.name), form, (v) => { form = v; saveDesign(); renderFormHint(); });
     renderFormHint(); renderCpuHint();
-    renderTabs(); renderDials(); renderRoster();
+    renderAxHelp(); renderCols();
   }
   function renderCpuHint() { // 敵分隊の編成プレビュー（武器/HP）＝何と戦うか分かってカウンターを設計できる
     const el = $("sqCpuHint"); if (!el) return;
@@ -271,44 +270,42 @@ window.SCS = window.SCS || {};
     const el = $("sqFormHint"); if (!el) return;
     const f = D.FORMATIONS.find((x) => x.name === form); el.textContent = f ? f.flavor : "";
   }
-  function renderTabs() {
-    const t = $("sqTabs"); if (!t) return;
-    const role = SCS.ui.styleOf(SCS.derive.buildUnit("P", squad[active]));
-    t.innerHTML = `<span class="sqe-lead">設計中 ▸</span> <input id="sqNameIn" class="sq-name-in" maxlength="8" value="${names[active]}" title="この戦士に名前を付ける（8字まで）"> <span class="sqe-role">${role}</span><span class="sqe-career">${careerLine(active)}</span><span class="sqe-hint">上のカードを選んで切替</span>`;
-    const ni = $("sqNameIn");
-    if (ni) ni.onchange = () => { names[active] = sanitizeName(ni.value) || `戦士${active + 1}`; ni.value = names[active]; saveDesign(); renderRoster(); };
+  // ===== 分隊編成：3体を横並びの3列（キービジュ採用 [[分隊戦設計]]§14）=====
+  // 各列＝光る丸＋名札＋戦法ラベル／10軸×4つの言葉のボタン（選んだ1つが光る）／HP・射撃R・近接M・際立つ気質・綱引き。
+  // 3体を同時に見比べて直せる（旧：1体ずつ切り替えるプルダウン）。非公開ライン（24小パラ・重み）は出さない。
+  const ROLE_FRONT = { rush: 1, melee: 1 }, ROLE_BACK = { range: 1, kite: 1, turtle: 1 }; // 表示のみの数え分け（隊列のwinDistには使わない）
+  const AXHELP_KEY = "scs_sq_axhelp";
+  try { const h = localStorage.getItem(AXHELP_KEY); if (h != null) hintsOn = h === "1"; } catch (e) {}
+  const statusTag = (w) => (w.status ? `<em class="wtag ${w.status.type}">${D.STATUS_JP[w.status.type] || w.status.type}</em>` : "");
+  function renderAxHelp() {
+    const tog = $("sqAxTog"), body = $("sqAxHelp"); if (!tog || !body) return;
+    tog.textContent = hintsOn ? "▾ 10の軸の意味を隠す" : "▸ 10の軸がそれぞれ戦いの何に効くかを見る";
+    body.classList.toggle("hidden", !hintsOn);
+    body.innerHTML = hintsOn ? D.MACROS.map((m, i) => `<div class="sq-axh"><b>${m.name}</b><span>${SCS.ui.macroHint(i)}</span></div>`).join("") : "";
   }
-  function renderDials() {
-    $("sqBuildCard").innerHTML = SCS.ui.buildCardHtml(squad[active]);
-    const wrap = $("sqDials"); wrap.innerHTML = "";
-    const tog = document.createElement("button"); tog.type = "button"; tog.className = "dial-hints-tog";
-    tog.textContent = hintsOn ? "▾ 各ダイヤルの効果を隠す" : "▸ 各ダイヤルが戦いに効く内容を見る";
-    tog.onclick = () => { hintsOn = !hintsOn; renderDials(); };
-    wrap.appendChild(tog);
-    D.MACROS.forEach((mac, i) => {
-      const row = document.createElement("div"); row.className = "macro";
-      const label = document.createElement("label"); label.className = "macro-lbl"; label.textContent = mac.name; label.title = SCS.ui.macroHint(i);
-      const sel = document.createElement("select");
-      mac.poles.forEach((p, ci) => { const o = document.createElement("option"); o.value = ci; o.textContent = p; sel.appendChild(o); });
-      sel.value = squad[active][i];
-      sel.onchange = () => { squad[active][i] = parseInt(sel.value, 10); saveDesign(); renderDials(); renderRoster(); renderTabs(); };
-      row.appendChild(label); row.appendChild(sel);
-      if (hintsOn) { const h = document.createElement("div"); h.className = "macro-hint"; h.textContent = SCS.ui.macroHint(i); row.appendChild(h); }
-      wrap.appendChild(row);
-    });
+  function colHtml(i) {
+    const p = SCS.ui.cardParts(squad[i]), u = p.u;
+    const tk = SCS.squadTank ? SCS.squadTank(squad[i]) : null; // 盾資質（目立つ×持ちこたえる）を設計時に可視化
+    const shield = tk && tk.isTank ? `<span class="sqr-tank" title="火力を引きつける前衛の資質">盾</span>` : "";
+    const rows = D.MACROS.map((m, ax) => `<div class="sqd-row" data-ax="${ax}"><span class="sqd-lbl" title="${SCS.ui.macroHint(ax)}">${m.name}</span><div class="sqd-opts">` +
+      m.poles.map((pole, ci) => `<button type="button" class="sqd-opt${squad[i][ax] === ci ? " on" : ""}" data-i="${i}" data-ax="${ax}" data-c="${ci}">${pole}</button>`).join("") + `</div></div>`).join("");
+    const traits = p.traits.length ? p.traits.map((t) => `<span class="bc-trait">${t}</span>`).join("") : `<span class="bc-trait neutral">中庸（突出した気質なし）</span>`;
+    return `<div class="sq-col" data-i="${i}">` +
+      `<div class="sqc-head"><div class="sqc-orb"><span>${i + 1}</span></div>` +
+      `<input class="sqc-name" data-i="${i}" maxlength="8" value="${names[i]}" title="この戦士に名前を付ける（8字まで）">` +
+      `<div class="sqc-role">${p.tag}${shield}</div><div class="sqc-career">${careerLine(i)}</div></div>` +
+      `<div class="sqc-dials">${rows}</div>` +
+      `<div class="sqc-foot"><div class="sqc-hp"><span class="sqc-hpl">HP</span><div class="sqc-hpbar"><i style="width:${p.hpPct}%"></i></div><b>${u.maxHp}</b></div>` +
+      `<div class="sqc-w"><span class="sqc-wk" title="射撃">R</span><b>${u.ranged.name}</b>${statusTag(u.ranged)}</div>` +
+      `<div class="sqc-w"><span class="sqc-wk" title="近接">M</span><b>${u.melee.name}</b>${statusTag(u.melee)}</div>` +
+      `<div class="bc-traits">${traits}</div><div class="bc-trade">${p.trade}</div></div></div>`;
   }
-  function renderRoster() {
-    const r = $("sqRoster"); if (!r) return; r.innerHTML = "";
-    for (let i = 0; i < SIZE; i++) {
-      const u = SCS.derive.buildUnit("P-" + (i + 1), squad[i]), role = SCS.ui.styleOf(u);
-      const tk = SCS.squadTank ? SCS.squadTank(squad[i]) : null; // 盾資質（目立つ×持ちこたえる）を設計時に可視化
-      const shield = tk && tk.isTank ? `<span class="sqr-tank">盾</span>` : "";
-      const d = document.createElement("div"); d.className = "sq-rmini" + (i === active ? " active" : "");
-      d.title = "クリックで設計";
-      d.innerHTML = `<span class="sqr-n">${names[i]}${i === active ? ' <span class="sqr-edit">設計中</span>' : ''}</span><span class="sqr-role">${role}</span>${shield}<span class="sqr-w">${u.ranged.name}＋${u.melee.name}</span><span class="sqr-hp">HP${u.maxHp}</span><span class="sqr-career">${careerLine(i)}</span>`;
-      d.onclick = () => { active = i; renderTabs(); renderDials(); renderRoster(); };
-      r.appendChild(d);
-    }
+  function renderCols() { const el = $("sqCols"); if (!el) return; el.innerHTML = Array.from({ length: SIZE }, (_, i) => colHtml(i)).join(""); renderRoleBal(); }
+  function renderRoleBal() { // [[分隊戦設計]]§7「役割バランス表示（前衛/後衛/万能の構成を戦法ラベルで）」
+    const el = $("sqRoleBal"); if (!el) return;
+    let f = 0, b = 0, a = 0;
+    for (const ch of squad) { const k = SCS.ui.styleKey(SCS.derive.buildUnit("U", ch)); if (ROLE_FRONT[k]) f++; else if (ROLE_BACK[k]) b++; else a++; }
+    el.innerHTML = `<span class="srb-lbl">役割バランス</span><span class="srb-n front">前衛 <b>${f}</b></span><span class="srb-n back">後衛 <b>${b}</b></span><span class="srb-n all">万能 <b>${a}</b></span>`;
   }
 
   function randomCpu(seed) {
@@ -419,10 +416,19 @@ window.SCS = window.SCS || {};
   function render() {
     if (!battle) return;
     if (SCS.mini) SCS.mini.syncSquad(battle, "miniSquad");
-    $("sqTurn").textContent = `TURN ${battle.turn}`;
+    $("sqTurn").textContent = `ターン ${battle.turn}`;
     renderHud();
   }
   function renderHud() {
+    // 右パネル上段：味方チーム／敵チームの合計HP（キービジュ GPT 2 採用）
+    const th = $("sqTeamHp");
+    if (th) {
+      const bar = (lbl, cls, t) => {
+        const h = t.reduce((s, u) => s + Math.max(0, u.hp), 0), m = t.reduce((s, u) => s + u.maxHp, 0), f = m ? Math.round((h / m) * 100) : 0, alive = t.filter((u) => u.alive).length;
+        return `<div class="stp ${cls}"><div class="stp-top"><span class="stp-lbl">${lbl}</span><span class="stp-num">生存 ${alive}/${t.length}　HP ${h}/${m}</span></div><div class="stp-bar"><i style="width:${f}%"></i></div></div>`;
+      };
+      th.innerHTML = bar("味方チーム", "plr", battle.teams.P) + bar("敵チーム", "cpu", battle.teams.C);
+    }
     const teamHtml = (team, cls) => {
       const rows = team.map((u) => { const f = Math.max(0, Math.round((u.hp / u.maxHp) * 100)); const lbl = u.alive ? (u.label || "") : "—"; return `<div class="sqh-u ${u.alive ? "" : "down"}"><span class="sqh-n">${u.name}</span><div class="sqh-bar"><i style="width:${f}%"></i></div><span class="sqh-hp">${Math.max(0, u.hp)}</span><span class="sqh-lbl">${lbl}</span></div>`; }).join("");
       return `<div class="sqh-team ${cls}">${rows}</div>`;
@@ -444,6 +450,7 @@ window.SCS = window.SCS || {};
       if (isDemo) { append(">> デモ終了 — 次はあなたの分隊を設計する番だ（名前も付けられる）。", "arena"); isDemo = false; }
       else { recordCareer(); recordCampResult(); recordChalResult(); }
       $("sqParamsWrap").classList.remove("hidden"); renderAnalysis();
+      setTimeout(() => { const w = $("sqParamsWrap"); if (w && w.scrollIntoView) w.scrollIntoView({ behavior: "smooth", block: "start" }); }, 450); // 決着→勝敗バナーへ
     }
     return r;
   }
@@ -466,21 +473,31 @@ window.SCS = window.SCS || {};
   function stopAuto() { if (autoT) { clearTimeout(autoT); autoT = null; } const b = $("sqAuto"); if (b) b.textContent = "▶ 自動実行"; }
   function skipToEnd() { stopAuto(); let g = 0; while (battle && !battle.over && g < 200) { nextStep(); g++; } }
 
+  // 決着後の分析（キービジュ GPT 4 採用 [[分隊戦設計]]§14）：大きな勝敗バナー＋総評／1体1枚のカード／戦評・次の方向性（§13のディープリンク）／設計を直す・再戦
   function renderAnalysis() {
     if (!battle) return;
-    const a = battle.getAnalysis();
-    const col = (s, label, isP) => {
-      const badge = a.over ? (a.result.type === "draw" ? `<span class="abadge draw">DRAW</span>` : (a.result.winner === (isP ? "PLR" : "CPU") ? `<span class="abadge win">WIN</span>` : `<span class="abadge lose">LOSE</span>`)) : "";
-      let h = `<div class="acol"><h4>${label} ${badge}</h4>`;
-      if (s.verdict) h += `<div class="averdict">${s.verdict}</div>`;
-      h += `<div class="aweap">与ダメ計 ${s.dealt}／撃破 ${s.kills}／生存 ${s.survivors}/${s.cards.length}</div><table class="atab">`;
-      for (const c of s.cards) { const tags = [c.counters ? "反撃" + c.counters : "", c.grabs ? "投げ" + c.grabs : "", c.wasFlanked ? "被側背" + c.wasFlanked : ""].filter(Boolean).join("・"); h += `<tr><td>${c.name}<span class="sqc-role">${c.role}</span></td><td>${c.alive ? "生存" : "T" + c.downTurn + "脱落"}・与${c.dealt}/被${c.taken}${c.kills ? "・撃破" + c.kills : ""}${tags ? "・" + tags : ""}</td></tr>`; }
-      h += `</table>`;
-      if (s.notes.length) h += `<div class="anotes"><b>戦評</b><ul>${s.notes.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
-      if (s.advice && s.advice.length) h += `<div class="aadvice"><b>次の方向性</b><ul>${s.advice.map((n) => `<li class="adv-link" title="クリックで設計画面へ（該当ダイヤルを強調）">${n}</li>`).join("")}</ul></div>`;
-      return h + `</div>`;
+    const a = battle.getAnalysis(), P = a.plr, C = a.cpu;
+    const res = !a.over ? "pending" : a.result.type === "draw" ? "draw" : a.result.winner === "PLR" ? "win" : "lose";
+    const banner = { win: "勝利", lose: "敗北", draw: "引き分け", pending: "途中経過" }[res];
+    const card = (c, i, side) => {
+      const tags = [c.flanks ? "側背" + c.flanks : "", c.counters ? "反撃" + c.counters : "", c.grabs ? "投げ" + c.grabs : "", c.ults ? "必殺" + c.ults : "", c.wasFlanked ? "被側背" + c.wasFlanked : ""].filter(Boolean).join("・");
+      return `<div class="sqa-card ${side}${c.alive ? "" : " down"}"><div class="sqa-chead"><div class="sqa-orb"><span>${i + 1}</span></div><div class="sqa-who"><div class="sqa-nm">${c.name}</div><div class="sqa-role">${c.role}</div></div><div class="sqa-st">${c.alive ? "生存" : "T" + c.downTurn + " 脱落"}</div></div>` +
+        `<div class="sqa-sub">戦いぶり</div><table class="sqa-tab"><tr><td>与ダメージ</td><td>${c.dealt}</td></tr><tr><td>被ダメージ</td><td>${c.taken}</td></tr><tr><td>撃破</td><td>${c.kills}</td></tr><tr><td>命中率</td><td>${c.hitRate}%</td></tr></table>` +
+        (tags ? `<div class="sqa-tags">${tags}</div>` : "") + `<div class="sqa-w">${c.weapon}</div></div>`;
     };
-    $("sqParams").innerHTML = `<div class="ameta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン</div><div class="acols">${col(a.plr, "あなたの分隊", true)}${col(a.cpu, "敵分隊", false)}</div><p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。総評と「次の方向性」を手がかりに、人格のダイヤルを回して再設計しよう。</p>`;
+    const notes = (s) => (s.notes.length ? `<b>戦評</b><ul>${s.notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : "");
+    const advice = (s) => (s.advice && s.advice.length ? `<b>次の方向性</b><ul>${s.advice.map((n) => `<li class="adv-link" title="クリックで設計画面へ（該当ダイヤルを強調）">${n}</li>`).join("")}</ul>` : "");
+    const eBadge = res === "pending" ? "" : res === "draw" ? `<span class="abadge draw">DRAW</span>` : res === "lose" ? `<span class="abadge win">WIN</span>` : `<span class="abadge lose">LOSE</span>`;
+    $("sqParams").innerHTML =
+      `<div class="sqa-banner ${res}"><span>${banner}</span></div>` +
+      (P.verdict ? `<div class="sqa-verdict">${P.verdict}</div>` : "") +
+      `<div class="sqa-meta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン　｜　与ダメ計 ${P.dealt}／撃破 ${P.kills}／生存 ${P.survivors}/${P.cards.length}</div>` +
+      `<div class="sqa-cards">${P.cards.map((c, i) => card(c, i, "plr")).join("")}</div>` +
+      `<div class="sqa-lower"><div class="sqa-box anotes">${notes(P)}</div><div class="sqa-box aadvice">${advice(P)}</div></div>` +
+      `<details class="sqa-enemy"><summary>敵分隊 ${eBadge}　${C.verdict || ""}</summary><div class="sqa-cards small">${C.cards.map((c, i) => card(c, i, "cpu")).join("")}</div>${C.notes.length ? `<div class="sqa-box anotes">${notes(C)}</div>` : ""}</details>` +
+      `<div class="sqa-actions"><button id="sqaBack" class="btn ghost" type="button">設計を直す</button>` +
+      (playMode !== "chal" ? `<button id="sqaAgain" class="btn primary" type="button" title="同じ設計・同じ相手で、乱数だけ変えてもう一戦">再戦（別の展開）</button>` : "") + `</div>` +
+      `<p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。総評と「次の方向性」を手がかりに、人格のダイヤルを回して再設計しよう。</p>`;
   }
 
   function backToDesign() { stopAuto(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); if (playMode === "camp") renderCampaign(); if (playMode === "chal") renderChal(); }
@@ -494,7 +511,7 @@ window.SCS = window.SCS || {};
       let g = 0; while (!b.over && g < 60) { b.step(); g++; }
       const win = b.result && b.result.winner === "PLR";
       wrap.innerHTML = `<div class="predict-line"><b>この設計は${win ? "解ける" : "敗れる"}</b>（${g}ターン・vs 本日の挑戦）</div><div class="predict-sub">本日の一戦は敵も乱数も固定＝設計だけが変数。</div>`;
-      wrap.classList.remove("hidden"); return;
+      wrap.classList.remove("hidden", "stale"); return;
     }
     const N = 20; let w = 0, l = 0, d = 0, tsum = 0;
     const st = playMode === "camp" ? CAMP[campSel] : null;
@@ -512,16 +529,17 @@ window.SCS = window.SCS || {};
     const rate = Math.round((w / N) * 100);
     const vs = st ? `vs ${CAMP[campSel].name}` : lo ? `vs ${lo.name}（次の相手）` : `vs ${cpuName}`;
     wrap.innerHTML = `<div class="predict-line"><b>推定勝率 ${rate}%</b>（${w}勝${l}敗${d}分・平均${(tsum / N).toFixed(1)}ターン・${vs}）</div><div class="predict-sub">固定20戦の決定論推定。設計を変えて数字がどう動くか試そう。</div>`;
-    wrap.classList.remove("hidden");
+    wrap.classList.remove("hidden", "stale");
   }
 
   // ===== 分析→設計ディープリンク：「次の方向性」の〈大パラ名〉を該当ダイヤルへ（クリック→設計画面＋強調） =====
   const AXIS_ALIASES = [["闘争心", "攻め志向", "慎重"], ["リスク選好", "リスク"], ["冷静さ", "沈着"], ["忍耐", "待ち"], ["規律"], ["順応性", "順応", "観察"], ["誇り", "騎士道"], ["非情さ", "非情"], ["自信"], ["好奇心"]];
   function axesInText(t) { const out = []; AXIS_ALIASES.forEach((names, i) => { if (names.some((n) => t.includes("〈" + n) || t.includes(n + "〉") || t.includes("〈" + n + "（"))) out.push(i); }); return out; }
-  function flashDials(axes) {
-    const wrap = $("sqDials"); if (!wrap) return;
-    axes.forEach((i) => { const row = wrap.children[i + 1]; if (row) { row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 3400); } });
-    const first = wrap.children[(axes[0] || 0) + 1]; if (first && first.scrollIntoView) first.scrollIntoView({ behavior: "smooth", block: "center" });
+  function flashDials(axes) { // 3列すべての該当軸の行を光らせる（どの戦士を直すかはプレイヤーが決める）
+    const cols = $("sqCols"); if (!cols) return;
+    let first = null;
+    axes.forEach((ax) => cols.querySelectorAll(`.sqd-row[data-ax="${ax}"]`).forEach((row) => { if (!first) first = row; row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 3400); }));
+    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   SCS.squad = {
@@ -536,7 +554,24 @@ window.SCS = window.SCS || {};
     { const xb = $("sqModeChal"); if (xb) xb.addEventListener("click", () => setPlayMode("chal")); }
     { const rb = $("sqRecords"); if (rb) rb.addEventListener("click", () => { const p = $("sqRecordsPanel"); if (!p) return; const show = p.classList.contains("hidden"); p.classList.toggle("hidden", !show); if (show) renderRecords(); }); }
     { const pb = $("sqPredict"); if (pb) pb.addEventListener("click", estimate); }
-    { const pp = $("sqParams"); if (pp) pp.addEventListener("click", (e) => { const li = e.target.closest ? e.target.closest("li.adv-link") : null; if (!li) return; const axes = axesInText(li.textContent || ""); backToDesign(); if (axes.length) flashDials(axes); }); }
+    { const pp = $("sqParams"); if (pp) pp.addEventListener("click", (e) => {
+      const id = e.target && e.target.id;
+      if (id === "sqaBack") { backToDesign(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+      if (id === "sqaAgain") { sortie(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+      const li = e.target.closest ? e.target.closest("li.adv-link") : null; if (!li) return; const axes = axesInText(li.textContent || ""); backToDesign(); if (axes.length) flashDials(axes);
+    }); }
+    { const cols = $("sqCols"); if (cols) {
+      cols.addEventListener("click", (e) => { // 4つの言葉のボタン：押した言葉を選ぶ→その列だけ描き直す
+        const b = e.target.closest ? e.target.closest(".sqd-opt") : null; if (!b) return;
+        const i = +b.dataset.i, ax = +b.dataset.ax, c = +b.dataset.c; if (squad[i][ax] === c) return;
+        squad[i][ax] = c; saveDesign();
+        const col = cols.children[i]; if (col) col.outerHTML = colHtml(i);
+        renderRoleBal();
+        const pw = $("sqPredictWrap"); if (pw && !pw.classList.contains("hidden")) pw.classList.add("stale");
+      });
+      cols.addEventListener("change", (e) => { const t = e.target; if (!t || !t.classList || !t.classList.contains("sqc-name")) return; const i = +t.dataset.i; names[i] = sanitizeName(t.value) || `戦士${i + 1}`; t.value = names[i]; saveDesign(); });
+    } }
+    { const at = $("sqAxTog"); if (at) at.addEventListener("click", () => { hintsOn = !hintsOn; try { localStorage.setItem(AXHELP_KEY, hintsOn ? "1" : "0"); } catch (e) {} renderAxHelp(); }); }
     { const cc = $("sqCodeCopy"); if (cc) cc.addEventListener("click", () => copyText(encodeSquad(squad, form), cc)); }
     { const cl = $("sqCodeLoad"); if (cl) cl.addEventListener("click", () => { const code = prompt("分隊コードを貼り付け（S1…）"); if (!code) return; const d = decodeSquad(code); if (!d) { cl.textContent = "コードが不正"; setTimeout(() => (cl.textContent = "コードを読み込む"), 1600); return; } squad = d.squad.map((c) => c.slice()); form = d.form; saveDesign(); buildDesign(); cl.textContent = "読み込んだ"; setTimeout(() => (cl.textContent = "コードを読み込む"), 1400); }); }
     { const sb = $("sqShare"); if (sb) sb.addEventListener("click", () => { const url = buildShareURL(); if (url) copyText(url, sb, "URLをコピーした"); }); }
