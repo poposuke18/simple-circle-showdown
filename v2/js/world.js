@@ -1,13 +1,19 @@
 /* v2/js/world.js — v2 の世界の定義（Obsidian [[v2ゲーム設計]]）。
  * 戦場「遺跡の円形広場」（地図の絵に合わせた当たり判定）・駒の紋章・武器アイコン・相手（元のゲームの分隊戦キャンペーンの部隊）。
- * エンジン（squad.js / data.js）は書き換えない。戦場はここで DATA.ARENAS に足すだけ。 */
+ * data.js は書き換えない（戦場・地形の種類はここで DATA に足す）。通れない地形は squad.js が nav:true の戦場だけで扱う（[[分隊戦設計]]§16）。 */
 window.SCS2 = window.SCS2 || {};
 (function () {
   "use strict";
   const D = SCS.DATA;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  // ===== 戦場（160×90・1単位＝12px）。proto/arena.js と同じ当たり判定 =====
+  // ===== 地形の種類を足す（[[v2ゲーム設計]] v2.terrain）：通れないが見通せる。squad.js は戦場に nav:true がある時だけ使う =====
+  Object.assign(D.TERRAIN, {
+    lavapit: { name: "溶岩の谷", def: 0, avoid: 0, move: 1, aim: 0, block: true },
+    deepwater: { name: "深い水", def: 0, avoid: 0, move: 1, aim: 0, block: true },
+    thicket: { name: "密林", def: 0, avoid: 0, move: 1, aim: 0, block: true },
+  });
+  // ===== 戦場（160×90・1単位＝12px）。遮蔽物は proto/arena.js と同じ =====
   const o = (x, y, w, h) => ({ x, y, w, h }), t = (x, y, w, h, k) => ({ x, y, w, h, t: k });
   const PLAZA = {
     key: "plaza", name: "遺跡の円形広場", flavor: "川と溶岩に挟まれた古い広場", w: 160, h: 90, base: "plains",
@@ -22,12 +28,14 @@ window.SCS2 = window.SCS2 || {};
       o(41, 65.5, 18, 3.5), o(42, 66, 3.5, 18), o(56.5, 66, 3, 13), o(42, 80.5, 15.5, 3.5),
       o(67.5, 68, 2, 6), o(67.5, 72, 12.5, 3),
     ],
+    nav: true,
     terrain: [
-      t(51, 31, 22, 22, "highground"),
-      t(9, 0, 16, 38.5, "swamp"), t(9, 46, 16, 44, "swamp"),
-      t(129.5, 0, 23.5, 37.5, "lava"), t(129.5, 46, 23.5, 44, "lava"),
-      t(0, 0, 9, 90, "forest"), t(25, 0, 16, 12, "forest"), t(58, 0, 18, 8, "forest"), t(25, 68, 16, 22, "forest"),
-      t(58, 80, 42, 10, "forest"), t(119, 0, 10.5, 30, "forest"), t(119, 50, 10.5, 40, "forest"), t(153, 0, 7, 90, "forest"),
+      t(9.5, 0, 15, 37.5, "deepwater"), t(9.5, 46.5, 15, 43.5, "deepwater"),       // 左の川（滝あり・橋 y37.5〜46.5 だけ渡れる）
+      t(130, 0, 25, 37.5, "lavapit"), t(130, 46.5, 25, 43.5, "lavapit"),          // 右の溶岩（橋 y37.5〜46.5 だけ渡れる）
+      t(51, 31, 22, 22, "highground"),                                             // 中央の円盤
+      t(0, 0, 9.5, 90, "forest"), t(155, 0, 5, 90, "forest"),                      // 川・溶岩の向こうの密林（橋から入れる・遅い）
+      t(25, 0, 16, 12, "forest"), t(58, 0, 18, 8, "forest"), t(25, 68, 16, 22, "forest"),
+      t(58, 80, 42, 10, "forest"), t(119, 0, 11, 30, "forest"), t(119, 50, 11, 40, "forest"),
     ],
     start: { p: { x: 50, y: 45 }, c: { x: 110, y: 45 } },                     // proto は 36/124。3対3で時間切れ 18.5%→12.5%（元のゲームの市街の廃墟と同じ水準・2026-10-11 実測）
     map: "assets/map_plaza.jpg", mini: "assets/map_plaza_mini.jpg",
@@ -44,7 +52,8 @@ window.SCS2 = window.SCS2 || {};
       o(110.5, 25.5, 2, 11), o(115.5, 24.5, 6, 2.5), o(110.5, 36, 8, 2.5), o(122.5, 27, 2.5, 12), o(94, 27, 5, 4.5), o(92.5, 41, 5.5, 5),
       o(101, 50.5, 6.5, 2), o(101, 50.5, 2, 8.5), o(106, 51.5, 2, 8), o(108.5, 49, 6, 6), o(122, 48, 3, 7), o(119.5, 38.5, 6, 3), o(117, 62, 11, 10),
     ],
-    terrain: [t(39, 0, 50, 7.5, "lava"), t(39, 15, 50, 15.5, "lava"), t(39, 38.5, 50, 14.5, "lava"), t(39, 62, 50, 10, "lava")],
+    nav: true,
+    terrain: [t(37.5, 0, 53, 7.5, "lavapit"), t(37.5, 15, 53, 15.5, "lavapit"), t(37.5, 38.5, 53, 14.5, "lavapit"), t(37.5, 62, 53, 10, "lavapit")], // 溶岩の谷（3本の橋だけ渡れる）
     start: { p: { x: 28, y: 36 }, c: { x: 100, y: 36 } },
     map: "assets/map_lava.jpg", mini: "assets/map_lava_mini.jpg",
   };
@@ -58,11 +67,14 @@ window.SCS2 = window.SCS2 || {};
       o(22, 53, 10, 16), o(40, 57, 6, 15), o(50.5, 68.5, 13, 6),
       o(103.5, 48.5, 4, 10), o(106, 56, 4, 8), o(100, 64, 9, 6), o(92.3, 63, 3, 7), o(82, 55.5, 4, 4),
     ],
+    nav: true,
     terrain: [
-      t(52, 25, 36, 30, "swamp"), t(57, 22, 26, 34, "swamp"),
+      t(0, 0, 24, 33, "thicket"), t(0, 42, 22, 39, "thicket"), t(22, 71, 28, 10, "thicket"), t(24, 0, 10, 4, "thicket"),   // 密林の木々（通れない）
+      t(120, 0, 24, 34, "thicket"), t(124, 46, 20, 35, "thicket"), t(66, 76, 46, 5, "thicket"),
+      t(52, 25, 36, 30, "swamp"), t(57, 22, 26, 34, "swamp"),                       // 沼（浅い・足が遅い）
+      t(108, 8, 20, 22, "rubble"), t(18, 50, 22, 22, "rubble"),                     // 大樹の根（足が遅い・身を守れる）
       t(33, 28.5, 11, 9.5, "forest"), t(94.5, 15, 11, 8.5, "forest"), t(110, 36, 14, 10, "forest"), t(52, 48, 9, 7.5, "forest"), t(28, 40, 7, 5.5, "forest"), t(112, 48, 12, 12, "forest"),
-      t(0, 0, 24, 33, "forest"), t(0, 42, 22, 39, "forest"), t(22, 70, 30, 11, "forest"), t(24, 0, 10, 6, "forest"), t(62, 0, 26, 5, "forest"),
-      t(120, 0, 24, 34, "forest"), t(118, 46, 26, 35, "forest"), t(64, 74, 48, 7, "forest"),
+      t(62, 0, 26, 5, "forest"), t(118, 46, 6, 35, "forest"), t(50, 71, 16, 10, "forest"),
     ],
     start: { p: { x: 24, y: 37 }, c: { x: 120, y: 40 } },
     map: "assets/map_forest.jpg", mini: "assets/map_forest_mini.jpg",

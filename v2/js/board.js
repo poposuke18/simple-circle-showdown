@@ -21,7 +21,7 @@ window.SCS2 = window.SCS2 || {};
     const m = img(st.arena.map);
     if (m) ctx.drawImage(m, 0, 0, W, H); else { ctx.fillStyle = "#1c2a1c"; ctx.fillRect(0, 0, W, H); }
     st.arena.terrain.forEach((z, i) => {                                                        // 溶岩の揺らぎ
-      if (z.t !== "lava") return;
+      if (z.t !== "lava" && z.t !== "lavapit") return;
       ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(255,120,30,${0.05 + 0.05 * Math.sin(st.clock / 520 + i * 1.7)})`;
       ctx.fillRect(z.x * PX, z.y * PX, z.w * PX, z.h * PX); ctx.globalCompositeOperation = "source-over";
     });

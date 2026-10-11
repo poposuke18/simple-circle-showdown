@@ -119,8 +119,74 @@ window.SCS = window.SCS || {};
     const cx = (x) => clamp(x, 0, field.w), cy = (y) => clamp(y, 0, field.h);
     function pushOutObstacle(x, y) {
       for (const o of obstacles) { if (o.hp <= 0) continue; if (x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) { const dl = x - o.x, dr = o.x + o.w - x, dt = y - o.y, db = o.y + o.h - y, m = Math.min(dl, dr, dt, db); if (m === dl) x = o.x - 0.02; else if (m === dr) x = o.x + o.w + 0.02; else if (m === dt) y = o.y - 0.02; else y = o.y + o.h + 0.02; } }
+      if (NAV) { const q = pushOutBlocks(x, y); x = q.x; y = q.y; }
       return { x: cx(x), y: cy(y) };
     }
+    // ===== 通れない地形と回り道（[[分隊戦設計]]§16・戦場データに nav:true がある時だけ。旧来の戦場は以下を一切通らない）=====
+    const NAV = !!arena.nav;
+    const blocks = NAV ? arena.terrain.filter((z) => T[z.t] && T[z.t].block) : [];
+    const solidRects = () => blocks.concat(obstacles.filter((o) => o.hp > 0));
+    const insideAny = (x, y) => solidRects().some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
+    function pushOutBlocks(x, y) {                                                    // 通れない地形・遮蔽物から一番近い「空いている」辺へ（地図の端に接した辺へは出さない）
+      for (let it = 0; it < 4; it++) {
+        const r = solidRects().find((q) => x > q.x && x < q.x + q.w && y > q.y && y < q.y + q.h); if (!r) return { x, y };
+        const cand = [];
+        if (r.x > 0.01) cand.push([x - r.x, r.x - 0.05, y]);
+        if (r.x + r.w < field.w - 0.01) cand.push([r.x + r.w - x, r.x + r.w + 0.05, y]);
+        if (r.y > 0.01) cand.push([y - r.y, x, r.y - 0.05]);
+        if (r.y + r.h < field.h - 0.01) cand.push([r.y + r.h - y, x, r.y + r.h + 0.05]);
+        if (!cand.length) break;
+        cand.sort((a, b) => a[0] - b[0]);
+        const free = cand.find((c) => !insideAny(c[1], c[2]));                       // 隣の壁へ押し込まない（行ったり来たりを防ぐ）
+        if (free) return { x: free[1], y: free[2] };
+        x = cand[0][1]; y = cand[0][2];
+      }
+      if (!insideAny(x, y)) return { x, y };
+      let best = null, bd = Infinity;                                                 // それでも埋まる時は、一番近い空いた格子の中心へ
+      for (let c = 0; c < GW * GH; c++) { if (navBlocked[c]) continue; const p = cellPt(c), d = Math.hypot(p.x - x, p.y - y); if (d < bd) { bd = d; best = p; } }
+      return best || { x, y };
+    }
+    const NC = 2, GW = Math.ceil(field.w / NC), GH = Math.ceil(field.h / NC);
+    const navBlocked = NAV ? new Uint8Array(GW * GH) : null;
+    if (NAV) {
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+        const px = (i + 0.5) * NC, py = (j + 0.5) * NC;
+        if (blocks.concat(obstacles).some((r) => px > r.x - 0.8 && px < r.x + r.w + 0.8 && py > r.y - 0.8 && py < r.y + r.h + 0.8)) navBlocked[j * GW + i] = 1;
+      }
+    }
+    const moveBlocked = (a, b) => blocks.some((r) => segIntersectsRect(a, b, r)) || obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
+    const cellOf = (p) => clamp(Math.floor(p.y / NC), 0, GH - 1) * GW + clamp(Math.floor(p.x / NC), 0, GW - 1);
+    const cellPt = (c) => ({ x: (c % GW + 0.5) * NC, y: (Math.floor(c / GW) + 0.5) * NC });
+    let navCache = new Map();                                                         // 目標の格子→距離場（ターンごとに作り直す）
+    function navField(goal) {
+      let g = cellOf(goal);
+      if (navBlocked[g]) { let best = -1, bd = Infinity; for (let c = 0; c < GW * GH; c++) { if (navBlocked[c]) continue; const p = cellPt(c), d = Math.hypot(p.x - goal.x, p.y - goal.y); if (d < bd) { bd = d; best = c; } } g = best; }
+      if (navCache.has(g)) return navCache.get(g);
+      const D2 = new Float32Array(GW * GH).fill(Infinity), q = [g]; D2[g] = 0;
+      for (let h = 0; h < q.length; h++) {
+        const c = q[h], ci = c % GW, cj = (c - ci) / GW;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+          if (!di && !dj) continue; const ni = ci + di, nj = cj + dj; if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue;
+          const n = nj * GW + ni; if (navBlocked[n]) continue;
+          if (di && dj && (navBlocked[cj * GW + ni] || navBlocked[nj * GW + ci])) continue;   // 角のすり抜けをしない
+          const nd = D2[c] + (di && dj ? 1.414 : 1); if (nd < D2[n]) { D2[n] = nd; q.push(n); }
+        }
+      }
+      navCache.set(g, D2); return D2;
+    }
+    function waypoint(from, to) {                                                     // 直線で行ける時はそのまま。切れている時は道沿いの見通せる一番遠い点
+      if (!NAV || !moveBlocked(from, to)) return to;
+      const F = navField(to); let c = cellOf(from), last = null;
+      if (F[c] === Infinity) { let bd = Infinity; for (let k = 0; k < GW * GH; k++) { if (F[k] === Infinity) continue; const p = cellPt(k), d = Math.hypot(p.x - from.x, p.y - from.y); if (d < bd) { bd = d; c = k; } } return cellPt(c); }
+      for (let s = 0; s < 80; s++) {
+        const ci = c % GW, cj = (c - ci) / GW; let nb = c;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ni = ci + di, nj = cj + dj; if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue; const n = nj * GW + ni; if (F[n] < F[nb]) nb = n; }
+        if (nb === c) break; c = nb;
+        const p = cellPt(c); if (!moveBlocked(from, p)) last = p; else if (last) break;
+      }
+      return last || cellPt(c);
+    }
+    function pathDist(from, to) { if (!NAV || !moveBlocked(from, to)) return dist(from, to); const F = navField(to), v = F[cellOf(from)]; return v === Infinity ? dist(from, to) : v * NC; }
     function terrainAt(p) { for (const z of arena.terrain) if (ptInRect(p, z)) return T[z.t]; return baseTerrain; }
     const terrainDmg = (p) => terrainAt(p).dmg || 0;
     const losClear = (a, b) => !obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
@@ -339,7 +405,8 @@ window.SCS = window.SCS || {};
     function applyMove(u, fp, move) {
       const st = stepLen(u, u), dx = fp.x - u.x, dy = fp.y - u.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       let nx = u.x, ny = u.y;
-      if (move === "ADVANCE") { const sp = u._closing ? 1.25 : 1; nx += ux * st * sp; ny += uy * st * sp; } // 突撃時は接近速度UP（被弾時間短縮）＝遠距離型を割る
+      if (move === "ADVANCE" && NAV) { const wp = waypoint(u, fp), wx = wp.x - u.x, wy = wp.y - u.y, wl = Math.hypot(wx, wy) || 1, sp = u._closing ? 1.25 : 1, k = Math.min(st * sp, wl); nx += (wx / wl) * k; ny += (wy / wl) * k; } // 回り道（§16）
+      else if (move === "ADVANCE") { const sp = u._closing ? 1.25 : 1; nx += ux * st * sp; ny += uy * st * sp; } // 突撃時は接近速度UP（被弾時間短縮）＝遠距離型を割る
       else if (move === "RETREAT") { nx -= ux * st; ny -= uy * st; }
       else if (move === "STRAFE_L") { nx += -uy * st; ny += ux * st; }
       else if (move === "STRAFE_R") { nx += uy * st; ny += -ux * st; }
@@ -516,7 +583,7 @@ window.SCS = window.SCS || {};
         let offense = expEx(u, tgt, np, fp, d2, los2);
         if (mv !== "HOLD" && los2 && atk.attack === "RANGED") offense *= u.ranged.moveAccuracy; // 移動射撃は命中が落ちる＝据え置いて撃つ価値を評価に反映
         const threat = threatAt(u, np);
-        const rangeFit = -(Math.abs(d2 - pref) / maxDist) * 22;
+        const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22; // 近接寄りは回り道の距離で（§16）
         const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
         const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
         const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * guardScale : 0; // 割り込み位置に近いほど良い（実距離）
@@ -662,7 +729,7 @@ window.SCS = window.SCS || {};
     // ===== 1ターン =====
     function step() {
       if (over) return { turn, lines: [], events: [], over, result };
-      turn++;
+      turn++; if (NAV) navCache = new Map();
       const lines = [], events = [], envLines = [];
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive });
       for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; }
@@ -690,7 +757,7 @@ window.SCS = window.SCS || {};
           const inMelee = d <= u.melee.reach && losClear(u, e);
           const rangedEngaging = u.ranged.effRange > u.melee.reach + 12 && d <= u.ranged.effRange && losClear(u, e) && (u.idleTurns || 0) < 3;
           if (inMelee || rangedEngaging) continue;
-          const dx = e.x - u.x, dy = e.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
+          const tp = NAV ? waypoint(u, e) : e, dx = tp.x - u.x, dy = tp.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
           const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
         }
       }

@@ -35,7 +35,9 @@ window.SCS2 = window.SCS2 || {};
         const wa = a.v.u.alive ? 1 : 0.2, wb = b.v.u.alive ? 1 : 0.2, s = wa + wb, push = minD - d, ux = dx / d, uy = dy / d;
         a.x -= ux * push * wa / s; a.y -= uy * push * wa / s; b.x += ux * push * wb / s; b.y += uy * push * wb / s;
       }
-      for (const p of pts) { p.v.tx = clamp(p.x, 3, FW - 3); p.v.ty = clamp(p.y, 3, FH - 3); if (snap) { p.v.x = p.v.fx = p.v.tx; p.v.y = p.v.fy = p.v.ty; } }
+      const solid = cfg.arena.terrain.filter((z) => (SCS.DATA.TERRAIN[z.t] || {}).block).concat(cfg.arena.obstacles), inside = (x, y) => solid.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
+      for (const p of pts) { if (inside(p.x, p.y)) { p.x = p.v.u.x; p.y = p.v.u.y; }                  // ずらした先が谷・壁の中なら、ずらさない
+        p.v.tx = clamp(p.x, 3, FW - 3); p.v.ty = clamp(p.y, 3, FH - 3); if (snap) { p.v.x = p.v.fx = p.v.tx; p.v.y = p.v.fy = p.v.ty; } }
     }
     function snapshot(res, died) {
       snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.target ? byU.get(v.u.target).id : null })),
