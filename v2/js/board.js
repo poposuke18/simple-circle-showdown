@@ -41,6 +41,7 @@ window.SCS2 = window.SCS2 || {};
   // ===== 天気（[[v2ゲーム設計]] v2.fx.spec）：濃霧＝流れる濃い霧／灼熱＝陽炎と照り返し =====
   function drawWeather(ctx, st) {
     const t = st.clock;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();                               // 天気は地図の中だけ（地図の外の余白にはかけない）
     if (st.mod === "濃霧") {
       ctx.fillStyle = "rgba(200,214,226,.20)"; ctx.fillRect(0, 0, W, H);
       for (let i = 0; i < 11; i++) {
@@ -63,6 +64,7 @@ window.SCS2 = window.SCS2 || {};
       }
       ctx.restore();
     }
+    ctx.restore();
   }
   function drawWeatherGround(ctx, st) {                                                       // 地面にかかる色（駒より下）：灼熱＝焼けた色と照り返し
     if (st.mod !== "灼熱") return; const t = st.clock;
@@ -340,19 +342,22 @@ window.SCS2 = window.SCS2 || {};
       if (!v.alive) { mctx.strokeStyle = "rgba(200,200,200,.7)"; mctx.lineWidth = 1.5; mctx.beginPath(); mctx.moveTo(x - 3, y - 3); mctx.lineTo(x + 3, y + 3); mctx.moveTo(x + 3, y - 3); mctx.lineTo(x - 3, y + 3); mctx.stroke(); continue; }
       mctx.fillStyle = palT(v.team === "P").dot; mctx.strokeStyle = "#fff"; mctx.lineWidth = 1.2; circ(mctx, x, y, 5); mctx.fill(); mctx.stroke();
     }
-    if (cam) { mctx.strokeStyle = "rgba(255,255,255,.9)"; mctx.lineWidth = 1.6; mctx.strokeRect((cam.x - W / 2 / cam.z) * k, (cam.y - H / 2 / cam.z) * k, (W / cam.z) * k, (H / cam.z) * k); }
+    if (cam) { const vw = cam.vw || W, vh = cam.vh || H; mctx.strokeStyle = "rgba(255,255,255,.9)"; mctx.lineWidth = 1.6; mctx.strokeRect((cam.x - vw / 2 / cam.z) * k, (cam.y - vh / 2 / cam.z) * k, (vw / cam.z) * k, (vh / cam.z) * k); }
   }
   // カメラ：生き残りが全員収まる範囲で寄る（topPad/botPad＝ロゴとパネルの分の余白）
   function camGoal(views, opt) {
     if (opt && opt.arena) usePX(opt.arena);
-    const al = views.filter((v) => v.alive); if (!al.length) return { x: W / 2, y: H / 2, z: 1 };
+    const vw = (opt && opt.vw) || W, vh = (opt && opt.vh) || H, own = !!(opt && opt.vw);        // own＝パネルの無い専用の枠（観戦）
+    const al = views.filter((v) => v.alive); if (!al.length) return { x: W / 2, y: H / 2, z: Math.max(vw / W, vh / H) };
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const v of al) { x0 = Math.min(x0, v.x * PX); x1 = Math.max(x1, v.x * PX); y0 = Math.min(y0, v.y * PX); y1 = Math.max(y1, v.y * PX); }
-    const padX = (opt && opt.padX) || 230, padY = (opt && opt.padY) || 470, zMax = (opt && opt.zMax) || 1.32;
-    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + ((opt && opt.dy) || 30), z: clamp(Math.min(W / (x1 - x0 + 2 * padX), H / (y1 - y0 + padY)), 1, zMax) };
+    const M = (opt && opt.margin) || 0;                                                         // 戦場の端の駒も切れないよう、地図の外を少し見せてよい幅
+    const padX = (opt && opt.padX) || (own ? 170 : 230), padY = (opt && opt.padY) || (own ? 300 : 470), zMax = (opt && opt.zMax) || 1.32, zMin = Math.max(vw / (W + 2 * M), vh / (H + 2 * M));
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + ((opt && opt.dy) || 30), z: clamp(Math.min(vw / (x1 - x0 + 2 * padX), vh / (y1 - y0 + padY)), zMin, Math.max(zMin, zMax)) };
   }
   function camStep(cam, goal, cf) {
-    cam.z += (goal.z - cam.z) * cf; const hw = W / 2 / cam.z, hh = H / 2 / cam.z;
-    cam.x = clamp(cam.x + (goal.x - cam.x) * cf, hw, W - hw); cam.y = clamp(cam.y + (goal.y - cam.y) * cf, hh, H - hh);
+    cam.z += (goal.z - cam.z) * cf; const hw = (cam.vw || W) / 2 / cam.z, hh = (cam.vh || H) / 2 / cam.z, M = cam.m || 0;
+    const fit = (v, h, L) => (h - M > L - h + M ? L / 2 : clamp(v, h - M, L - h + M));
+    cam.x = fit(cam.x + (goal.x - cam.x) * cf, hw, W); cam.y = fit(cam.y + (goal.y - cam.y) * cf, hh, H);
   }
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }

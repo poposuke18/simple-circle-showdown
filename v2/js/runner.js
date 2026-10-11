@@ -27,7 +27,7 @@ window.SCS2 = window.SCS2 || {};
     }
     const fx = [], pops = [], snaps = [], hist = [];
     let turnStart = 0, nextAt = 600, overAt = 0, kills = 0, focus = null, focusUntil = 0, focusLock = 0;
-    const cam = { x: W / 2, y: H / 2, z: 1.1 };
+    const cam = { x: W / 2, y: H / 2, z: 1.1, vw: cfg.vw || W, vh: cfg.vh || H, m: cfg.vw ? 160 : 0 };               // vw×vh＝戦場を映す枠の大きさ
 
     function sync(v) { const u = v.u; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; v.winDist = u.winDist; } // hidden＝敵にまだ見つかっていない
     function separate(snap) {
@@ -109,7 +109,7 @@ window.SCS2 = window.SCS2 || {};
         if (Math.hypot(v.x - px, v.y - py) > 0.02 && Math.hypot(v.tx - v.fx, v.ty - v.fy) > 2.5) v.trail.push({ x: v.x, y: v.y, t: clock });
         while (v.trail.length && clock - v.trail[0].t > 520) v.trail.shift();
       }
-      SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena }), clamp(dt * speed * 0.0022, 0, 1));
+      SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena, vw: cfg.vw, vh: cfg.vh, margin: cam.m }), clamp(dt * speed * 0.0022, 0, 1));
     }
     // 残りを一瞬で解く（「結果へ」）
     function finish(clock) { let n = 0; while (!battle.over && n++ < 200) doTurn(clock, true); if (!overAt) overAt = clock; }
@@ -121,6 +121,7 @@ window.SCS2 = window.SCS2 || {};
       for (const ls of hist) { const l = ls.find((x) => x.text.indexOf(">" + n + "</span>") >= 0 && x.cls !== "dim"); if (l) return strip(l.text); }
       return "";
     }
+    if (cfg.vw) SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena, vw: cfg.vw, vh: cfg.vh, margin: cam.m }), 1);   // 始めから全員が映る位置に
     return {
       battle, views, fx, pops, snaps, cam, tick, finish, whyOf, TURN, arena: cfg.arena,
       get focus() { return focus; }, setFocus(v, clock) { focus = v; focusLock = clock + 8 * TURN; },

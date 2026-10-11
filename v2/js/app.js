@@ -205,7 +205,8 @@
 
   // ===== 観戦 =====
   let run = null, sortieCfg = null, ended = false, endAt = 0, result = null;
-  const cvWatch = reg($("cvWatch"), W, H), cvMini = reg($("cvMini"), 276, 153);
+  const FW = 1420, FH = 1080;                                                                // 観戦の戦場の枠（左の列はパネル専用。戦場にパネルを重ねない）
+  const cvWatch = reg($("cvWatch"), FW, FH), cvMini = reg($("cvMini"), 436, 245);
   const newSeed = () => ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
   function sortie(sameSeed) {
     if (sortieCfg && sortieCfg.spec) return spectate(sameSeed);
@@ -216,7 +217,7 @@
     startRun(`VS ${r.name}`);
   }
   function startRun(vs) {
-    run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
+    sortieCfg.vw = FW; sortieCfg.vh = FH; run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
     $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = sortieCfg.arena.name;
     $("wEnd").classList.remove("show"); setPause(false);
     buildHud(); go("watch"); updWatch();
@@ -362,7 +363,7 @@
   function updWatch() {
     if (!run) return; const b = run.battle;
     $("cT").textContent = b.turn;
-    const v = run.focus; if (!v) return;
+    const v = run.focus || run.views.find((x) => x.team === "P" && x.alive) || run.views[0]; if (!v) return;   // 注目が決まるまでは青の先頭
     const fp = sortieCfg.pal[v.team]; $("fTk").className = "tk tk-lg" + (v.team === "C" ? " c" : ""); $("fTk").style.cssText = `--rim:${fp.rimA};--side:${fp.side};--glow:rgba(${fp.rgb},.45)`; $("fTk").querySelector("img").src = `assets/emblem/${v.emb}.png`;
     $("fName").textContent = v.name; $("fWord").textContent = v.words.join("・");
     $("fHp").style.width = (clamp(v.hp / v.maxHp, 0, 1) * 100).toFixed(1) + "%"; $("fHpT").textContent = `${Math.max(0, Math.round(v.hp))} / ${v.maxHp}`;
@@ -376,12 +377,13 @@
     if (run.battle.turn !== lastTurnShown || run.focus !== lastFocus) { if (run.focus !== lastFocus) $("fWhy").textContent = ""; lastTurnShown = run.battle.turn; lastFocus = run.focus; updWatch(); }
     if (run.battle.over && !ended) endBattle(false);
     if (ended && !paused && clock - endAt > 2600) showResult();
-    const o = cvWatch, c = o.ctx; Bd.view(c, o.s, W, H, run.cam.x, run.cam.y, run.cam.z);
+    const o = cvWatch, c = o.ctx; c.setTransform(o.s, 0, 0, o.s, 0, 0); c.fillStyle = "#050b14"; c.fillRect(0, 0, FW, FH);   // 地図の外（端に寄った時の余白）は暗い色
+    Bd.view(c, o.s, FW, FH, run.cam.x, run.cam.y, run.cam.z);
     Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     updHud();
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
-    const vg = c.createRadialGradient(W / 2, H / 2, H * 0.38, W / 2, H / 2, H * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.55)"); c.fillStyle = vg; c.fillRect(0, 0, W, H);
-    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: sortieCfg.arena, pal: sortieCfg.pal }, run.cam);
+    const vg = c.createRadialGradient(FW / 2, FH / 2, FH * 0.42, FW / 2, FH / 2, FH * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.45)"); c.fillStyle = vg; c.fillRect(0, 0, FW, FH);
+    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 436, 245, { views: run.views, arena: sortieCfg.arena, pal: sortieCfg.pal }, run.cam);
   }
   const bannerOf = (r) => (sortieCfg.spec ? (r === "d" ? "引き分け" : `${(r === "w" ? sortieCfg.rivalA : sortieCfg.rival).name} の勝ち`) : { w: "勝利", l: "敗北", d: "引き分け" }[r]);
   function outcome() { const r = run.battle.result || {}; return r.type === "draw" ? "d" : r.winner === "PLR" ? "w" : "l"; }
