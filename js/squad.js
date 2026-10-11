@@ -492,6 +492,23 @@ window.SCS = window.SCS || {};
       const fwd = u.team === "P" ? 1 : -1, SP = 14;
       return { x: cx(u.x + off.fx * SP * fwd * 0.5), y: cy(ay + off.fy * SP) };
     }
+    // ===== v2：戦いの間ずっと保とうとする隊形（[[分隊戦設計]]§17・FORM2 の時だけ）=====
+    // 隊形の位置＝味方の重心から、部隊の向き（見えている敵の重心、いなければ相手の陣の方）に合わせて回した相対位置
+    function teamFace(tm) {
+      const ks = []; for (const [e] of known[tm]) if (e.alive) ks.push(e);
+      if (ks.length) return cen(ks);
+      return tm === "P" ? { x: arena.start.c.x, y: arena.start.c.y } : { x: arena.start.p.x, y: arena.start.p.y };
+    }
+    function formSlot2(u) {
+      if (!u.form || u.form === "loose") return null;
+      const al = alliesOf(u).filter((a) => a.alive), n = al.length; if (n <= 1) return null;
+      const rank = al.slice().sort((p, q) => p.winDist - q.winDist).indexOf(u), off = formSlot(u.form, rank, n); if (!off) return null;
+      const g = cen(al), f = teamFace(u.team); let fx = f.x - g.x, fy = f.y - g.y; const l = Math.hypot(fx, fy) || 1; fx /= l; fy /= l;
+      const SP = 12;
+      return { x: cx(g.x + fx * off.fx * SP - fy * off.fy * SP), y: cy(g.y + fy * off.fx * SP + fx * off.fy * SP), g };
+    }
+    // 隊形を保つ力（性格）：規律・忍耐・協調で保ち、攻め急ぐほど崩す
+    const holdOf = (u) => clamp((0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3) * (1.15 - 0.6 * u.micros.A2), 0, 1.1);
 
     // ===== 必殺の打ち時（温存経済）：即撃ちでなく仕留め確/側背面/窮地でここぞと切る。死蔵防止に強制解放弁 =====
     function ultReady(u, tgt, pos, d2, los) {
@@ -548,6 +565,10 @@ window.SCS = window.SCS || {};
           const gx = (u.x + field.w / 2) / 2, gy = u.y;       // 鈍い索敵＝中央寄りへ漠然と
           sp = { x: gx + (ec.x - gx) * inst, y: gy + (ec.y - gy) * inst }; // 本能で敵重心へ寄せる（D1鋭いほど直行）
         }
+        if (FORM2) {                                                                    // 隊形を組んだまま索敵する（遅れた・出すぎた駒は、保つ力が強いほど隊形の位置へ戻る）
+          const sl = formSlot2(u);
+          if (sl) { const h = holdOf(u); if (h > 0.45 && dist(u, sl) > 10) sp = { x: sl.x, y: sl.y }; else { sp = { x: sp.x + (sl.x - sl.g.x) * h, y: sp.y + (sl.y - sl.g.y) * h }; } }
+        }
         if (Math.hypot(sp.x - u.x, sp.y - u.y) < 6) return { move: "HOLD", attack: "NONE", newPos: { x: u.x, y: u.y }, target: null, searchDir: sp }; // 索敵地点に到達＝その場で警戒
         const np = applyMove(u, sp, "ADVANCE");
         return { move: "ADVANCE", attack: "NONE", newPos: np, target: null, searchDir: sp };
@@ -575,15 +596,14 @@ window.SCS = window.SCS || {};
       const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
       // 隊形（緩いベースパターン）：作戦スロットへ弱く寄る。遂行力=規律B4+忍耐(mv3)+協調coop。自targetが交戦圏に近いほど戦闘優先で隊形を捨てる。
       let formSlotPos = null, formW = 0;
-      if (FORM2) u._formHeld = false;
-      if (u.form && u.form !== "loose") {
+      if (FORM2) { formSlotPos = formSlot2(u); if (formSlotPos) { const h = holdOf(u), reach = Math.max(u.melee.reach, u.ranged.effRange), urg = clamp(1 - (dist(u, fp) - reach) / 45, 0, 1); formW = h * FORM2_W * (1 - urg * (1 - h * 0.7)) * clamp(1 - Math.max(0, (u.idleTurns || 0) - 2) / 5, 0, 1); } } // 戦闘中も、保つ力が強い駒ほど隊形を捨てない。撃てないまま手が止まったら崩して動く
+      else if (u.form && u.form !== "loose") {
         formSlotPos = formSlotWorld(u);
         if (formSlotPos) {
           const holdAbility = clamp(0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3, 0, 1.1); // 一匹狼/気まぐれは守らない
           const reach = Math.max(u.melee.reach, u.ranged.effRange);
           const urgency = clamp(1 - (dist(u, fp) - reach) / 45, 0, 1);                          // 交戦圏に近いほど隊形より戦闘
-          formW = holdAbility * (1 - urgency) * (FORM2 ? FORM2_W : 0.10);                       // ★旧来はごく小さい緩い癖（0.10）。v2 は隊形が効く強さ（§17）
-          if (FORM2) u._formHeld = dist(u, formSlotPos) < 12;                                    // 表示用：隊形の位置にいるか
+          formW = holdAbility * (1 - urgency) * 0.10;                                            // ★ごく小さい＝接近フェーズに見える緩い癖。戦闘判断が常に上回る＝支配しない・罠にしない
         }
       }
       let best = null;
@@ -598,7 +618,7 @@ window.SCS = window.SCS || {};
         const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
         const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * guardScale : 0; // 割り込み位置に近いほど良い（実距離）
         const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0; // 撤退時＝味方へ寄る再集結
-        const formTerm = formSlotPos ? -(dist(np, formSlotPos) / maxDist) * 22 * formW : 0;     // 隊形スロットへ緩く寄る
+        const formTerm = formSlotPos ? (FORM2 ? -dist(np, formSlotPos) * formW : -(dist(np, formSlotPos) / maxDist) * 22 * formW) : 0; // 隊形スロットへ寄る（v2 は距離そのもので効かせる）
         const v = offense * wAtk - threat * wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm + (mv === "HOLD" ? 0.2 : 0);
         if (!best || v > best.v) best = { v, move: mv, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2 };
       }
@@ -756,6 +776,7 @@ window.SCS = window.SCS || {};
       for (const u of ALL) if (u.alive) decs.set(u, decide(u));
       // 3) 同時移動
       for (const u of ALL) if (u.alive) { const d = decs.get(u); u.x = d.newPos.x; u.y = d.newPos.y; }
+      if (FORM2) for (const u of ALL) { if (!u.alive) { u._formHeld = false; continue; } const sl = formSlot2(u); u._formHeld = !!sl && dist(u, sl) < 12; } // 表示用：隊形の位置にいるか
       // 3.5) アンチストール：膠着したら攻撃的な体だけ最寄り敵へ引き寄せる（専守・待ちは引かない→待ち戦はタイムアップ）
       if (noDmgTurns >= 3) {
         const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
