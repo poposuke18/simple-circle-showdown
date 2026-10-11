@@ -147,7 +147,8 @@
     $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
       <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm")).join("")}</div></div>`).join("");
     selectRival(rivalI, true);
-    $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}">${esc(f)}</span>`).join("");
+    const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
+    $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
     $("pMine").innerHTML = `<span class="lbl">あなたの部隊</span>` + St.data.squad.map((f) => tkHtml("P", f.emb, "tk-sm") + `<span class="nm">${esc(f.name)}</span>`).join("");
   }
   function selectRival(i, keepMod) {

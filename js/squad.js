@@ -93,7 +93,8 @@ window.SCS = window.SCS || {};
     return clamp(0.35 + 0.32 * Math.max(0, adapt) + 0.30 * Math.max(0, pride) - 0.25 * Math.max(0, -pride) + 0.20 * Math.max(0, disc) - 0.28 * Math.max(0, conf) - 0.22 * Math.max(0, belli), 0, 1);
   }
 
-  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP, namesC) {
+  SCS.makeSquadBattle = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP, namesC, opts) {
+    const FORM2 = !!(opts && opts.formation);                                      // v2：隊形が初期配置と動きに効く（[[分隊戦設計]]§17）。旧来の呼び出しは opts なし＝不変
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
     // 隊形（プレーヤーの作戦・既定=散開）。CPU側未指定はランダム（seed由来＝決定論）。
     const formKey = (name, salt) => { if (name && name !== "ランダム") { const f = D.FORMATIONS.find((x) => x.key === name || x.name === name); if (f) return f.key; } if (!name) return "loose"; return D.FORMATIONS[SCS.makeRNG((seed ^ salt) >>> 0).int(D.FORMATIONS.length)].key; };
@@ -124,6 +125,7 @@ window.SCS = window.SCS || {};
     }
     // ===== 通れない地形と回り道（[[分隊戦設計]]§16・戦場データに nav:true がある時だけ。旧来の戦場は以下を一切通らない）=====
     const NAV = !!arena.nav;
+    const FORM2_W = (opts && opts.formation) || 0;
     const blocks = NAV ? arena.terrain.filter((z) => T[z.t] && T[z.t].block) : [];
     const solidRects = () => blocks.concat(obstacles.filter((o) => o.hp > 0));
     const insideAny = (x, y) => solidRects().some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
@@ -284,6 +286,12 @@ window.SCS = window.SCS || {};
     for (const u of ALL) { u.winDist = winDistVsTeam(u, enemiesOf(u)); } // 敵全体に対する勝てる間合い＝ロール判定が編成順でブレない
     // 役割で前後に配置：近接寄り(winDist小)は前線へ・遠距離寄り(winDist大)は後方へ＝後衛(射手)が前衛に守られる編成が成立
     for (const u of ALL) { const fwd = clamp((42 - u.winDist) / 42, -1, 1) * 16; const q = pushOutObstacle(cx(u.x + (u.team === "P" ? fwd : -fwd)), u.y); u.y = q.y; u.x = q.x; }
+    if (FORM2) for (const team of [P, C]) {                                            // 隊形どおりに並べて始める（散開は今まで通り広く散る）
+      const fk = team[0] && team[0].form; if (!fk || fk === "loose") continue;
+      const left = team === P, sx = left ? arena.start.p.x : arena.start.c.x, sy = left ? arena.start.p.y : arena.start.c.y, fwd = left ? 1 : -1, n = team.length;
+      const ranked = team.slice().sort((a, b) => a.winDist - b.winDist);
+      ranked.forEach((u, rank) => { const off = formSlot(fk, rank, n); if (!off) return; const q = pushOutObstacle(cx(sx + off.fx * 12 * fwd), cy(sy + off.fy * 12)); u.x = q.x; u.y = q.y; });
+    }
 
     // ===== 索敵・視界（ビジョンコーン）[[索敵・視界システム設計]] =====
     //   各体に視界扇型（前方FOV・距離Range）＋隠密。敵がコーン+射線に入れば発見。観戦者は全可視・AIだけ発見済みに反応。
@@ -567,13 +575,15 @@ window.SCS = window.SCS || {};
       const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
       // 隊形（緩いベースパターン）：作戦スロットへ弱く寄る。遂行力=規律B4+忍耐(mv3)+協調coop。自targetが交戦圏に近いほど戦闘優先で隊形を捨てる。
       let formSlotPos = null, formW = 0;
+      if (FORM2) u._formHeld = false;
       if (u.form && u.form !== "loose") {
         formSlotPos = formSlotWorld(u);
         if (formSlotPos) {
           const holdAbility = clamp(0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3, 0, 1.1); // 一匹狼/気まぐれは守らない
           const reach = Math.max(u.melee.reach, u.ranged.effRange);
           const urgency = clamp(1 - (dist(u, fp) - reach) / 45, 0, 1);                          // 交戦圏に近いほど隊形より戦闘
-          formW = holdAbility * (1 - urgency) * 0.10;                                            // ★ごく小さい＝接近フェーズに見える緩い癖。戦闘判断が常に上回る＝支配しない・罠にしない
+          formW = holdAbility * (1 - urgency) * (FORM2 ? FORM2_W : 0.10);                       // ★旧来はごく小さい緩い癖（0.10）。v2 は隊形が効く強さ（§17）
+          if (FORM2) u._formHeld = dist(u, formSlotPos) < 12;                                    // 表示用：隊形の位置にいるか
         }
       }
       let best = null;

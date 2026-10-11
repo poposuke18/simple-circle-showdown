@@ -66,6 +66,24 @@ window.SCS2 = window.SCS2 || {};
     const gl = ctx.createRadialGradient(W * 0.82, -120, 0, W * 0.82, -120, 1100); gl.addColorStop(0, `rgba(255,240,190,${0.5 + 0.05 * Math.sin(t / 900)})`); gl.addColorStop(0.45, "rgba(255,210,140,.18)"); gl.addColorStop(1, "rgba(255,200,120,0)");
     ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
   }
+  // ===== 隊形：位置を保っている味方どうしを細い線で結ぶ（戦列＝横並び・楔＝先頭から両翼・円陣＝三角）=====
+  function drawFormation(ctx, st) {
+    for (const tm of ["P", "C"]) {
+      const us = st.views.filter((v) => v.team === tm && v.alive && v.formHeld); if (us.length < 2) continue;
+      const fk = us[0].form, P = tm === "P", edges = [];
+      if (fk === "line") { const s2 = us.slice().sort((a, b) => a.y - b.y); for (let i = 1; i < s2.length; i++) edges.push([s2[i - 1], s2[i]]); }
+      else if (fk === "wedge") { const s2 = us.slice().sort((a, b) => a.winDist - b.winDist); for (let i = 1; i < s2.length; i++) edges.push([s2[0], s2[i]]); }
+      else { for (let i = 0; i < us.length; i++) for (let j = i + 1; j < us.length; j++) edges.push([us[i], us[j]]); }
+      ctx.save(); ctx.lineCap = "round"; ctx.shadowColor = teamCol(P, 0.9); ctx.shadowBlur = 10;
+      for (const [a, b] of edges) {
+        const ax = a.x * PX, ay = a.y * PX, bx = b.x * PX, by = b.y * PX, d = Math.hypot(bx - ax, by - ay); if (d < R * 2.2) continue;
+        const ux = (bx - ax) / d, uy = (by - ay) / d;
+        ctx.strokeStyle = teamCol(P, 0.38); ctx.lineWidth = 5; ctx.setLineDash([2, 12]); ctx.lineDashOffset = -st.clock / 80;
+        ctx.beginPath(); ctx.moveTo(ax + ux * R * 1.1, ay + uy * R * 1.1); ctx.lineTo(bx - ux * R * 1.1, by - uy * R * 1.1); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
   // ===== 地形と駒の状態（見えるだけ。文字は出さない）=====
   function terrainOf(st, v) { for (const z of st.arena.terrain) if (v.x >= z.x && v.x <= z.x + z.w && v.y >= z.y && v.y <= z.y + z.h) return z.t; return null; }
   function drawUnder(ctx, st, v) {                                                           // 駒の下：沼の波紋・高所の光の輪
@@ -289,6 +307,7 @@ window.SCS2 = window.SCS2 || {};
   function drawBoard(ctx, st) {
     usePX(st.arena);
     drawMap(ctx, st); drawWeatherGround(ctx, st);
+    drawFormation(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);
     st.views.filter((v) => !v.alive).forEach((v) => drawToken(ctx, st, v));
