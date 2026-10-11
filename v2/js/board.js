@@ -291,15 +291,23 @@ window.SCS2 = window.SCS2 || {};
   function drawArrows(ctx, st) {
     if (!st.arrows) return;
     ctx.save(); ctx.lineCap = "round";
+    const badge = (mx, my, n, P) => {
+      ctx.shadowColor = teamCol(P, 1); ctx.shadowBlur = 10; ctx.fillStyle = "#0b1a2c"; circ(ctx, mx, my, 24); ctx.fill(); ctx.strokeStyle = teamCol(P, 1); ctx.lineWidth = 3.5; circ(ctx, mx, my, 24); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.fillStyle = "#fff"; ctx.font = "bold 28px 'Russo One', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(n), mx, my + 1);
+    };
     for (const ar of st.arrows) {
-      const ax = ar.a.x * PX, ay = ar.a.y * PX, bx = ar.b.x * PX, by = ar.b.y * PX, d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
+      if (ar.mark) {                                                                           // 矢印なしの番号札（その場で起きた事）。吹き出しの無い下側に、番号ごとに向きを変えて
+        const ang = [0, 2.36, 0.79, 0.15][ar.n] || 0.79, rr = R + 20;
+        badge(ar.at.x * PX + Math.cos(ang) * rr, ar.at.y * PX + Math.sin(ang) * rr, ar.n, ar.team === "P"); continue;
+      }
+      let ax = ar.a.x * PX, ay = ar.a.y * PX, bx = ar.b.x * PX, by = ar.b.y * PX; const d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
+      const flip = ax < bx || (ax === bx && ay < by) ? 1 : -1, nx = -uy * flip, ny = ux * flip;   // 向きに依らない横方向（往復の矢印を左右に分ける）
+      const lane = ar.lane || 0; ax += nx * lane * 16; ay += ny * lane * 16; bx += nx * lane * 16; by += ny * lane * 16;
       const sx = ax + ux * (R + 8), sy = ay + uy * (R + 8), ex = bx - ux * (R + 14), ey = by - uy * (R + 14), P = ar.team === "P";
       ctx.shadowColor = teamCol(P, 1); ctx.shadowBlur = 16; ctx.strokeStyle = "rgba(240,250,255,.95)"; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
       ctx.fillStyle = "rgba(240,250,255,.95)"; ctx.beginPath(); ctx.moveTo(ex + ux * 20, ey + uy * 20); ctx.lineTo(ex - uy * 15, ey + ux * 15); ctx.lineTo(ex + uy * 15, ey - ux * 15); ctx.closePath(); ctx.fill();
-      const mx = (sx + ex) / 2 - uy * 30, my = (sy + ey) / 2 + ux * 30;
-      ctx.shadowBlur = 10; ctx.fillStyle = "#0b1a2c"; circ(ctx, mx, my, 24); ctx.fill(); ctx.strokeStyle = teamCol(P, 1); ctx.lineWidth = 3.5; circ(ctx, mx, my, 24); ctx.stroke();
-      ctx.shadowBlur = 0; ctx.fillStyle = "#fff"; ctx.font = "bold 28px 'Russo One', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(ar.n), mx, my + 1);
+      const side = lane < 0 ? -1 : 1; badge((sx + ex) / 2 + nx * side * 34, (sy + ey) / 2 + ny * side * 34, ar.n, P);
     }
     ctx.restore();
   }
@@ -315,7 +323,7 @@ window.SCS2 = window.SCS2 || {};
     live.forEach((v) => drawUnder(ctx, st, v)); live.forEach((v) => { drawToken(ctx, st, v); drawOver(ctx, st, v); });
     if (st.focus && st.focus.alive) drawRing(ctx, st, st.focus);
     if (st.highlight) drawRing(ctx, st, st.highlight, true);
-    drawFx(ctx, st); drawWeather(ctx, st); drawArrows(ctx, st); drawBubbles(ctx, st); drawPops(ctx, st);
+    drawFx(ctx, st); drawWeather(ctx, st); drawBubbles(ctx, st); drawArrows(ctx, st); drawPops(ctx, st);
   }
   // ミニマップ（地図の縮小＋駒の点＋カメラ枠）
   function drawMini(mctx, mw, mh, st, cam) {

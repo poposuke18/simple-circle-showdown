@@ -238,3 +238,23 @@ button { font-family: inherit; color: inherit; }
 .pk:hover { transform: scale(1.08); box-shadow: 0 0 14px rgba(95,210,255,.6); }
 .pk.on { border-color: #8fe6ff; box-shadow: 0 0 0 3px #8fe6ff, 0 0 20px rgba(95,210,255,.8); }
 .pk.taken { opacity: .45; }
+
+/* 結果：勝敗は小さく、見どころを主役に（v2.k8.banner）。カードは動くリプレイ */
+.rs-banner { top: 30px; min-width: 300px; height: 74px; padding: 0 50px; font-size: 46px; letter-spacing: 12px; }
+.rs-verdict { top: 118px; font-size: 26px; }
+.rs-cards { top: 170px; height: 560px; }
+.hl { padding: 14px; }
+.hl-cv { position: relative; }
+.hl-rp { position: absolute; left: 10px; top: 10px; font-family: "Russo One", sans-serif; font-size: 18px; letter-spacing: 2px; padding: 4px 10px 4px 26px; border-radius: 6px; background: rgba(6,12,22,.8); border: 1px solid rgba(143,230,255,.7); color: #bff0ff; }
+.hl-rp::before { content: ""; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); border-left: 10px solid #8fe6ff; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.hl-cap { font-size: 30px; margin-top: 18px; }
+.hl.sp { border-color: rgba(255,214,90,.65); box-shadow: 0 0 22px rgba(255,200,80,.25); }
+.hl.sp .hl-cap { color: #ffe39a; }
+/* なぜ？：①②③の鎖 */
+.ws-chain { margin-top: 22px; display: flex; flex-direction: column; gap: 6px; }
+.ws-step { display: flex; gap: 14px; align-items: flex-start; padding: 14px 14px; border: 1.5px solid rgba(120,200,255,.35); border-radius: 12px; background: rgba(14,32,54,.7); }
+.ws-n { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-family: "Russo One", sans-serif; font-size: 22px; background: #0b1a2c; border: 3px solid #5fb4ff; color: #fff; box-shadow: 0 0 10px rgba(95,180,255,.6); }
+.ws-step small { display: block; font-size: 16px; color: var(--dim); font-weight: 700; }
+.ws-step p { margin: 2px 0 0; font-size: 21px; line-height: 1.5; color: #eef4ff; }
+.ws-arrow { align-self: center; width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 12px solid rgba(143,230,255,.7); }
+.rs-cards { height: auto; align-items: start; }

@@ -286,6 +286,8 @@
     }
     const last = snaps[snaps.length - 1];
     for (const tm of ["P", "C"]) { const al = last.units.filter((u) => u.team === tm && u.alive); if (al.length === 1 && last.units.filter((u) => u.team !== tm && u.alive).length === 0) out.push({ t: snaps.length - 1, id: al[0].id, score: 5 + (tm === "P" ? 1 : 0), cap: `最後の一人、${al[0].name}`, sub: "" }); }
+    const choicesOf = (id) => { const i = +id.slice(1); return id[0] === "P" ? sortieCfg.mine.choices[i] : sortieCfg.foe.choices[i]; };
+    out.push(...SCS2.insight.surprises(snaps, choicesOf));                                     // 「そう来たか」＝性格の言葉と逆の行動（v2.k1.surprise）
     const pick = [];
     for (const h of out.sort((a, b) => b.score - a.score)) { if (pick.length >= 3) break; if (pick.some((p) => p.t === h.t || (p.id === h.id && (p.cap === h.cap || Math.abs(p.t - h.t) < 3)))) continue; pick.push(h); }
     return pick.sort((a, b) => a.t - b.t);
@@ -297,24 +299,31 @@
     $("rsVerdict").textContent = `${an.plr.verdict}　（${run.battle.turn} ターン・VS ${sortieCfg.rival.name}）`;
     hls = findHighlights(run.snaps);
     $("rsCards").style.gridTemplateColumns = `repeat(${Math.max(1, hls.length)}, 600px)`;
-    $("rsCards").innerHTML = hls.length ? hls.map((h, i) => `<div class="hl" data-i="${i}"><canvas></canvas><div class="hl-cap">${esc(h.cap)}</div><div class="hl-sub">${esc(h.sub ? h.sub + "・" : "")}ターン ${run.snaps[h.t].turn}</div></div>`).join("")
+    $("rsCards").innerHTML = hls.length ? hls.map((h, i) => `<div class="hl ${h.surprise ? "sp" : ""}" data-i="${i}"><div class="hl-cv"><canvas></canvas><span class="hl-rp">REPLAY</span></div><div class="hl-cap">${esc(h.cap)}</div><div class="hl-sub">${esc(h.sub ? h.sub + "・" : "")}ターン ${run.snaps[h.t].turn}</div></div>`).join("")
       : `<div class="rs-empty">見どころのない静かな戦いだった。</div>`;
     for (let i = CVS.length - 1; i >= 0; i--) if (!document.body.contains(CVS[i].cv)) CVS.splice(i, 1);
     cardCvs.length = 0; document.querySelectorAll("#rsCards canvas").forEach((cv) => cardCvs.push(reg(cv, 564, 317)));
     const last = run.snaps[run.snaps.length - 1];
     $("rsStrip").innerHTML = last.units.filter((u) => u.team === "P").map((u) => `<div class="rs-u">${tkHtml("P", u.emb, u.alive ? "" : "dead")}<div>${esc(u.name)}<small>${u.alive ? `残り HP ${Math.max(0, Math.round(u.hp))}` : "倒れた"}</small></div></div>`).join("");
-    go("result"); drawCards();
-  }
-  function drawCards() {
-    hls.forEach((h, i) => {
-      const PX = pxOf(sortieCfg.arena), o = cardCvs[i]; if (!o) return; const { vs, by } = snapViews(run.snaps[h.t]), sub = by.get(h.id), oth = h.other ? by.get(h.other) : null;
-      const xs = [sub.x * PX].concat(oth ? [oth.x * PX] : []), ys = [sub.y * PX].concat(oth ? [oth.y * PX] : []);    // 主役と相手が両方入るように寄る
+    replays = hls.map((h) => {                                                                // 見どころは動きで繰り返す（前2ターン〜後1ターン・決め手はゆっくり）
+      const PX = pxOf(sortieCfg.arena), sn = run.snaps[h.t], sub = sn.units.find((u) => u.id === h.id), oth = h.other ? sn.units.find((u) => u.id === h.other) : null;
+      const pts = [sub].concat(oth ? [oth] : []).concat(h.t > 0 ? [run.snaps[h.t - 1].units.find((u) => u.id === h.id)] : []).filter(Boolean);
+      const xs = pts.map((p) => p.x * PX), ys = pts.map((p) => p.y * PX);
       const z = clamp(Math.min(564 / (Math.max(...xs) - Math.min(...xs) + 420), 317 / (Math.max(...ys) - Math.min(...ys) + 300)), 0.32, 0.69);
       const cx = clamp((Math.max(...xs) + Math.min(...xs)) / 2, 282 / z, W - 282 / z), cy = clamp((Math.max(...ys) + Math.min(...ys)) / 2, 158 / z, H - 158 / z);
-      Bd.view(o.ctx, o.s, 564, 317, cx, cy, z);
-      Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, whyOn: true, obstacles: run.snaps[h.t].obstacles, hazards: run.snaps[h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
+      return { h, z, cx, cy, rp: SCS2.insight.makeReplay(run.snaps, h.t - 2, h.t + 1, h.t) };
+    });
+    resClock = 0; go("result"); drawCards();
+  }
+  let replays = [], resClock = 0;
+  function drawCards() {
+    replays.forEach((r, i) => {
+      const o = cardCvs[i]; if (!o) return; r.rp.tick(resClock); const vs = r.rp.views, sub = vs.find((v) => v.id === r.h.id);
+      Bd.view(o.ctx, o.s, 564, 317, r.cx, r.cy, r.z);
+      Bd.drawBoard(o.ctx, { clock: resClock, views: vs, fx: r.rp.fx, pops: r.rp.pops, focus: null, highlight: sub && sub.alive ? sub : null, whyOn: true, obstacles: run.snaps[r.h.t].obstacles, hazards: run.snaps[r.h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
     });
   }
+  function frameResult(dt) { resClock += dt; drawCards(); }
   $("rsCards").addEventListener("click", (e) => { const c = e.target.closest(".hl"); if (c) openWhy(hls[+c.dataset.i]); });
   $("rsAgain").addEventListener("click", () => sortie(false));
 
@@ -326,25 +335,24 @@
   function drawWhy() {
     if (!why || !run) return;
     const PX = pxOf(sortieCfg.arena), snap = run.snaps[why.t], { vs, by } = snapViews(snap), sub = by.get(why.id);
-    const arrows = []; let n = 1;
-    const nearestId = (p) => { let b = null, bd = 1e9; for (const u of snap.units) { const d = Math.hypot(u.x - p.x, u.y - p.y); if (d < bd) { bd = d; b = u.id; } } return b; };
-    const evs = snap.events.filter((e) => e.from && e.to);
-    const mine = evs.filter((e) => (e.aTeam || e.team) + e.aIdx === why.id || nearestId(e.to) === why.id);
-    for (const e of (mine.length ? mine : evs).slice(0, 4)) { const a = by.get((e.aTeam || e.team) + e.aIdx), b = by.get(nearestId(e.to)); if (a && b && a !== b) arrows.push({ a, b, n: n++, team: a.team }); }
-    const pts = [sub].concat(arrows.flatMap((a) => [a.a, a.b])); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    const steps = SCS2.insight.chainFor(run.snaps, why.t, why.id, ACT_OF);                 // ①きっかけ→②した事→③その結果（v2.k2.chain）
+    const same = (p, q) => Math.hypot(p.x - q.x, p.y - q.y) < 1, arrows = [];
+    for (const st of steps) {
+      if (!st.a || !st.b) continue;
+      const short = st.still || Math.hypot(st.a.x - st.b.x, st.a.y - st.b.y) * PX < 110;
+      if (short || arrows.some((o) => !o.mark && same(o.a, st.a) && same(o.b, st.b))) { arrows.push({ at: st.n === 1 ? st.a : st.b, n: st.n, team: st.team, mark: true }); continue; }   // 同じ矢印は重ねず、番号札だけ
+      const back = arrows.find((o) => !o.mark && same(o.a, st.b) && same(o.b, st.a)); if (back) back.lane = 1;
+      arrows.push({ a: st.a, b: st.b, n: st.n, team: st.team, lane: back ? -1 : 0 });
+    }
+    const pts = [sub].concat(steps.flatMap((st) => [st.a, st.b]).filter(Boolean)); let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (const p of pts) { x0 = Math.min(x0, p.x * PX); x1 = Math.max(x1, p.x * PX); y0 = Math.min(y0, p.y * PX); y1 = Math.max(y1, p.y * PX); }
     const z = clamp(Math.min(1278 / (x1 - x0 + 600), 738 / (y1 - y0 + 420)), 0.66, 1.25);
     const cx = clamp((x0 + x1) / 2, 639 / z, W - 639 / z), cy = clamp((y0 + y1) / 2, 369 / z, H - 369 / z);
     const o = cvWhy; Bd.view(o.ctx, o.s, 1278, 738, cx, cy, z);
     Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
-    const nm = `>${esc(sub.name)}</span>`, isSubj = (l) => l.text.indexOf(nm + " は") >= 0;
-    const now = snap.lines.filter((l) => l.cls !== "dim" && l.text.indexOf(nm) >= 0).slice(0, 3);
-    const before = [];                                                                          // それまで：この駒が主語の記録（「〜ため、X は …した」）を新しい順に
-    for (let k = why.t - 1; k >= 1 && before.length < 3; k--) for (const l of run.snaps[k].lines) if (l.cls !== "dim" && isSubj(l) && before.length < 3) before.push({ l, turn: run.snaps[k].turn });
-    const line = (l, tag) => `<div class="ws-line ${isSubj(l) ? "me" : ""}">${tag ? `<small class="ws-t">ターン ${tag}</small>` : ""}${cleanLine(l.text)}</div>`;
+    const TAG = ["", "きっかけ", "した事", "その結果"];
     $("whySide").innerHTML = `<div class="ws-head">${tkHtml(sub.team, sub.emb)}<div><div class="ws-name">${esc(sub.name)}</div><div class="ws-cap">${esc(why.cap)}</div></div></div>`
-      + `<div class="ws-sec">この瞬間</div>` + (now.length ? now.map((l) => line(l)).join("") : `<div class="ws-line">${esc(sub.name)} は ${esc(ACT_OF[sub.label] || sub.label || "")}。</div>`)
-      + (before.length ? `<div class="ws-sec">それまで</div>` + before.map((x) => line(x.l, x.turn)).join("") : "");
+      + `<div class="ws-chain">` + steps.map((st, i) => `<div class="ws-step"><b class="ws-n">${st.n}</b><div><small>${TAG[i + 1] || ""}</small><p>${esc(st.text)}</p></div></div>`).join(`<i class="ws-arrow"></i>`) + `</div>`;
     $("whyTurn").textContent = `ターン ${snap.turn}`;
   }
   $("whyRange").addEventListener("input", () => { if (!why) return; why.t = +$("whyRange").value; drawWhy(); });
@@ -355,7 +363,7 @@
     $("icWhyPlay").setAttribute("d", "M17 13 H23 V35 H17 Z M27 13 H33 V35 H27 Z");
     whyTimer = setInterval(() => { if (why.t >= run.snaps.length - 1) return stopWhyPlay(); why.t++; $("whyRange").value = why.t; drawWhy(); }, 700);
   });
-  $("whyBack").addEventListener("click", () => { stopWhyPlay(); go("result"); drawCards(); });
+  $("whyBack").addEventListener("click", () => { stopWhyPlay(); go("result"); });
 
   // ===== 記録 =====
   function enterRecords() {
@@ -367,7 +375,7 @@
   function frame(now) { step(now); requestAnimationFrame(frame); }
   function step(now) {
     const dt = real ? clamp(now - real, 0, 100) : 16; real = now;
-    if (cur === "title") frameTitle(dt); else if (cur === "edit") frameEdit(); else if (cur === "watch") frameWatch(dt);
+    if (cur === "title") frameTitle(dt); else if (cur === "edit") frameEdit(); else if (cur === "watch") frameWatch(dt); else if (cur === "result") frameResult(dt);
   }
   // 絵が読み込まれたら止まっている画面（結果・なぜ？）を描き直す。先に読み込んでおく
   Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); };
