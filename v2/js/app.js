@@ -46,7 +46,7 @@
   function newDemo() {
     const g = SCS.makeRNG((Date.now() & 0x7fffffff) >>> 0), n = Wd.RIVALS.length, a = g.int(n); let b = g.int(n - 1); if (b >= a) b++;
     const pool = Wd.RIVALS.filter((r) => !r.mirror), A = pool[a % pool.length], Bv = pool[b % pool.length] === A ? pool[(b + 1) % pool.length] : pool[b % pool.length];
-    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: Bv.names }, seed: g.int(0x7fffffff), arena: Wd.PLAZA, mod: "通常", formP: A.form, formC: Bv.form });
+    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: Wd.PLAZA, mod: "通常", formP: A.form, formC: Bv.form });
     demoClock = 0; demoEnd = 0;
   }
   function enterTitle() { if (!demo) newDemo(); }
@@ -129,6 +129,11 @@
     c.fillStyle = "#58aeff"; c.strokeStyle = "rgba(0,0,0,.5)"; c.lineWidth = 2; c.beginPath(); c.moveTo(0, R + 26); c.lineTo(-20, R - 4); c.lineTo(20, R - 4); c.closePath(); c.fill(); c.stroke();
   }
 
+  // 両軍で名前が重ならないようにする（記録の文は名前で駒を指すため）
+  function uniqNames(mine, foe) {
+    const used = new Set(mine);
+    return foe.map((n) => { if (!used.has(n)) { used.add(n); return n; } const base = n.replace(/-?\d+$/, ""); for (let d = 1; d <= 9; d++) { const c = `${base}-${d}`; if (!used.has(c)) { used.add(c); return c; } } const c = n + "′"; used.add(c); return c; });
+  }
   // ===== 出撃準備 =====
   // 相手の部隊（写し身＝いまのあなたの部隊を写す）
   function foeOf(r) {
@@ -163,7 +168,7 @@
   function sortie(sameSeed) {
     const r = Wd.RIVALS[rivalI], sq = St.data.squad, foe = foeOf(r);
     const seed = sameSeed && sortieCfg ? sortieCfg.seed : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
-    sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: foe.names },
+    sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
       seed, arena: Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r };
     run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
     $("wVs").textContent = `VS ${r.name}`; $("wSub").textContent = `${Wd.PLAZA.name}・${sortieCfg.mod}`;
