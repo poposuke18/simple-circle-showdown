@@ -34,7 +34,7 @@ window.SCS2 = window.SCS2 || {};
   // ほかの試合を裏で戦わせる（ホーム側＝前の部隊の本拠地と天気）
   function simulate(ka, kb, seed) {
     const A = rivalOf(ka), B = rivalOf(kb), home = A, arena = W.arenaFor(home);
-    const b = SCS.makeSquadBattle(A.squad.map((c) => c.slice()), B.squad.map((c) => c.slice()), seed, arena.name, home.mod, A.form, B.form, A.names.slice(), B.names.slice(), { formation: 0.6 });
+    const b = SCS.makeSquadBattle(A.squad.map((c) => c.slice()), B.squad.map((c) => c.slice()), seed, arena.name, W.modOf(arena), A.form, B.form, A.names.slice(), B.names.slice(), { formation: 0.6 });
     let n = 0; while (!b.over && n++ < 200) b.step();
     const r = b.result || {}; return r.type === "draw" || !b.over ? "d" : r.winner === "PLR" ? "a" : "b";
   }

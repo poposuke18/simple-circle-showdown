@@ -16,7 +16,7 @@ window.SCS2 = window.SCS2 || {};
   // ===== 戦場（160×90・1単位＝12px）。遮蔽物は proto/arena.js と同じ =====
   const o = (x, y, w, h) => ({ x, y, w, h }), t = (x, y, w, h, k) => ({ x, y, w, h, t: k });
   const PLAZA = {
-    key: "plaza", name: "遺跡の円形広場", flavor: "川と溶岩に挟まれた古い広場", w: 160, h: 90, base: "plains",
+    key: "plaza", name: "遺跡の円形広場", flavor: "川と溶岩に挟まれた古い広場", w: 160, h: 90, base: "plains", mod: "通常",
     obstacles: [
       o(41, 3.5, 17, 2), o(41, 3.5, 2, 15.5), o(55, 3.5, 3, 7), o(47, 17, 5, 2.5), o(55, 14.5, 3, 4.5),
       o(31, 25, 2.5, 6.5), o(31, 29, 9.5, 3),
@@ -42,7 +42,7 @@ window.SCS2 = window.SCS2 || {};
   };
   // 溶岩の橋（128×72）：中央を縦に溶岩の谷、3本の石橋。左右の台地に遺跡と岩（GPT Image 2.5 の地図に合わせて引いた）
   const LAVA = {
-    key: "lavabridge", name: "溶岩の橋", flavor: "溶岩の谷を3本の石橋が渡る", w: 128, h: 72, base: "plains",
+    key: "lavabridge", name: "溶岩の橋", flavor: "溶岩の谷を3本の石橋が渡る", w: 128, h: 72, base: "plains", mod: "灼熱",
     obstacles: [
       o(56, 6, 2, 5), o(72, 6, 2, 5), o(50.5, 27, 2.5, 6), o(73.5, 29, 2.5, 6), o(54, 53, 2, 6), o(72.5, 52.5, 2, 6),   // 橋の上の柱
       o(12, 4, 2.5, 7), o(18, 4, 2.5, 7), o(22.5, 3, 2, 6), o(2.5, 13, 2.5, 8), o(5.5, 13, 2.5, 7), o(15, 15, 3, 6),     // 左の台地
@@ -59,7 +59,7 @@ window.SCS2 = window.SCS2 || {};
   };
   // 霧の森（144×81）：密林の中の空き地。中央に沼、周りに遺跡・苔むした岩・茂み。左右の小道から入る
   const FOREST = {
-    key: "mistwood", name: "霧の森", flavor: "密林の空き地。中央に沼、茂みに身を隠せる", w: 144, h: 81, base: "plains",
+    key: "mistwood", name: "霧の森", flavor: "密林の空き地。中央に沼、茂みに身を隠せる", w: 144, h: 81, base: "plains", mod: "濃霧",
     obstacles: [
       o(36, 9, 4, 13.5), o(38, 2, 15, 6.5), o(31, 4, 3, 4), o(41, 12.5, 6, 6), o(57.5, 7, 3, 9.5), o(13, 24.5, 8, 7),
       o(90, 8, 2.5, 9), o(93, 10, 2, 6), o(100.5, 5, 3, 10.5), o(110, 3, 3.5, 13), o(113, 5, 4, 8), o(116.5, 16.5, 11, 11), o(115.5, 29.5, 3.5, 4.5),
@@ -111,6 +111,7 @@ window.SCS2 = window.SCS2 || {};
 
   // ===== 戦況：戦場に見える天気だけ（狭まる戦場・火の海は squad.js 未対応／サドンデス・一触即発は見えない決まりなので外した）=====
   const MODS = ["通常", "濃霧", "灼熱"];                                                // 戦場に見える天気だけ（v2.fx.dec：サドンデス・一触即発は外した）
+  const modOf = (A) => (A && MODS.includes(A.mod) ? A.mod : "通常");                    // 天気は戦場ごとに固定（v2.wx.fixed：広場＝通常・溶岩の橋＝灼熱・霧の森＝濃霧）
   const FORMS = D.FORMATIONS.map((f) => f.name);
 
   // ===== 部隊の色（v2.k7.color）：あなたは青、相手は部隊ごとの色 =====
@@ -132,11 +133,10 @@ window.SCS2 = window.SCS2 || {};
   const resolve = (x) => (Array.isArray(x) ? x.slice() : (D.PRESETS[x] || D.PRESETS[Object.keys(D.PRESETS)[0]]).slice());
   function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
   const RIVALS = D.SQUAD_CAMPAIGN.map((c) => {
-    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, mod: "通常", arena: null, pal: PAL[COL_OF[c.key] || "silver"] }; // 写し身＝出撃時にあなたの部隊を写す
+    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, arena: null, pal: PAL[COL_OF[c.key] || "silver"] }; // 写し身＝出撃時にあなたの部隊を写す
     const squad = c.squad.map(resolve), emb = assignEmblems(squad), g = SCS.makeRNG(hashStr(c.key)), used = new Set();
     const names = emb.map((e) => { let n; do n = EMB_NAME[e] + "-" + (1 + g.int(9)); while (used.has(n)); used.add(n); return n; });
-    const mod = MODS.includes(c.mod) ? c.mod : "通常";
-    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", mod, arena: c.arena, pal: PAL[COL_OF[c.key] || "red"] };
+    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", arena: c.arena, pal: PAL[COL_OF[c.key] || "red"] };
   });
 
   // ===== 既定の部隊（初めて開いた時）=====
@@ -146,5 +146,5 @@ window.SCS2 = window.SCS2 || {};
     { name: "FROST-4", emb: "frost", choices: D.PRESETS["鉄律の射手"].slice() },
   ];
 
-  SCS2.world = { PAL, YOU,  PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
+  SCS2.world = { PAL, YOU,  PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, modOf, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
 })();

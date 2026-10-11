@@ -46,10 +46,11 @@
   let demo = null, demoEnd = 0, demoClock = 0;
   const cvTitle = reg($("cvTitle"), W, H);
   function newDemo() {
+    let DA;
     const g = SCS.makeRNG((Date.now() & 0x7fffffff) >>> 0), n = Wd.RIVALS.length, a = g.int(n); let b = g.int(n - 1); if (b >= a) b++;
     const pool = Wd.RIVALS.filter((r) => !r.mirror), A = pool[a % pool.length], Bv = pool[b % pool.length] === A ? pool[(b + 1) % pool.length] : pool[b % pool.length];
-    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: Wd.ARENAS[g.int(Wd.ARENAS.length)], mod: "通常", formP: A.form, formC: Bv.form });
-    demo.pal = { P: A.pal, C: Bv.pal }; demoClock = 0; demoEnd = 0;
+    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: DA = Wd.ARENAS[g.int(Wd.ARENAS.length)], mod: Wd.modOf(DA), formP: A.form, formC: Bv.form });
+    demo.pal = { P: A.pal, C: Bv.pal }; demo.mod = Wd.modOf(DA); demoClock = 0; demoEnd = 0;
   }
   function enterTitle() { if (!demo) newDemo(); }
   function frameTitle(dt) {
@@ -57,7 +58,7 @@
     demoClock += dt; demo.tick(demoClock, dt, 1);
     if (demo.battle.over) { if (!demoEnd) demoEnd = demoClock; else if (demoClock - demoEnd > 3000) newDemo(); }
     const o = cvTitle, c = o.ctx; Bd.view(c, o.s, W, H, demo.cam.x, demo.cam.y, demo.cam.z);
-    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: "通常", arena: demo.arena, pal: demo.pal });
+    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: demo.mod, arena: demo.arena, pal: demo.pal });
   }
 
   // ===== 部隊 =====
@@ -158,7 +159,7 @@
     if (!r.mirror) return { choices: r.squad, emb: r.emb, names: r.names, form: r.form };
     const sq = St.data.squad; return { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name + "′"), form: St.data.form };
   }
-  let rivalI = 0, pMod = null, pArena = null;
+  let rivalI = 0, pArena = null;
   function recOf(k) { const r = St.data.records[k]; return r ? `${r.w}勝 ${r.l}敗${r.d ? ` ${r.d}分` : ""}` : "初対戦"; }
   function enterPrep() {
     $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
@@ -168,19 +169,16 @@
     $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
     renderPlace();
   }
-  function selectRival(i, keepMod) {
+  function selectRival(i, keepArena) {
     rivalI = i; const r = Wd.RIVALS[i];
     document.querySelectorAll("#rvList .rv").forEach((x) => x.classList.toggle("on", +x.dataset.i === i));
     $("rvName").textContent = r.name; $("rvRec").textContent = recOf(r.key); $("rvFlavor").textContent = r.flavor; $("rvScout").textContent = r.scout;
     $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e, "", r.pal)).join("");
-    if (!keepMod || !pMod) pMod = r.mod;
-    if (!keepMod || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
+    if (!keepArena || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
     $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === pArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
-    $("pMod").innerHTML = Wd.MODS.map((m) => `<span class="chip wchip ${m === pMod ? "on" : ""}" data-m="${esc(m)}"><i class="wic wic-${({ 通常: "sun", 濃霧: "fog", 灼熱: "heat" })[m] || "sun"}"></i>${esc(m)}</span>`).join("");
   }
   $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) { selectRival(+c.dataset.i, false); renderPlace(); } });
   $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".acard").forEach((x) => x.classList.toggle("on", x === c)); });
-  $("pMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pMod = c.dataset.m; $("pMod").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); renderPlace(); });
   // ===== 配置：隊形の図の上で3体の位置を入れ替える（敵は右）。入れ替えていない時は間合いの短い駒が前（エンジンの既定）=====
   const SLOT_XY = { 散開: [[-0.2, -1], [0.25, 0], [-0.1, 1]], 戦列: [[0, -1], [0, 0], [0, 1]], 楔: [[1, 0], [-0.6, 0.8], [-0.6, -0.8]], 円陣: [[0.6, -0.45], [0.6, 0.45], [-0.9, 0]] };
@@ -214,12 +212,12 @@
     const r = Wd.RIVALS[rivalI], sq = St.data.squad, foe = foeOf(r);
     const seed = sameSeed && sortieCfg ? sortieCfg.seed : newSeed();
     sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: r.pal } };
+      seed, arena: pArena || Wd.PLAZA, mod: Wd.modOf(pArena || Wd.PLAZA), formP: St.data.form, formC: foe.form, rival: r, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: r.pal } };
     startRun(`VS ${r.name}`);
   }
   function startRun(vs) {
     run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
-    $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = `${sortieCfg.arena.name}・${sortieCfg.mod}`;
+    $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = sortieCfg.arena.name;
     $("wEnd").classList.remove("show"); setPause(false);
     buildHud(); go("watch"); updWatch();
   }
@@ -244,24 +242,22 @@
 
   // ===== 観戦する：ライバル同士を戦わせて眺める（記録に残らない・v2.k3.spectate）=====
   const SPEC = Wd.RIVALS.filter((r) => !r.mirror);
-  let specA = 0, specB = 1, sArena = null, sMod = null;
+  let specA = 0, specB = 1, sArena = null;
   function enterSpec() {
-    if (sArena == null) { const g = SCS.makeRNG(newSeed()); specA = g.int(SPEC.length); specB = (specA + 1 + g.int(SPEC.length - 1)) % SPEC.length; sArena = Wd.arenaFor(SPEC[specB]); sMod = SPEC[specB].mod; }
+    if (sArena == null) { const g = SCS.makeRNG(newSeed()); specA = g.int(SPEC.length); specB = (specA + 1 + g.int(SPEC.length - 1)) % SPEC.length; sArena = Wd.arenaFor(SPEC[specB]); }
     renderSpec();
   }
   function renderSpec() {
     const col = (side, sel, other) => SPEC.map((r, i) => `<div class="sp-rv ${i === sel ? "on" : ""} ${i === other ? "off" : ""}" data-s="${side}" data-i="${i}" style="--rc:${r.pal.rimA}"><b>${esc(r.name)}</b><span class="sp-tks">${r.emb.map((e) => tkHtml(side === "A" ? "P" : "C", e, "tk-xs", r.pal)).join("")}</span></div>`).join("");
     $("spA").innerHTML = col("A", specA, specB); $("spB").innerHTML = col("B", specB, specA);
     $("sArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === sArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
-    $("sMod").innerHTML = Wd.MODS.map((m) => `<span class="chip wchip ${m === sMod ? "on" : ""}" data-m="${esc(m)}"><i class="wic wic-${({ 通常: "sun", 濃霧: "fog", 灼熱: "heat" })[m] || "sun"}"></i>${esc(m)}</span>`).join("");
   }
   for (const id of ["spA", "spB"]) $(id).addEventListener("click", (e) => { const c = e.target.closest(".sp-rv"); if (!c || c.classList.contains("off")) return; if (c.dataset.s === "A") specA = +c.dataset.i; else specB = +c.dataset.i; renderSpec(); });
   $("sArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; sArena = Wd.ARENAS[+c.dataset.a]; renderSpec(); });
-  $("sMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; sMod = c.dataset.m; renderSpec(); });
   function spectate(same) {
     const A = SPEC[specA], B = SPEC[specB];
     sortieCfg = { spec: true, mine: { choices: A.squad.map((c) => c.slice()), emb: A.emb, names: A.names }, foe: { choices: B.squad.map((c) => c.slice()), emb: B.emb, names: uniqNames(A.names, B.names) },
-      seed: same && sortieCfg ? sortieCfg.seed : newSeed(), arena: sArena || Wd.PLAZA, mod: sMod || "通常", formP: A.form, formC: B.form, rival: B, rivalA: A, orderP: null, pal: { P: A.pal, C: B.pal } };
+      seed: same && sortieCfg ? sortieCfg.seed : newSeed(), arena: sArena || Wd.PLAZA, mod: Wd.modOf(sArena || Wd.PLAZA), formP: A.form, formC: B.form, rival: B, rivalA: A, orderP: null, pal: { P: A.pal, C: B.pal } };
     startRun(`${A.name} VS ${B.name}`);
   }
   $("sGo").addEventListener("click", () => spectate(false));
@@ -271,7 +267,6 @@
   const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } return L; };
   const lgName = (k) => (k === "you" ? "あなたの部隊" : Lg.rivalOf(k).name);
   const lgToks = (k) => (k === "you" ? St.data.squad.map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
-  const MOD_IC = { 通常: "sun", 濃霧: "fog", 灼熱: "heat" };
   function enterLeague() {
     const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L);
     $("lgSeason").textContent = `シーズン ${L.season}`;
@@ -287,7 +282,7 @@
       const nm = Lg.nextMatch(L), foe = nm.foe, ar = Wd.arenaFor(foe), others = Lg.schedule(L.season)[L.round].filter((p) => !p.includes("you"));
       $("lgSide").innerHTML = `<div class="lg-h">第${L.round + 1}節</div>
         <div class="lg-next" style="--rc:${foe.pal.rimA}"><div class="lg-vs"><span>${esc(foe.name)}</span><span class="tks">${lgToks(foe.key)}</span></div>
-          <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}<span class="chip wchip on"><i class="wic wic-${MOD_IC[foe.mod] || "sun"}"></i>${esc(foe.mod)}</span></div></div></div>
+          <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}</div></div></div>
         <div class="lg-h2">ほかの試合</div>${others.map(([a, b]) => `<div class="lg-m"><span>${esc(lgName(a))}</span><i class="vs">VS</i><span>${esc(lgName(b))}</span></div>`).join("")}` + lastHtml;
       $("lgGo").textContent = "試合へ";
     }
@@ -313,10 +308,10 @@
     const L = lnData(), o = cvTree, c = o.ctx; c.setTransform(o.s, 0, 0, o.s, 0, 0); c.clearRect(0, 0, 1840, 740);
     const rows = L.rows, posOf = new Map(); rows.forEach((row, r) => row.pop.forEach((x, i) => posOf.set(x.id, { x: TX(i), y: TY(r), x0: x })));
     const selIds = new Set(); if (lnSel) { selIds.add(lnSel); const s = posOf.get(lnSel); if (s) { if (s.x0.pa) selIds.add(s.x0.pa); if (s.x0.pb) selIds.add(s.x0.pb); } }
-    rows.forEach((row, r) => {                                                                  // 世代の札（戦場・天気）
+    rows.forEach((row, r) => {                                                                  // 世代の札（戦場）
       const A = Ln.arenaOf(row.env.arena), y = TY(r);
       c.fillStyle = "#eaf3ff"; c.font = "900 24px 'Noto Sans JP', sans-serif"; c.textAlign = "left"; c.textBaseline = "middle"; c.fillText(`第${row.gen}世代`, 24, y - 13);
-      c.fillStyle = "#9fb4cc"; c.font = "700 17px 'Noto Sans JP', sans-serif"; c.fillText(`${A.name}・${row.env.mod}`, 24, y + 16);
+      c.fillStyle = "#9fb4cc"; c.font = "700 17px 'Noto Sans JP', sans-serif"; c.fillText(A.name, 24, y + 16);
       if (r > 0) row.pop.forEach((x, i) => {                                                   // 親から子への線（あなたの血筋は色つき）
         const k = bloodOf(x), col = k < 0 ? "150,160,175" : BLOOD_PAL[k].rgb;
         for (const [pid, w] of [[x.pa, 1], [x.pb, 0.55]]) {
@@ -354,7 +349,7 @@
     if (L.round >= Lg.ROUNDS) { St.data.league = Lg.fresh(L.season + 1); St.save(); enterLeague(); return; }
     const foe = Lg.nextMatch(L).foe, sq = St.data.squad;
     sortieCfg = { league: true, mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.squad.map((c) => c.slice()), emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed: newSeed(), arena: Wd.arenaFor(foe), mod: foe.mod, formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal } };
+      seed: newSeed(), arena: Wd.arenaFor(foe), mod: Wd.modOf(Wd.arenaFor(foe)), formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal } };
     startRun(`第${L.round + 1}節　VS ${foe.name}`);
   });
   function setPause(p) { paused = p; $("icPause").setAttribute("d", paused ? "M16 12 L36 24 L16 36 Z" : "M17 13 V35 M31 13 V35"); $("icPause").style.fill = paused ? "#8fe0ff" : "none"; }

@@ -1,5 +1,5 @@
 /* v2/js/lineage2.js — 系譜（Obsidian [[v2ゲーム設計]] v2.k4.lineage）。
- * 12体（あなたの3体＋性格がばらばらの9体）。1世代＝3対3を2戦（同じエンジン・世代ごとに戦場と天気が変わる）。
+ * 12体（あなたの3体＋性格がばらばらの9体）。1世代＝3対3を2戦（同じエンジン・世代ごとに戦場が変わる。天気は戦場の天気）。
  * 上位6体が親になり、交叉と変異（各軸15%で±1）で次の12体。式は classic の js/lineage.js と同じ。
  * v2 では家系図のために親（pa/pb）と血筋（line＝あなたの3体のどれの家か・名字のように強かった方の親から継ぐ。他の家は -1）を持たせる。 */
 window.SCS2 = window.SCS2 || {};
@@ -14,7 +14,7 @@ window.SCS2 = window.SCS2 || {};
     const maxHp = u.maxHp || 1;
     return (u.alive ? 3 : 0) + (u.st.kills || 0) * 1.5 + clamp(u.st.dealt / maxHp, 0, 2) - clamp(u.st.taken / maxHp, 0, 1) * 0.5;
   }
-  function envOf(seed, gen) { const g = SCS.makeRNG((seed ^ Math.imul(gen + 1, 0x2545f491)) >>> 0); return { arena: W.ARENAS[g.int(W.ARENAS.length)].key, mod: W.MODS[g.int(W.MODS.length)] }; }
+  function envOf(seed, gen) { const g = SCS.makeRNG((seed ^ Math.imul(gen + 1, 0x2545f491)) >>> 0); return { arena: W.ARENAS[g.int(W.ARENAS.length)].key }; }
 
   function genesis(seed, squad) {
     const g = SCS.makeRNG((seed ^ 0x9e3779b9) >>> 0), pop = [], used = new Set(squad.map((f) => f.emb));
@@ -36,7 +36,7 @@ window.SCS2 = window.SCS2 || {};
       const a = order.slice(bi * 6, bi * 6 + 3), b = order.slice(bi * 6 + 3, bi * 6 + 6);
       const fa = W.FORMS[rng.int(W.FORMS.length)], fb = W.FORMS[rng.int(W.FORMS.length)];
       const nm = (xs, t) => xs.map((x, i) => `${x.fam}${t}${i}`);
-      const battle = SCS.makeSquadBattle(a.map((x) => x.choices.slice()), b.map((x) => x.choices.slice()), (L.seed ^ Math.imul(gen + 1, 0x41c64e6d) ^ Math.imul(bi + 1, 0xb5297a4d)) >>> 0, A.name, env.mod, fa, fb, nm(a, "a"), nm(b, "b"), { formation: 0.6 });
+      const battle = SCS.makeSquadBattle(a.map((x) => x.choices.slice()), b.map((x) => x.choices.slice()), (L.seed ^ Math.imul(gen + 1, 0x41c64e6d) ^ Math.imul(bi + 1, 0xb5297a4d)) >>> 0, A.name, W.modOf(A), fa, fb, nm(a, "a"), nm(b, "b"), { formation: 0.6 });
       let n = 0; while (!battle.over && n++ < 200) battle.step();
       a.forEach((x, i) => (fit[x.id] = fitnessOf(battle.teams.P[i]))); b.forEach((x, i) => (fit[x.id] = fitnessOf(battle.teams.C[i])));
     }
