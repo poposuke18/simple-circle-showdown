@@ -104,8 +104,8 @@ window.SCS2 = window.SCS2 || {};
     "大槌・斧": "hammer", "槍": "spear", "鎖鎌": "kusarigama" };
   function bodyOf(choices) { const u = SCS.derive.buildUnit("U", choices); return { hp: u.maxHp, ranged: u.ranged.name, melee: u.melee.name }; }
 
-  // ===== 戦況：squad.js で効くものだけ（狭まる戦場・火の海は squad.js 未対応＝実測 2026-10-11）=====
-  const MODS = ["通常", "濃霧", "灼熱", "サドンデス", "一触即発"];
+  // ===== 戦況：戦場に見える天気だけ（狭まる戦場・火の海は squad.js 未対応／サドンデス・一触即発は見えない決まりなので外した）=====
+  const MODS = ["通常", "濃霧", "灼熱"];                                                // 戦場に見える天気だけ（v2.fx.dec：サドンデス・一触即発は外した）
   const FORMS = D.FORMATIONS.map((f) => f.name);
 
   // ===== 相手：元のゲームの分隊戦キャンペーンの部隊（外の現実）=====

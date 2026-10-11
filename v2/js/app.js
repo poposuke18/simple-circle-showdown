@@ -157,11 +157,11 @@
     $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e)).join("");
     if (!keepMod || !pMod) pMod = r.mod;
     if (!keepMod || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
-    $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<span class="chip ${a === pArena ? "on" : ""}" data-a="${i}">${esc(a.name)}</span>`).join("");
-    $("pMod").innerHTML = Wd.MODS.map((m) => `<span class="chip ${m === pMod ? "on" : ""}" data-m="${esc(m)}">${esc(m)}</span>`).join("");
+    $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === pArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
+    $("pMod").innerHTML = Wd.MODS.map((m) => `<span class="chip wchip ${m === pMod ? "on" : ""}" data-m="${esc(m)}"><i class="wic wic-${({ 通常: "sun", 濃霧: "fog", 灼熱: "heat" })[m] || "sun"}"></i>${esc(m)}</span>`).join("");
   }
   $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) selectRival(+c.dataset.i, false); });
-  $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
+  $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".acard").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pMod = c.dataset.m; $("pMod").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pGo").addEventListener("click", () => sortie());
@@ -204,7 +204,7 @@
     if (run.battle.over && !ended) endBattle(false);
     if (ended && !paused && clock - endAt > 2600) showResult();
     const o = cvWatch, c = o.ctx; Bd.view(c, o.s, W, H, run.cam.x, run.cam.y, run.cam.z);
-    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
+    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
     const vg = c.createRadialGradient(W / 2, H / 2, H * 0.38, W / 2, H / 2, H * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.55)"); c.fillStyle = vg; c.fillRect(0, 0, W, H);
     const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: sortieCfg.arena }, run.cam);
@@ -333,7 +333,8 @@
   }
   // 絵が読み込まれたら止まっている画面（結果・なぜ？）を描き直す。先に読み込んでおく
   Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); };
-  Wd.ARENAS.forEach((a) => { Bd.img(a.map); Bd.img(a.mini); }); Wd.EMB.forEach((e) => Bd.emb(e));
+  Wd.ARENAS.forEach((a) => { Bd.img(a.map); Bd.img(a.mini); });
+  Object.values(Wd.WEAPON_ICON).forEach((k) => Bd.img(`assets/weapon/${k}.png`));               // 武器アイコンも先に読む（初回に遅れて出ないように） Wd.EMB.forEach((e) => Bd.emb(e));
   addEventListener("resize", fit); fit();
   requestAnimationFrame(frame);
   // 検証用：タブが裏で requestAnimationFrame が止まっていても時間を進めて描く（遊びには使わない）

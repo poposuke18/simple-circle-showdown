@@ -33,12 +33,89 @@ window.SCS2 = window.SCS2 || {};
       ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; circ(ctx, cx, cy, r); ctx.fill(); ctx.globalCompositeOperation = "source-over";
     }
   }
+  // ===== 天気（[[v2ゲーム設計]] v2.fx.spec）：濃霧＝流れる濃い霧／灼熱＝陽炎と照り返し =====
   function drawWeather(ctx, st) {
+    const t = st.clock;
     if (st.mod === "濃霧") {
-      for (let i = 0; i < 6; i++) { const x = (i * 397 + st.clock * 0.012 * (i % 2 ? 1 : -1)) % (W + 600) - 300, y = (i * 233) % H;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 520); g.addColorStop(0, "rgba(210,225,235,.22)"); g.addColorStop(1, "rgba(210,225,235,0)"); ctx.fillStyle = g; ctx.fillRect(x - 520, y - 520, 1040, 1040); }
-      ctx.fillStyle = "rgba(190,205,220,.12)"; ctx.fillRect(0, 0, W, H);
-    } else if (st.mod === "灼熱") { ctx.fillStyle = "rgba(255,140,40,.10)"; ctx.fillRect(0, 0, W, H); }
+      ctx.fillStyle = "rgba(200,214,226,.20)"; ctx.fillRect(0, 0, W, H);
+      for (let i = 0; i < 11; i++) {
+        const sp = 0.010 + (i % 4) * 0.004, dir = i % 2 ? 1 : -1, r = 300 + (i * 97) % 260;
+        const x = ((i * 389 + t * sp * dir) % (W + 2 * r) + (W + 2 * r)) % (W + 2 * r) - r, y = (i * 211 + Math.sin(t / 4000 + i) * 60) % H;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(222,232,240,${0.30 + 0.08 * Math.sin(t / 1700 + i)})`); g.addColorStop(1, "rgba(222,232,240,0)");
+        ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+    } else if (st.mod === "灼熱") {
+      ctx.save(); ctx.globalCompositeOperation = "lighter";                                   // 陽炎：ゆらぐ筋が上へ流れる
+      for (let i = 0; i < 14; i++) {
+        const y = H - ((t * 0.06 + i * (H / 14)) % (H + 60)), a = 0.07 + 0.05 * Math.sin(t / 420 + i * 1.3);
+        ctx.strokeStyle = `rgba(255,225,180,${a})`; ctx.lineWidth = 4 + (i % 3) * 2; ctx.beginPath();
+        for (let x = 0; x <= W; x += 30) ctx.lineTo(x, y + Math.sin(x / 70 + t / 220 + i) * 9);
+        ctx.stroke();
+      }
+      for (let i = 0; i < 40; i++) {                                                         // 舞い上がる熱気の粒
+        const x = (i * 157 + Math.sin(t / 900 + i) * 40) % W, y = H - ((t * (0.03 + (i % 5) * 0.01) + i * 97) % (H + 40));
+        ctx.fillStyle = `rgba(255,210,150,${0.18 + 0.12 * Math.sin(t / 300 + i)})`; circ(ctx, x, y, 2 + (i % 3)); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+  function drawWeatherGround(ctx, st) {                                                       // 地面にかかる色（駒より下）：灼熱＝焼けた色と照り返し
+    if (st.mod !== "灼熱") return; const t = st.clock;
+    ctx.save(); ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = "rgba(255,120,20,.55)"; ctx.fillRect(0, 0, W, H); ctx.restore();
+    ctx.fillStyle = "rgba(255,150,60,.10)"; ctx.fillRect(0, 0, W, H);
+    const gl = ctx.createRadialGradient(W * 0.82, -120, 0, W * 0.82, -120, 1100); gl.addColorStop(0, `rgba(255,240,190,${0.5 + 0.05 * Math.sin(t / 900)})`); gl.addColorStop(0.45, "rgba(255,210,140,.18)"); gl.addColorStop(1, "rgba(255,200,120,0)");
+    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+  }
+  // ===== 地形と駒の状態（見えるだけ。文字は出さない）=====
+  function terrainOf(st, v) { for (const z of st.arena.terrain) if (v.x >= z.x && v.x <= z.x + z.w && v.y >= z.y && v.y <= z.y + z.h) return z.t; return null; }
+  function drawUnder(ctx, st, v) {                                                           // 駒の下：沼の波紋・高所の光の輪
+    if (!v.alive) return;
+    const tt = terrainOf(st, v), x = v.x * PX, y = v.y * PX;
+    if (tt === "swamp") {
+      ctx.save(); ctx.lineWidth = 4.5; ctx.shadowColor = "rgba(0,40,40,.6)"; ctx.shadowBlur = 4;
+      for (let k = 0; k < 3; k++) { const p = ((st.clock / 1400 + k / 3) % 1); ctx.strokeStyle = `rgba(215,255,245,${0.9 * (1 - p)})`; ctx.beginPath(); ctx.ellipse(x, y + R * 0.25, R * (1.05 + p * 0.95), R * (0.6 + p * 0.55), 0, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+    } else if (tt === "highground") {
+      ctx.save(); const g = ctx.createRadialGradient(x, y + 8, R * 0.6, x, y + 8, R * 1.8); g.addColorStop(0, "rgba(255,230,150,.0)"); g.addColorStop(0.55, "rgba(255,230,150,.55)"); g.addColorStop(1, "rgba(255,230,150,0)");
+      ctx.fillStyle = g; circ(ctx, x, y + 8, R * 1.8); ctx.fill();
+      ctx.shadowColor = "rgba(60,40,0,.8)"; ctx.shadowBlur = 5; ctx.strokeStyle = "rgba(255,246,200,.95)"; ctx.lineWidth = 4; ctx.setLineDash([10, 8]); ctx.lineDashOffset = -st.clock / 60; circ(ctx, x, y + 8, R * 1.4); ctx.stroke(); ctx.restore();
+    }
+  }
+  function drawOver(ctx, st, v) {                                                            // 駒の上：茂みの葉・疲れの湯気
+    if (!v.alive) return;
+    const tt = terrainOf(st, v), x = v.x * PX, y = v.y * PX;
+    if (tt === "forest") {
+      ctx.save();
+      for (let k = 0; k < 6; k++) {                                                          // 縁に葉がかぶる（紋章と陣営の色は見える）
+        const a = k * 1.05 + 0.3, rr = R * (0.98 + (k % 2) * 0.08), sw = Math.sin(st.clock / 700 + k) * 0.14;
+        const lx = x + Math.cos(a) * rr, ly = y + Math.sin(a) * rr * 0.92;
+        ctx.fillStyle = k % 2 ? "rgba(52,120,48,.85)" : "rgba(78,150,60,.82)";
+        ctx.beginPath(); ctx.ellipse(lx, ly, R * 0.36, R * 0.16, a + 1.4 + sw, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(20,50,20,.5)"; ctx.lineWidth = 1.2; ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (v.stamina != null && v.stamina < 0.4) {
+      ctx.save(); const n = v.stamina < 0.2 ? 3 : 2;
+      for (let k = 0; k < n; k++) { const p = ((st.clock / 1100 + k / n) % 1), px = x - R * 0.5 + k * R * 0.5 + Math.sin(p * 6 + k) * 6, py = y - R * 0.9 - p * R * 1.3;
+        ctx.fillStyle = `rgba(245,248,252,${0.8 * (1 - p)})`; ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 6; circ(ctx, px, py, 9 + p * 14); ctx.fill(); }
+      ctx.restore();
+    }
+  }
+  // ===== 当たりの文字（ダメージの数字・会心・外れ）=====
+  function drawPops(ctx, st) {
+    const pops = st.pops || []; ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = pops.length - 1; i >= 0; i--) { const q = (st.clock - pops[i].t0) / 950; if (q > 1) pops.splice(i, 1); }
+    const stack = new Map();                                                                    // 同じ駒に重なる文字は上へ積む（吹き出しと反対の左上に出す）
+    for (const p of pops.slice().sort((a, b) => a.t0 - b.t0)) {
+      const q = (st.clock - p.t0) / 950; if (q < 0) continue;
+      const k = stack.get(p.v) || 0; stack.set(p.v, k + 1);
+      const x = p.v.x * PX - R * 0.75, y = p.v.y * PX - R * 1.05 - k * 40 - q * 40, a = q < 0.75 ? 1 : (1 - q) / 0.25, big = p.kind === "crit";
+      ctx.globalAlpha = a; ctx.font = `${big ? 900 : 800} ${big ? 46 : p.kind === "miss" ? 26 : 34}px "Noto Sans JP", sans-serif`;
+      ctx.lineWidth = big ? 8 : 6; ctx.strokeStyle = "rgba(6,10,18,.9)"; ctx.strokeText(p.text, x, y);
+      ctx.fillStyle = big ? "#ffd84a" : p.kind === "miss" ? "#c9d4e2" : "#ffffff"; ctx.fillText(p.text, x, y);
+    }
+    ctx.restore();
   }
 
   // ===== 狙い線（射撃・集中・必殺・温存の駒→的）=====
@@ -108,7 +185,11 @@ window.SCS2 = window.SCS2 || {};
   function drawToken(ctx, st, v) {
     const dead = !v.alive && st.clock >= (v.koT || 0), hit = st.clock >= v.hitT && st.clock < v.hitT + 150;
     const sh = hit ? Math.sin(st.clock / 12) * 3 : 0;
+    const ghost = !dead && v.hidden, bush = !dead && terrainOf(st, v) === "forest";           // 敵にまだ見つかっていない／茂みの中＝薄く
+    if (ghost || bush) { ctx.save(); ctx.globalAlpha = ghost && bush ? 0.42 : 0.6; }
     token(ctx, v.x * PX + sh, v.y * PX, R, { team: v.team, emb: v.emb, dead, hpf: v.hp / v.maxHp, ang: v.ang, hit });
+    if (ghost || bush) ctx.restore();
+    if (ghost) { ctx.save(); ctx.strokeStyle = teamCol(v.team === "P", 0.85); ctx.lineWidth = 3; ctx.setLineDash([7, 7]); ctx.lineDashOffset = st.clock / 50; circ(ctx, v.x * PX + sh, v.y * PX, R + 6); ctx.stroke(); ctx.restore(); }
   }
   function drawRing(ctx, st, v, strong) {
     if (!v) return;
@@ -207,14 +288,15 @@ window.SCS2 = window.SCS2 || {};
 
   function drawBoard(ctx, st) {
     usePX(st.arena);
-    drawMap(ctx, st);
+    drawMap(ctx, st); drawWeatherGround(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);
     st.views.filter((v) => !v.alive).forEach((v) => drawToken(ctx, st, v));
-    st.views.filter((v) => v.alive).sort((a, b) => a.y - b.y).forEach((v) => drawToken(ctx, st, v));
+    const live = st.views.filter((v) => v.alive).sort((a, b) => a.y - b.y);
+    live.forEach((v) => drawUnder(ctx, st, v)); live.forEach((v) => { drawToken(ctx, st, v); drawOver(ctx, st, v); });
     if (st.focus && st.focus.alive) drawRing(ctx, st, st.focus);
     if (st.highlight) drawRing(ctx, st, st.highlight, true);
-    drawFx(ctx, st); drawArrows(ctx, st); drawBubbles(ctx, st); drawWeather(ctx, st);
+    drawFx(ctx, st); drawWeather(ctx, st); drawArrows(ctx, st); drawBubbles(ctx, st); drawPops(ctx, st);
   }
   // ミニマップ（地図の縮小＋駒の点＋カメラ枠）
   function drawMini(mctx, mw, mh, st, cam) {

@@ -187,3 +187,23 @@ button { font-family: inherit; color: inherit; }
 .rec-row b { font-family: "Russo One", sans-serif; font-weight: 400; text-align: center; }
 .rec-row .n { font-weight: 900; }
 .ws-t { display: block; font-size: 16px; color: var(--dim); font-family: "Russo One", sans-serif; }
+
+/* 出撃準備：戦場は地図の絵のカード（キービジュ案6-5）、天気はアイコン付き */
+.rv-tokens .tk { width: 92px; height: 92px; border-width: 10px; }
+.rv-tokens { margin-top: 16px; }
+.rv-scout { margin-top: 12px; min-height: 0; font-size: 21px; }
+.pr-row { margin-top: 14px; }
+.pr-arena { align-items: start; }
+.pr-arena .pr-lbl { padding-top: 10px; }
+.acards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.acard { border: 2px solid rgba(140,190,255,.35); border-radius: 12px; overflow: hidden; background: rgba(10,22,38,.9); cursor: pointer; transition: transform .14s, box-shadow .14s, border-color .14s; }
+.acard img { display: block; width: 100%; height: 132px; object-fit: cover; filter: saturate(.9) brightness(.85); transition: filter .14s; }
+.acard span { display: block; text-align: center; font-size: 21px; font-weight: 700; padding: 7px 0 8px; }
+.acard:hover { transform: translateY(-2px); border-color: #8fe6ff; }
+.acard.on { border-color: #8fe6ff; box-shadow: 0 0 20px rgba(95,210,255,.55); }
+.acard.on img { filter: none; }
+.wchip { gap: 10px; }
+.wic { width: 26px; height: 26px; display: inline-block; background: currentColor; -webkit-mask: center/contain no-repeat; mask: center/contain no-repeat; color: #9fdcff; }
+.wic-sun { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5'/%3E%3Cpath d='M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='5'/%3E%3Cpath d='M12 1v3M12 20v3M1 12h3M20 12h3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.wic-fog { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 7h14M6 12h15M3 17h13' stroke='black' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 7h14M6 12h15M3 17h13' stroke='black' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"); }
+.wic-heat { color: #ffb36b; -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='8' r='4.5'/%3E%3Cpath d='M4 16c2-2 4 2 6 0s4 2 6 0 4 2 4 0M4 21c2-2 4 2 6 0s4 2 6 0 4 2 4 0' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='8' r='4.5'/%3E%3Cpath d='M4 16c2-2 4 2 6 0s4 2 6 0 4 2 4 0M4 21c2-2 4 2 6 0s4 2 6 0 4 2 4 0' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); }
