@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S.C.S. AI — 硝子のアリーナ（試作）</title>
+<!-- キービジュ案5-1「硝子のアリーナ」の試作画面（Obsidian キービジュ案.md scs.proto1）。ゲーム本体の入口からはリンクしない -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Noto+Sans+JP:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="arena.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="cv" width="1920" height="1080"></canvas>
+  <div class="glass"></div>
+
+  <header class="logo">
+    <svg class="circuit circuit-l" viewBox="0 0 200 40" aria-hidden="true"><path d="M200 20 H70 L52 8 H8"/><circle cx="8" cy="8" r="4"/><path d="M200 26 H90"/></svg>
+    <div class="logo-main">S.C.S. AI</div>
+    <svg class="circuit circuit-r" viewBox="0 0 200 40" aria-hidden="true"><path d="M0 20 H130 L148 8 H192"/><circle cx="192" cy="8" r="4"/><path d="M0 26 H110"/></svg>
+    <div class="logo-sub">仕込んで、手を離す。</div>
+  </header>
+
+  <section class="pnl pnl-battle">
+    <div class="ico-box"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 10 L34 34 M34 10 L10 34 M30 38 L38 30 M10 30 L18 38 M6 42 L12 36 M42 42 L36 36"/></svg></div>
+    <div><div class="b-title" id="bTitle">BATTLE 1</div><div class="b-sub" id="bSub">遺跡の円形広場</div></div>
+  </section>
+  <section class="pnl pnl-count">
+    <div class="row"><i class="dot dot-p"></i><span>青</span><b id="cP">6</b></div>
+    <div class="row"><i class="dot dot-c"></i><span>赤</span><b id="cC">6</b></div>
+    <div class="row"><i class="dot dot-t"></i><span>ターン</span><b id="cT">0</b></div>
+    <div class="row"><i class="dot dot-k"></i><span>撃破</span><b id="cK">0</b></div>
+  </section>
+
+  <section class="pnl pnl-mini"><canvas id="mini" width="300" height="169"></canvas></section>
+
+  <section class="pnl pnl-watch">
+    <div class="pnl-title">観戦</div>
+    <div class="btns">
+      <button id="btPause" class="bt bt-cyan" title="一時停止／再生"><svg viewBox="0 0 48 48"><path id="icPause" d="M17 13 V35 M31 13 V35"/></svg></button>
+      <button id="btSpeed" class="bt bt-red" title="速度"><span id="spd">×1</span></button>
+      <button id="btWhy" class="bt bt-blue on" title="理由の吹き出し"><svg viewBox="0 0 48 48"><path d="M10 12 H38 V30 H24 L16 37 V30 H10 Z"/><path d="M20 19 H28 M24 19 V24"/></svg></button>
+      <button id="btFocus" class="bt bt-ice" title="注目を切り替える"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="11"/><path d="M24 6 V14 M24 34 V42 M6 24 H14 M34 24 H42"/></svg></button>
+      <button id="btNext" class="bt bt-gold" title="次の戦い"><svg viewBox="0 0 48 48"><path d="M12 13 L26 24 L12 35 Z M26 13 L40 24 L26 35 Z"/></svg></button>
+    </div>
+  </section>
+
+  <section class="pnl pnl-focus" id="focus">
+    <div class="f-emb" id="fEmb"><img id="fImg" alt=""></div>
+    <div class="f-mid">
+      <div class="f-name"><span id="fName">—</span><small id="fWord"></small></div>
+      <div class="bar"><i class="hp" id="fHp"></i><em id="fHpT">0 / 0</em></div>
+      <div class="bar"><i class="st" id="fSt"></i><em id="fStT">0 / 100</em></div>
+      <div class="f-why" id="fWhy"></div>
+    </div>
+    <div class="f-act"><div id="fAct">待機</div><svg viewBox="0 0 48 24"><path d="M6 4 L16 12 L6 20 M18 4 L28 12 L18 20 M30 4 L40 12 L30 20"/></svg></div>
+  </section>
+
+  <div class="result" id="result"><div class="r-main" id="rMain"></div><div class="r-sub" id="rSub"></div></div>
+</div>
+
+<script src="../js/rng.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/derive.js"></script>
+<script src="../js/squad.js"></script>
+<script src="arena.js"></script>
+</body>
+</html>

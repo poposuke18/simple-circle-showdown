@@ -1,0 +1,88 @@
+/* proto/arena.css — キービジュ案5-1「硝子のアリーナ」試作。舞台は 1920×1080 で組み、transform で画面に合わせる */
+:root { --ink: #eaf3ff; --dim: #9fb4cc; --line: rgba(140, 190, 255, .22); --panel: rgba(9, 18, 31, .86); --blue: #2f86ff; --red: #ff4343; --cyan: #5fd2ff; --gold: #ffc93d; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #050a12; overflow: hidden; }
+body { font-family: "Noto Sans JP", system-ui, sans-serif; color: var(--ink); }
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background: #07101c; border-radius: 26px; overflow: hidden; }
+#cv { position: absolute; inset: 0; width: 1920px; height: 1080px; display: block; }
+
+/* 硝子の縁：外側の暗い枠＋細い光の線＋うっすら映り込み */
+.glass { position: absolute; inset: 0; pointer-events: none; border-radius: 26px;
+  box-shadow: inset 0 0 0 16px #08111d, inset 0 0 0 17.5px rgba(150, 205, 255, .55), inset 0 0 40px 18px rgba(0, 0, 0, .55); }
+.glass::after { content: ""; position: absolute; inset: 18px; border-radius: 18px;
+  background: linear-gradient(115deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, 0) 22%, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, .04) 86%, rgba(255, 255, 255, 0) 100%); }
+
+/* ロゴ */
+.logo { position: absolute; left: 0; right: 0; top: 34px; text-align: center; pointer-events: none; }
+.logo-main { font-family: "Russo One", "Noto Sans JP", sans-serif; font-size: 132px; line-height: 1; letter-spacing: 6px; color: #f4f8ff;
+  background: linear-gradient(180deg, #ffffff 0%, #e8f1ff 52%, #b9cbe6 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 0 #3a4b66) drop-shadow(0 8px 18px rgba(0, 0, 0, .75)) drop-shadow(0 0 22px rgba(90, 170, 255, .35)); display: inline-block; }
+.logo-sub { margin-top: 18px; font-weight: 900; font-size: 46px; letter-spacing: 6px; color: #fff; text-shadow: 0 3px 0 rgba(0, 0, 0, .45), 0 0 18px rgba(0, 0, 0, .8), 0 0 30px rgba(0, 0, 0, .6); }
+.circuit { position: absolute; top: 46px; width: 230px; height: 46px; fill: none; stroke: #6fd6ff; stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(80, 200, 255, .9)); }
+.circuit circle { fill: #bff0ff; stroke: none; }
+.circuit-l { left: calc(50% - 560px); }
+.circuit-r { right: calc(50% - 560px); }
+
+/* パネル共通 */
+.pnl { position: absolute; background: var(--panel); border: 1.5px solid var(--line); border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .06); backdrop-filter: blur(3px); }
+.pnl-battle { left: 40px; top: 40px; width: 420px; height: 112px; display: flex; align-items: center; gap: 22px; padding: 0 22px; }
+.ico-box { width: 74px; height: 74px; border-radius: 10px; border: 1.5px solid rgba(150, 200, 255, .35); background: rgba(20, 38, 62, .8); display: grid; place-items: center; }
+.ico-box svg { width: 50px; height: 50px; fill: none; stroke: #cfe6ff; stroke-width: 3.6; stroke-linecap: round; }
+.b-title { font-family: "Russo One", sans-serif; font-size: 34px; letter-spacing: 2px; }
+.b-sub { font-size: 26px; color: #c9d8ea; margin-top: 2px; font-weight: 500; }
+.pnl-count { left: 40px; top: 166px; width: 236px; padding: 8px 20px; }
+.pnl-count .row { display: flex; align-items: center; gap: 16px; height: 52px; font-size: 26px; border-bottom: 1px solid rgba(140, 190, 255, .14); }
+.pnl-count .row:last-child { border-bottom: 0; }
+.pnl-count b { margin-left: auto; font-family: "Russo One", sans-serif; font-weight: 400; font-size: 28px; }
+.dot { width: 20px; height: 20px; border-radius: 50%; display: inline-block; box-shadow: 0 0 10px currentColor; }
+.dot-p { background: var(--blue); color: var(--blue); } .dot-c { background: var(--red); color: var(--red); }
+.dot-t { background: #3ccf73; color: #3ccf73; } .dot-k { background: var(--gold); color: var(--gold); }
+
+.pnl-mini { right: 40px; top: 40px; width: 330px; height: 199px; padding: 14px; }
+.pnl-mini canvas { width: 300px; height: 169px; display: block; border-radius: 6px; }
+
+.pnl-watch { left: 40px; bottom: 40px; width: 560px; height: 196px; padding: 18px 24px; clip-path: polygon(0 0, 88% 0, 100% 22%, 100% 100%, 0 100%); }
+.pnl-title { font-size: 26px; font-weight: 700; margin-bottom: 16px; color: #e6f0ff; }
+.btns { display: flex; gap: 18px; }
+.bt { width: 88px; height: 92px; border-radius: 10px; background: rgba(12, 26, 44, .9); border: 2px solid; display: grid; place-items: center; cursor: pointer; padding: 0; font-family: "Russo One", sans-serif; font-size: 30px; transition: transform .12s, box-shadow .12s; }
+.bt:hover { transform: translateY(-2px); }
+.bt svg { width: 52px; height: 52px; fill: none; stroke-width: 3.6; stroke-linecap: round; stroke-linejoin: round; }
+.bt-cyan { border-color: #6fd6ff; color: #8fe0ff; box-shadow: 0 0 16px rgba(95, 210, 255, .45), inset 0 0 12px rgba(95, 210, 255, .2); } .bt-cyan svg { stroke: #8fe0ff; }
+.bt-red { border-color: #ff5a6a; color: #ff8f9a; box-shadow: 0 0 14px rgba(255, 70, 90, .35); }
+.bt-blue { border-color: #4f8dff; color: #9cc0ff; } .bt-blue svg { stroke: #9cc0ff; }
+.bt-blue.on { box-shadow: 0 0 16px rgba(79, 141, 255, .5), inset 0 0 12px rgba(79, 141, 255, .25); }
+.bt-ice { border-color: #4f8dff; } .bt-ice svg { stroke: #a9d8ff; }
+.bt-gold { border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 201, 61, .35); } .bt-gold svg { fill: #ffd25a; stroke: none; }
+
+.pnl-focus { right: 40px; bottom: 40px; width: 860px; height: 196px; display: flex; align-items: center; gap: 22px; padding: 0 24px; }
+.f-emb { width: 136px; height: 136px; border-radius: 50%; border: 9px solid var(--blue); background: radial-gradient(circle at 40% 35%, #3a4150, #20242c 70%); display: grid; place-items: center; flex: none; box-shadow: 0 0 18px rgba(47, 134, 255, .45); }
+.f-emb.c { border-color: var(--red); box-shadow: 0 0 18px rgba(255, 67, 67, .45); }
+.f-emb img { width: 74px; height: 74px; opacity: .92; }
+.f-mid { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 12px; padding: 9px 18px; background: rgba(15, 28, 46, .55); }
+.f-name { font-family: "Russo One", sans-serif; font-size: 30px; letter-spacing: 1px; display: flex; align-items: baseline; gap: 14px; }
+.f-name small { font-family: "Noto Sans JP", sans-serif; font-size: 20px; color: var(--dim); font-weight: 700; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { position: relative; height: 20px; margin-top: 7px; background: rgba(255, 255, 255, .06); border-radius: 4px; overflow: hidden; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; transition: width .4s; }
+.bar .hp { background: linear-gradient(90deg, #22b95c, #4be07f); } .bar .st { background: linear-gradient(90deg, #1d74e8, #46a0ff); }
+.bar em { position: absolute; right: 8px; top: -1px; font-style: normal; font-size: 18px; font-family: "Russo One", sans-serif; }
+.f-why { margin-top: 7px; font-size: 18px; line-height: 23px; color: #cfe0f5; height: 46px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.f-act { width: 150px; height: 136px; border: 1.5px solid var(--line); border-radius: 12px; display: grid; place-items: center; align-content: center; gap: 10px; font-size: 28px; font-weight: 700; flex: none; background: rgba(15, 28, 46, .55); }
+.f-act svg { width: 64px; height: 32px; fill: none; stroke: #7fc8ff; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgba(80, 180, 255, .8)); }
+
+/* 決着 */
+.result { position: absolute; left: 0; right: 0; top: 430px; text-align: center; pointer-events: none; opacity: 0; transform: scale(.94); transition: opacity .35s, transform .35s; }
+.result.show { opacity: 1; transform: scale(1); }
+.r-main { display: inline-block; font-weight: 900; font-size: 96px; letter-spacing: 10px; padding: 10px 60px; background: rgba(6, 12, 22, .78); border: 2px solid rgba(150, 205, 255, .5); border-radius: 16px; text-shadow: 0 0 24px rgba(90, 170, 255, .7); }
+.r-main.c { text-shadow: 0 0 24px rgba(255, 80, 80, .8); }
+.r-sub { margin-top: 12px; font-size: 30px; font-weight: 700; color: #dbe7f7; text-shadow: 0 2px 8px #000; }
+
+/* キービジュの比率に合わせて、パネルとロゴを少し小さく（地図を広く見せる） */
+.logo-main { font-size: 118px; }
+.logo-sub { font-size: 42px; margin-top: 14px; }
+.circuit { top: 40px; }
+.pnl-battle { transform: scale(.82); transform-origin: 0 0; }
+.pnl-count { top: 144px; transform: scale(.86); transform-origin: 0 0; }
+.pnl-mini { transform: scale(.84); transform-origin: 100% 0; }
+.pnl-watch { transform: scale(.86); transform-origin: 0 100%; }
+.pnl-focus { transform: scale(.88); transform-origin: 100% 100%; }
