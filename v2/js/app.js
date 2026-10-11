@@ -24,18 +24,18 @@
   function fit() {
     K = Math.min(innerWidth / W, innerHeight / H); DPR = Math.min(2, window.devicePixelRatio || 1);
     $("stage").style.transform = `translate(${(innerWidth - W * K) / 2}px,${(innerHeight - H * K) / 2}px) scale(${K})`;
-    CVS.forEach(size); if (cur === "result") drawCards(); if (cur === "why") drawWhy();
+    CVS.forEach(size); if (cur === "result") drawCards(); if (cur === "why") drawWhy(); if (cur === "line") drawTree();
   }
 
   // ===== 画面切り替え =====
   let cur = "title";
-  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", league: "scLeague", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
+  const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", league: "scLeague", line: "scLine", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
   function go(name) {
     if (!SC[name]) return;
     if (cur === "edit") St.save();
     cur = name;
     Object.entries(SC).forEach(([k, id]) => $(id).classList.toggle("on", k === name));
-    ({ squad: enterSquad, prep: enterPrep, league: enterLeague, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
+    ({ squad: enterSquad, prep: enterPrep, league: enterLeague, line: enterLine, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
   }
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { e.preventDefault(); go(b.getAttribute("data-go")); } });
 
@@ -292,6 +292,63 @@
       $("lgGo").textContent = "試合へ";
     }
   }
+  // ===== 系譜：12体の世代交代（v2.k4.lineage）。家系図＝新しい5世代、あなたの3体の血筋を色で追う =====
+  const Ln = SCS2.lineage, cvTree = reg($("cvTree"), 1840, 740);
+  const BLOOD_PAL = [Wd.PAL.blue, { rgb: "70,220,210", rimA: "#4fe3d6", rimB: "#0f8f86", side: "#063d39", fx: "", dot: "" }, { rgb: "160,140,255", rimA: "#a596ff", rimB: "#4b3fcf", side: "#1d175e", fx: "", dot: "" }];
+  const NEUTRAL = { rgb: "150,160,175", rimA: "#8b95a5", rimB: "#4a5260", side: "#20252c", fx: "", dot: "" };
+  let lnSel = null;
+  const lnData = () => { let L = St.data.lineage; if (!Ln.valid(L)) { L = St.data.lineage = Ln.genesis(newSeed(), St.data.squad); St.save(); } return L; };
+  const bloodOf = (x) => x.line;
+  const palOfX = (x) => { const k = bloodOf(x); return k < 0 ? NEUTRAL : BLOOD_PAL[k]; };
+  const TX = (i) => 200 + (i + 0.5) * 135, TY = (r) => 78 + r * 148;
+  function enterLine() { lnSel = null; $("lnPop").classList.remove("show"); renderLine(); }
+  function renderLine() {
+    const L = lnData(), cur = L.rows[L.rows.length - 1];
+    $("lnGen").textContent = `第${cur.gen}世代`;
+    const share = Ln.bloodShare(L);
+    $("lnBlood").innerHTML = `<div class="lb-h">血筋</div>` + L.founders.map((f, k) => `<div class="lb">${tkHtml("P", f.emb, "tk-xs", BLOOD_PAL[k])}<i class="lb-bar"><b style="width:${(share[k] * 100).toFixed(0)}%;background:${BLOOD_PAL[k].rimA}"></b></i><span>${Math.round(share[k] * 100)}%</span></div>`).join("");
+    drawTree();
+  }
+  function drawTree() {
+    const L = lnData(), o = cvTree, c = o.ctx; c.setTransform(o.s, 0, 0, o.s, 0, 0); c.clearRect(0, 0, 1840, 740);
+    const rows = L.rows, posOf = new Map(); rows.forEach((row, r) => row.pop.forEach((x, i) => posOf.set(x.id, { x: TX(i), y: TY(r), x0: x })));
+    const selIds = new Set(); if (lnSel) { selIds.add(lnSel); const s = posOf.get(lnSel); if (s) { if (s.x0.pa) selIds.add(s.x0.pa); if (s.x0.pb) selIds.add(s.x0.pb); } }
+    rows.forEach((row, r) => {                                                                  // 世代の札（戦場・天気）
+      const A = Ln.arenaOf(row.env.arena), y = TY(r);
+      c.fillStyle = "#eaf3ff"; c.font = "900 24px 'Noto Sans JP', sans-serif"; c.textAlign = "left"; c.textBaseline = "middle"; c.fillText(`第${row.gen}世代`, 24, y - 13);
+      c.fillStyle = "#9fb4cc"; c.font = "700 17px 'Noto Sans JP', sans-serif"; c.fillText(`${A.name}・${row.env.mod}`, 24, y + 16);
+      if (r > 0) row.pop.forEach((x, i) => {                                                   // 親から子への線（あなたの血筋は色つき）
+        const k = bloodOf(x), col = k < 0 ? "150,160,175" : BLOOD_PAL[k].rgb;
+        for (const [pid, w] of [[x.pa, 1], [x.pb, 0.55]]) {
+          const p = posOf.get(pid); if (!p) continue; const on = lnSel === x.id || lnSel === pid;
+          c.strokeStyle = `rgba(${col},${on ? 0.95 : (k < 0 ? 0.16 : 0.42) * w})`; c.lineWidth = on ? 4 : 2.2 * w + 0.6;
+          c.beginPath(); c.moveTo(p.x, p.y + 34); c.bezierCurveTo(p.x, p.y + 80, TX(i), TY(r) - 80, TX(i), TY(r) - 34); c.stroke();
+        }
+      });
+    });
+    rows.forEach((row, r) => row.pop.forEach((x, i) => {
+      const fought = !!row.parents, parent = fought && row.parents.includes(x.id);
+      c.globalAlpha = fought && !parent ? 0.38 : 1;
+      Bd.token(c, TX(i), TY(r), 34, { team: "P", emb: x.emb, pal: palOfX(x) });
+      c.globalAlpha = 1;
+      if (lnSel === x.id || selIds.has(x.id)) { c.strokeStyle = lnSel === x.id ? "#fff" : "rgba(255,255,255,.55)"; c.lineWidth = 3; c.setLineDash(lnSel === x.id ? [] : [6, 6]); Bd.circ(c, TX(i), TY(r), 44); c.stroke(); c.setLineDash([]); }
+    }));
+  }
+  $("cvTree").addEventListener("click", (e) => {
+    const L = lnData(), rc = $("cvTree").getBoundingClientRect(), mx = (e.clientX - rc.left) / rc.width * 1840, my = (e.clientY - rc.top) / rc.height * 740;
+    let hit = null; L.rows.forEach((row, r) => row.pop.forEach((x, i) => { if (Math.hypot(mx - TX(i), my - TY(r)) < 40) hit = { x, i, r }; }));
+    const pop = $("lnPop");
+    if (!hit || lnSel === hit.x.id) { lnSel = null; pop.classList.remove("show"); drawTree(); return; }
+    lnSel = hit.x.id; const x = hit.x, pal = palOfX(x);
+    pop.innerHTML = `<div class="lp-h">${tkHtml("P", x.emb, "tk-xs", pal)}<b>${esc(x.fam)}</b><small>第${x.gen}世代</small></div><div class="lp-w">${Wd.wordsOf(x.choices).map((w) => `<span>${esc(w)}</span>`).join("")}</div>`;
+    const left = clamp(TX(hit.i) + 52, 10, 1840 - 330), top = clamp(TY(hit.r) - 60, 10, 740 - 150);
+    pop.style.left = left + "px"; pop.style.top = top + "px"; pop.classList.add("show"); drawTree();
+  });
+  function lnStep(n) { const L = lnData(); for (let i = 0; i < n; i++) Ln.step(L); St.save(); lnSel = null; $("lnPop").classList.remove("show"); renderLine(); }
+  $("lnNext").addEventListener("click", () => lnStep(1));
+  $("lnFive").addEventListener("click", () => lnStep(5));
+  $("lnReset").addEventListener("click", () => { St.data.lineage = Ln.genesis(newSeed(), St.data.squad); St.save(); enterLine(); });
+
   $("lgGo").addEventListener("click", () => {
     const L = lgData();
     if (L.round >= Lg.ROUNDS) { St.data.league = Lg.fresh(L.season + 1); St.save(); enterLeague(); return; }
@@ -467,7 +524,7 @@
     if (cur === "title") frameTitle(dt); else if (cur === "edit") frameEdit(); else if (cur === "watch") frameWatch(dt); else if (cur === "result") frameResult(dt);
   }
   // 絵が読み込まれたら止まっている画面（結果・なぜ？）を描き直す。先に読み込んでおく
-  Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); };
+  Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); else if (cur === "line") drawTree(); };
   Wd.ARENAS.forEach((a) => { Bd.img(a.map); Bd.img(a.mini); });
   Wd.EMB.forEach((e) => Bd.emb(e));
   Object.values(Wd.WEAPON_ICON).forEach((k) => Bd.img(`assets/weapon/${k}.png`));               // 武器アイコンも先に読む（初回に遅れて出ないように）
