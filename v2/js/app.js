@@ -379,7 +379,7 @@
     if (ended && !paused && clock - endAt > 2600) showResult();
     const o = cvWatch, c = o.ctx; c.setTransform(o.s, 0, 0, o.s, 0, 0); c.fillStyle = "#050b14"; c.fillRect(0, 0, FW, FH);   // 地図の外（端に寄った時の余白）は暗い色
     Bd.view(c, o.s, FW, FH, run.cam.x, run.cam.y, run.cam.z);
-    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
+    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal, bleed: true });
     updHud();
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
     const vg = c.createRadialGradient(FW / 2, FH / 2, FH * 0.42, FW / 2, FH / 2, FH * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.45)"); c.fillStyle = vg; c.fillRect(0, 0, FW, FH);

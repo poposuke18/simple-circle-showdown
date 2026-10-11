@@ -22,6 +22,14 @@ window.SCS2 = window.SCS2 || {};
   const emb = (k) => img("assets/emblem/" + k + ".png");
 
   // ===== 地図 =====
+  // 地図の外（引いた時に見える余白）：地図をぼかして暗くし、外へ続いているように見せる。戦場ごとに一度だけ作る
+  const BLEED = {}, BL = 420;
+  function drawBleed(ctx, st) {
+    const src = st.arena.map; let c = BLEED[src];
+    if (!c) { const m = img(src); if (!m) return; c = document.createElement("canvas"); c.width = Math.round((W + 2 * BL) / 4); c.height = Math.round((H + 2 * BL) / 4);
+      const x = c.getContext("2d"); x.filter = "blur(5px) brightness(.42) saturate(.75)"; x.drawImage(m, -6, -6, c.width + 12, c.height + 12); BLEED[src] = c; }
+    ctx.drawImage(c, -BL, -BL, W + 2 * BL, H + 2 * BL);
+  }
   function drawMap(ctx, st) {
     const m = img(st.arena.map);
     if (m) ctx.drawImage(m, 0, 0, W, H); else { ctx.fillStyle = "#1c2a1c"; ctx.fillRect(0, 0, W, H); }
@@ -321,7 +329,10 @@ window.SCS2 = window.SCS2 || {};
 
   function drawBoard(ctx, st) {
     usePX(st.arena); usePal(st.pal);
-    drawMap(ctx, st); drawWeatherGround(ctx, st);
+    if (st.bleed) drawBleed(ctx, st);
+    drawMap(ctx, st);
+    if (st.bleed) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 24; ctx.strokeStyle = "rgba(4,10,18,.9)"; ctx.lineWidth = 6; ctx.strokeRect(-3, -3, W + 6, H + 6); ctx.restore(); }   // 地図の縁
+    drawWeatherGround(ctx, st);
     drawFormation(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);
@@ -350,9 +361,18 @@ window.SCS2 = window.SCS2 || {};
     const vw = (opt && opt.vw) || W, vh = (opt && opt.vh) || H, own = !!(opt && opt.vw);        // own＝パネルの無い専用の枠（観戦）
     const al = views.filter((v) => v.alive); if (!al.length) return { x: W / 2, y: H / 2, z: Math.max(vw / W, vh / H) };
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const v of al) { x0 = Math.min(x0, v.x * PX); x1 = Math.max(x1, v.x * PX); y0 = Math.min(y0, v.y * PX); y1 = Math.max(y1, v.y * PX); }
-    const M = (opt && opt.margin) || 0;                                                         // 戦場の端の駒も切れないよう、地図の外を少し見せてよい幅
-    const padX = (opt && opt.padX) || (own ? 170 : 230), padY = (opt && opt.padY) || (own ? 300 : 470), zMax = (opt && opt.zMax) || 1.32, zMin = Math.max(vw / (W + 2 * M), vh / (H + 2 * M));
-    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + ((opt && opt.dy) || 30), z: clamp(Math.min(vw / (x1 - x0 + 2 * padX), vh / (y1 - y0 + padY)), zMin, Math.max(zMin, zMax)) };
+    // 駒が全員映るなら地図の外（暗い余白）も少し見せてよい（最大 margin。全員が映ることを優先）
+    const M = (opt && opt.margin) || 0;
+    const padX = (opt && opt.padX) || (own ? 170 : 230), padY = (opt && opt.padY) || (own ? 300 : 470), zMax = (opt && opt.zMax) || 1.32;
+    const zMin = own ? Math.min(vw / (W + 2 * M), vh / (H + 2 * M)) : Math.max(vw / W, vh / H);   // 両端に分かれた時は、地図の幅いっぱいまで引ける
+    const z = clamp(Math.min(vw / (x1 - x0 + 2 * padX), vh / (y1 - y0 + padY)), zMin, Math.max(zMin, zMax));
+    let x = (x0 + x1) / 2, y = (y0 + y1) / 2 + ((opt && opt.dy) || 30);
+    if (own) {                                                                                    // 狙う位置は、端の駒が切れる分しか地図の外へ出さない
+      const hw = vw / 2 / z, hh = vh / 2 / z, eg = R + 30, mL = Math.max(0, eg - x0), mR = Math.max(0, x1 - (W - eg)), mT = Math.max(0, R + 75 - y0), mB = Math.max(0, y1 - (H - eg));
+      const fit = (v, h, L, a, b) => { const lo = h - a, hi = L - h + b; return lo > hi ? (lo + hi) / 2 : clamp(v, lo, hi); };
+      x = fit(x, hw, W, mL, mR); y = fit(y, hh, H, mT, mB);
+    }
+    return { x, y, z };
   }
   function camStep(cam, goal, cf) {
     cam.z += (goal.z - cam.z) * cf; const hw = (cam.vw || W) / 2 / cam.z, hh = (cam.vh || H) / 2 / cam.z, M = cam.m || 0;
