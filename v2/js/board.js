@@ -4,7 +4,9 @@
 window.SCS2 = window.SCS2 || {};
 (function () {
   "use strict";
-  const W = 1920, H = 1080, PX = 12, R = 41;
+  const W = 1920, H = 1080, R = 41;
+  let PX = 12;                                                    // 1単位の px＝1920/戦場の幅（戦場ごとに違う。描く前に usePX）
+  const usePX = (arena) => { PX = W / arena.w; return PX; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const circ = (c, x, y, r) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); };
@@ -204,6 +206,7 @@ window.SCS2 = window.SCS2 || {};
   }
 
   function drawBoard(ctx, st) {
+    usePX(st.arena);
     drawMap(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);
@@ -215,7 +218,7 @@ window.SCS2 = window.SCS2 || {};
   }
   // ミニマップ（地図の縮小＋駒の点＋カメラ枠）
   function drawMini(mctx, mw, mh, st, cam) {
-    const k = mw / W, m = img(st.arena.mini);
+    usePX(st.arena); const k = mw / W, m = img(st.arena.mini);
     if (m) mctx.drawImage(m, 0, 0, mw, mh); else { mctx.fillStyle = "#1c2a1c"; mctx.fillRect(0, 0, mw, mh); }
     mctx.fillStyle = "rgba(4,10,20,.25)"; mctx.fillRect(0, 0, mw, mh);
     for (const v of st.views) {
@@ -227,6 +230,7 @@ window.SCS2 = window.SCS2 || {};
   }
   // カメラ：生き残りが全員収まる範囲で寄る（topPad/botPad＝ロゴとパネルの分の余白）
   function camGoal(views, opt) {
+    if (opt && opt.arena) usePX(opt.arena);
     const al = views.filter((v) => v.alive); if (!al.length) return { x: W / 2, y: H / 2, z: 1 };
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (const v of al) { x0 = Math.min(x0, v.x * PX); x1 = Math.max(x1, v.x * PX); y0 = Math.min(y0, v.y * PX); y1 = Math.max(y1, v.y * PX); }
     const padX = (opt && opt.padX) || 230, padY = (opt && opt.padY) || 470, zMax = (opt && opt.zMax) || 1.32;
@@ -239,5 +243,5 @@ window.SCS2 = window.SCS2 || {};
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }
 
-  SCS2.board = { W, H, PX, R, img, emb, token, icon, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, teamCol, circ };
+  SCS2.board = { W, H, R, usePX, get PX() { return PX; }, img, emb, token, icon, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, teamCol, circ };
 })();

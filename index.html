@@ -1,261 +1,163 @@
 <!doctype html>
 <html lang="ja">
+<!-- 自動生成：tools/make_root.js（元は v2/index.html）。直接直さない -->
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#080b10" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-  <title>S.C.S. AI — Simple Circle Showdown</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;600;700&display=swap" media="print" onload="this.media='all'" />
-  <link rel="stylesheet" href="style.css?v=1011b" />
+<meta charset="utf-8">
+<script>if (/[?&]r=/.test(location.search)) location.replace("classic.html" + location.search);</script>
+<base href="v2/">
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>S.C.S. AI</title>
+<!-- v2（Obsidian [[v2ゲーム設計]]）：仕込んで、手を離して眺める。戦闘エンジンは ../js/squad.js を無改変で使う -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Noto+Sans+JP:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="v2.css?b=1011c3">
 </head>
-<body class="kv">
-  <div class="app">
-    <header class="app-head">
-      <button id="btnHelp" class="help-btn" title="遊び方をもう一度見る">？</button>
-      <h1>S.C.S.<span class="ai">AI</span><span class="ver">build 1011b</span></h1>
-      <div class="sub">SIMPLE CIRCLE SHOWDOWN · 人格を設計して観戦するオートバトラー</div>
-    </header>
+<body>
+<div id="stage">
 
-    <nav class="mode-bar" id="modeBar">
-      <button id="tabLineage" class="mtab active">系譜</button>
-      <button id="tabSquad" class="mtab">分隊戦</button>
-      <button id="tabFree" class="mtab">自由対戦</button>
-      <button id="tabStory" class="mtab">ストーリー</button>
-      <button class="mtab mtab-title" data-go="title" type="button">タイトルへ</button>
+  <!-- タイトル -->
+  <section id="scTitle" class="sc on">
+    <canvas class="cv-full" id="cvTitle"></canvas>
+    <div class="dim"></div>
+    <div class="t-logo">S.C.S. AI</div>
+    <div class="t-sub">仕込んで、手を離す。</div>
+    <nav class="t-menu">
+      <button class="mbtn hot" data-go="prep"><span class="ic ic-go"></span>出撃</button>
+      <button class="mbtn" data-go="squad"><span class="ic ic-squad"></span>部隊</button>
+      <button class="mbtn" data-go="records"><span class="ic ic-rec"></span>記録</button>
     </nav>
+  </section>
 
-    <section id="storyHome" class="story hidden"></section>
-    <section id="storyScout" class="story hidden"></section>
+  <!-- 部隊 -->
+  <section id="scSquad" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">部隊</span></header>
+    <div class="sq-cards" id="sqCards"></div>
+    <div class="foot">
+      <button class="btn" data-go="title">タイトルへ</button>
+      <button class="btn hot" data-go="prep">出撃準備へ</button>
+    </div>
+  </section>
 
-    <section class="stage" id="stage">
-      <div class="stage-top">
-        <span class="chips-left"><span class="arena-chip" id="arenaChip">—</span><span class="mod-chip" id="modChip"></span></span>
-        <span class="turn-chip" id="turnInfo">TURN 0</span>
+  <!-- 性格を決める（キービジュ案8-1＋8-2の一行） -->
+  <section id="scEdit" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span></header>
+    <div class="pnl ed-left">
+      <canvas id="cvCore"></canvas>
+      <input class="ed-name" id="edName" maxlength="10" spellcheck="false" autocomplete="off">
+      <div class="ed-body">
+        <div class="ed-hp"><span>HP</span><b id="edHp">0</b></div>
+        <div class="ed-weaps weaps" id="edWeaps"></div>
       </div>
+    </div>
+    <div class="pnl ed-right" id="edRows"></div>
+    <div class="ed-line">どう動くかは、戦わせてみるまでわからない。</div>
+    <div class="foot foot-ed"><button class="btn" data-go="squad">部隊へ戻る</button></div>
+  </section>
 
-      <!-- 2D上空ミニマップ（CRTレーダー調） -->
-      <div class="track-wrap">
-        <canvas id="mini" class="mini"></canvas>
-        <div class="track-foot">
-          <span class="lg p">● YOU</span>
-          <span class="dist" id="distNum">距離 —</span>
-          <span class="lg c">CPU ●</span>
-        </div>
+  <!-- 出撃準備 -->
+  <section id="scPrep" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">出撃準備</span></header>
+    <div class="pnl pr-list" id="rvList"></div>
+    <div class="pnl pr-detail">
+      <div class="rv-head"><div class="rv-name" id="rvName"></div><div class="rv-rec" id="rvRec"></div></div>
+      <div class="rv-flavor" id="rvFlavor"></div>
+      <div class="rv-tokens" id="rvTokens"></div>
+      <div class="rv-scout" id="rvScout"></div>
+      <div class="pr-row"><div class="pr-lbl">戦場</div><div class="chips" id="pArena"></div></div>
+      <div class="pr-row"><div class="pr-lbl">戦況</div><div class="chips" id="pMod"></div></div>
+      <div class="pr-row"><div class="pr-lbl">隊形</div><div class="chips" id="pForm"></div></div>
+      <div class="pr-mine" id="pMine"></div>
+    </div>
+    <div class="foot">
+      <button class="btn" data-go="squad">部隊へ</button>
+      <button class="btn hot big" id="pGo">送り出す</button>
+    </div>
+  </section>
+
+  <!-- 観戦 -->
+  <section id="scWatch" class="sc">
+    <canvas class="cv-full" id="cvWatch"></canvas>
+    <div class="glass"></div>
+    <header class="w-logo"><div class="w-logo-main">S.C.S. AI</div></header>
+    <div class="pnl w-battle"><div class="w-vs" id="wVs"></div><div class="w-sub" id="wSub"></div></div>
+    <div class="pnl w-count">
+      <div class="row"><i class="dot dot-p"></i><span>青</span><b id="cP">3</b></div>
+      <div class="row"><i class="dot dot-c"></i><span>赤</span><b id="cC">3</b></div>
+      <div class="row"><i class="dot dot-t"></i><span>ターン</span><b id="cT">0</b></div>
+    </div>
+    <div class="pnl w-mini"><canvas id="cvMini"></canvas></div>
+    <div class="pnl w-btns">
+      <button id="wPause" class="bt bt-cyan" title="一時停止"><svg viewBox="0 0 48 48"><path id="icPause" d="M17 13 V35 M31 13 V35"/></svg></button>
+      <button id="wSpeed" class="bt bt-red" title="速度"><span id="wSpd">×1</span></button>
+      <button id="wBub" class="bt bt-blue on" title="吹き出し"><svg viewBox="0 0 48 48"><path d="M10 12 H38 V30 H24 L16 37 V30 H10 Z"/><path d="M20 19 H28 M24 19 V24"/></svg></button>
+      <button id="wFocus" class="bt bt-ice" title="注目を切り替える"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="11"/><path d="M24 6 V14 M24 34 V42 M6 24 H14 M34 24 H42"/></svg></button>
+      <button id="wSkip" class="bt bt-gold" title="結果へ"><svg viewBox="0 0 48 48"><path d="M12 13 L26 24 L12 35 Z M26 13 L40 24 L26 35 Z"/></svg></button>
+    </div>
+    <div class="pnl w-focus">
+      <div class="tk tk-lg" id="fTk"><img alt=""></div>
+      <div class="f-mid">
+        <div class="f-name"><span id="fName">—</span><small id="fWord"></small></div>
+        <div class="bar"><i class="hp" id="fHp"></i><em id="fHpT"></em></div>
+        <div class="f-why" id="fWhy"></div>
       </div>
+      <div class="f-act" id="fAct">待機</div>
+    </div>
+    <div class="w-end" id="wEnd"><div class="w-end-main" id="wEndMain"></div></div>
+  </section>
 
-      <!-- ユニットカード -->
-      <div class="cards">
-        <div class="ucard plr" id="cardP">
-          <div class="uc-top"><span class="uc-name" id="nameP">YOU</span><span class="uc-weap" id="weapP"></span></div>
-          <div class="hp-row"><div class="hpbar"><i id="hpfP"></i></div><span class="hp-num" id="hpnP">—</span></div>
-          <div class="sta-row"><span class="sta-lbl">気力</span><div class="stabar"><i id="staP"></i></div></div>
-          <div class="sta-row res-row" id="resRowP"><span class="sta-lbl">気迫</span><div class="stabar resbar"><i id="resP"></i></div></div>
-          <div class="chips" id="chipsP"></div>
-        </div>
-        <div class="ucard cpu" id="cardC">
-          <div class="uc-top"><span class="uc-name" id="nameC">CPU</span><span class="uc-weap" id="weapC"></span></div>
-          <div class="hp-row"><div class="hpbar"><i id="hpfC"></i></div><span class="hp-num" id="hpnC">—</span></div>
-          <div class="sta-row"><span class="sta-lbl">気力</span><div class="stabar"><i id="staC"></i></div></div>
-          <div class="sta-row res-row" id="resRowC"><span class="sta-lbl">気迫</span><div class="stabar resbar"><i id="resC"></i></div></div>
-          <div class="chips" id="chipsC"></div>
-        </div>
-      </div>
+  <!-- 結果とハイライト -->
+  <section id="scResult" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span></header>
+    <div class="rs-banner" id="rsBanner"></div>
+    <div class="rs-verdict" id="rsVerdict"></div>
+    <div class="rs-cards" id="rsCards"></div>
+    <div class="pnl rs-strip" id="rsStrip"></div>
+    <div class="foot">
+      <button class="btn" data-go="title">タイトルへ</button>
+      <button class="btn" data-go="squad">部隊へ</button>
+      <button class="btn hot" id="rsAgain">もう一度</button>
+    </div>
+  </section>
 
-      <!-- 流れ（モメンタム） -->
-      <div class="mo-wrap">
-        <span class="mo-end p">YOU</span>
-        <div class="mo"><span class="mo-c"></span><i id="moFill"></i></div>
-        <span class="mo-end c">CPU</span>
-        <span class="mo-lbl">流れ</span>
-      </div>
+  <!-- なぜ、そう動いた？ -->
+  <section id="scWhy" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd why-hd"><span class="why-bar"></span><span class="why-title">なぜ、そう動いた？</span><span class="hd-logo r">S.C.S. AI</span></header>
+    <div class="pnl why-map"><canvas id="cvWhy"></canvas></div>
+    <div class="pnl why-side" id="whySide"></div>
+    <div class="pnl why-tl">
+      <button class="bt bt-cyan sm" id="whyPlay"><svg viewBox="0 0 48 48"><path id="icWhyPlay" d="M16 12 L36 24 L16 36 Z"/></svg></button>
+      <input type="range" id="whyRange" min="0" max="1" value="0">
+      <div class="why-turn" id="whyTurn"></div>
+      <button class="btn" id="whyBack">結果へ戻る</button>
+    </div>
+  </section>
 
-      <!-- 戦闘ログ -->
-      <div class="logwrap"><div id="log" class="log"></div></div>
+  <!-- 記録 -->
+  <section id="scRecords" class="sc">
+    <div class="bgmap"></div>
+    <header class="hd"><span class="hd-logo">S.C.S. AI</span><span class="hd-title">記録</span></header>
+    <div class="pnl rec-table" id="recTable"></div>
+    <div class="foot"><button class="btn" data-go="title">タイトルへ</button></div>
+  </section>
 
-      <div class="controls">
-        <button id="btnNext" class="btn">▶ 次の手</button>
-        <button id="btnAuto" class="btn primary">▶ 自動実行</button>
-        <button id="btnParams" class="btn ghost">戦闘分析</button>
-      </div>
-    </section>
+</div>
 
-    <section id="storyResult" class="story hidden"></section>
-
-    <!-- ===== 系譜モード（新主役）：個体群の世代交代を観察する ===== -->
-    <section id="lineage" class="lineage hidden">
-      <div id="lnGenesis">
-        <h3>個体群を興す<span class="h3-sub">12体の個体群を始め、世代を重ねさせて眺める。勝敗でなく——何が生き残るかを見る。</span></h3>
-        <p class="hint">最大3体まで、始祖を手動で設計できる（残りはランダム）。環境は世代ごとに変わり、あなたは選ばない。世代を進めるたびに、群れの気質がどう動くかだけを見る。</p>
-        <div id="lnFounderRoster" class="sq-roster"></div>
-        <div id="lnFounderTabs" class="sq-editing"></div>
-        <div id="lnBuildCard" class="build-card"></div>
-        <div id="lnDials" class="macros"></div>
-        <div class="cfg-foot" id="lnFoot">
-          <button id="lnAddFounder" class="btn ghost" type="button">＋ 始祖を追加（最大3体）</button>
-          <button id="lnRemoveFounder" class="btn ghost" type="button">− 始祖を減らす</button>
-          <button id="lnBegin" class="btn primary big" type="button">個体群を興す</button>
-        </div>
-      </div>
-      <div id="lnRun" class="hidden">
-        <div class="stage-top">
-          <span class="chips-left"><span class="arena-chip" id="lnGenChip">世代 0</span><span class="mod-chip" id="lnEnvChip"></span></span>
-          <button id="lnReset" class="btn ghost small" type="button">個体群をやめる</button>
-        </div>
-        <div id="lnPopPanel" class="camp-info"></div>
-        <div id="lnEventsPanel" class="chal-card ln-events"></div>
-        <div class="controls">
-          <button id="lnNextGen" class="btn primary" type="button">▶ 次の世代へ</button>
-          <button id="lnWildcard" class="btn ghost" type="button">刺客を投入</button>
-          <button id="lnToggleLog" class="btn ghost" type="button">▸ 見出し戦の詳細</button>
-        </div>
-        <div id="lnHeadlineWrap" class="logwrap hidden"><div id="lnHeadline" class="log"></div></div>
-        <div id="lnWildcardWrap" class="hidden">
-          <div id="lnWcBuildCard" class="build-card"></div>
-          <div id="lnWcDials" class="macros"></div>
-          <button id="lnWcConfirm" class="btn primary" type="button">この刺客を投入</button>
-          <button id="lnWcCancel" class="btn ghost" type="button">やめる</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== 分隊戦モード（メインのゲーム）＝キービジュに寄せた全画面3枚：分隊編成→観戦→結果 [[分隊戦設計]]§15 ===== -->
-    <section id="squad" class="squad hidden">
-      <!-- ── 分隊編成（キービジュ案1） ── -->
-      <div id="squadDesign" class="kv-screen kv-design">
-        <div class="kvd-top">
-          <div class="kv-tab kv-frame"><span>分隊編成</span></div>
-          <div class="kvd-mode"><span id="sqModeLabel">模擬戦</span><button id="sqStageBtn" class="kv-mini hidden" type="button">ステージ</button></div>
-          <div class="kvd-tools">
-            <button id="sqAxTog" class="kv-mini" type="button">軸の意味</button>
-            <button id="sqPredict" class="kv-mini" type="button" title="現在の編成×条件で固定20戦の決定論推定">勝率試算</button>
-            <button id="sqCodeCopy" class="kv-mini" type="button" title="この分隊（3体の人格＋隊形）を短いコードにして共有できる">分隊コード</button>
-            <button id="sqCodeLoad" class="kv-mini" type="button" title="共有された分隊コード（S1…）を読み込んで編成を再現">コード読込</button>
-            <button id="sqRecords" class="kv-mini" type="button" title="総合戦績・戦士別通算・データの書き出し">戦績</button>
-            <button class="kv-mini kv-menu" data-go="title" type="button">≡ メニュー</button>
-          </div>
-          <div class="kvd-count kv-frame"><span>3 / 3</span></div>
-        </div>
-        <div id="sqAxHelp" class="kv-pop sq-axhelp-body hidden"></div>
-        <div id="sqRecordsPanel" class="kv-pop rec-panel hidden"></div>
-        <div id="sqPredictWrap" class="kv-pop predict hidden" aria-live="polite"></div>
-        <div id="sqCamp" class="kv-pop sq-camp hidden"><div id="sqCampStrip" class="camp-strip"></div><div id="sqCampInfo" class="camp-info"></div></div>
-        <div id="sqChal" class="kv-pop sq-camp hidden"><div id="sqChalInfo" class="chal-wrap"></div></div>
-        <div id="sqCols" class="sq-cols kv-frame"></div>
-        <div class="sq-foot kv-frame" id="sqFoot">
-          <div id="sqRoleBal" class="sq-rolebal"></div>
-          <div class="sq-flds">
-            <label class="fld">戦場<select id="sqArena"></select></label>
-            <label class="fld">戦況<select id="sqMod"></select></label>
-            <label class="fld">隊形<select id="sqForm"></select></label>
-            <label class="fld">敵分隊<select id="sqCpu"></select></label>
-          </div>
-          <button id="sqRematch" class="kv-mini" type="button" style="display:none" title="戦場・戦況・敵・隊形・乱数を固定したまま、設計だけ変えて同じ戦いをやり直す">↻ 同条件で再戦</button>
-          <button id="sqSortie" class="kv-go kv-frame" type="button"><span>出撃</span></button>
-        </div>
-        <div class="sq-subline"><span id="sqCpuHint"></span><span id="sqFormHint"></span></div>
-      </div>
-
-      <!-- ── 観戦（キービジュ案2） ── -->
-      <div id="squadStage" class="kv-screen kv-battle hidden">
-        <div class="sq-battle">
-          <div class="sqb-map kv-frame">
-            <div class="sqb-maptop"><span class="arena-chip" id="sqArenaChip">—</span><span class="mod-chip" id="sqModChip"></span><span class="mod-chip" id="sqFormChip" style="display:none"></span></div>
-            <div class="sqb-canvas"><canvas id="miniSquad" class="mini big" data-big="1"></canvas></div>
-            <div id="sqKey" class="kv-pop screen-key hidden">
-              <div class="key-col"><b>戦場の見方</b><span>丸＝各戦士（番号）　短い線＝向き　丸を囲む弧＝残りHP</span><span>点線＝狙う相手（切れ切れ＝遮蔽で射線なし）</span><span>黄色の輪＝集中砲火を浴びている　X＝撃破</span><span>建物・岩＝遮蔽（撃たれると崩れ、壊れると瓦礫になる）</span><span>扇＝視界（中に敵が入り射線が通れば発見）</span><span>薄い丸＝まだ敵に発見されていない（気配を消す）</span><span>茂み・沼地・瓦礫・高所・溶岩＝立つと効果（溶岩は焼かれる）</span><span>光の筋・ビーム＝射撃・必殺の着弾</span></div>
-              <div class="key-col"><b>戦法ラベル</b><span>盾＝火力を引きつける前衛　かばう＝身代わり</span><span>集中＝集中砲火　剝がし＝後衛を守る</span><span>索敵＝敵を探す　詰め・攻勢＝前へ　様子見＝牽制</span><span>退避・立て直し＝引いて立て直す</span><span>射撃・斬＝攻撃中　装填＝リロード</span><span>必殺＝必殺技　温存＝切り札を待つ</span><span>背後・側面＝側背面を取る　遮蔽＝壁に遮られ撃てない</span></div>
-            </div>
-          </div>
-          <aside class="sqb-side">
-            <div class="sqb-turn kv-frame" id="sqTurn">ターン 0</div>
-            <div id="sqTeamHp" class="sqb-teamhp kv-frame"></div>
-            <div id="sqHud" class="sq-hud kv-frame"></div>
-            <div class="sqb-log kv-frame"><div class="sqb-loghd">バトルログ</div><div id="sqLog" class="log"></div></div>
-          </aside>
-        </div>
-        <div class="kv-toolbar">
-          <button id="sqNext" class="kv-mini" type="button">▶ 次の手</button>
-          <button id="sqAuto" class="kv-mini primary" type="button">▶ 自動実行</button>
-          <button id="sqSpeed" class="kv-mini" type="button" title="自動実行の速さを切替">速度 ×1</button>
-          <button id="sqSkip" class="kv-mini" type="button" title="残りを一気に進めて決着へ">≫ 決着まで</button>
-          <span class="kv-sp"></span>
-          <button id="sqConeTog" class="kv-mini" type="button">視界 OFF</button>
-          <button id="sqKeyTog" class="kv-mini" type="button">見方</button>
-          <button id="sqAnalyze" class="kv-mini" type="button">結果・分析</button>
-          <button id="sqShare" class="kv-mini" type="button" title="この一戦を再現するURLをコピー（開いた人は同じ戦いを観戦できる）">URLで共有</button>
-          <button id="sqBack" class="kv-mini" type="button">編成に戻る</button>
-        </div>
-      </div>
-
-      <!-- ── 結果（キービジュ案4） ── -->
-      <div id="sqParamsWrap" class="kv-screen kv-result hidden"><div id="sqParams" class="params"></div></div>
-    </section>
-
-    <section class="config" id="config">
-      <h3>人格設計<span class="h3-sub">10軸 × 各4択で、あなたのAIを作る</span></h3>
-      <div id="buildCard" class="build-card" aria-live="polite"></div>
-      <div class="predict-bar">
-        <button id="btnPredict" class="btn ghost small">▶ 勝率を試算（20戦）</button>
-        <span id="predictNote" class="predict-note">決定論で多数決＝1戦のブレに埋もれる傾向を可視化</span>
-      </div>
-      <div id="predictWrap" class="predict hidden" aria-live="polite"></div>
-      <div id="plrParams" class="macros"></div>
-      <div class="cfg-foot" id="freeFoot">
-        <label class="fld">戦場<select id="arenaSel"></select></label>
-        <label class="fld">戦況<select id="modSel"></select></label>
-        <label class="fld">CPU<select id="cpuPreset"></select></label>
-        <label class="fld">seed<input id="seed" type="number" value="12345" /></label>
-        <label class="chk"><input type="checkbox" id="randSeed" checked /> 毎回ランダム</label>
-        <button id="btnNew" class="btn primary big">新規対戦</button>
-        <span id="cfgLock" class="cfg-lock"></span>
-      </div>
-      <div class="cfg-foot story-foot hidden" id="storyFoot"></div>
-      <p class="hint" id="freeHint">人格を選び「新規対戦」→「次の手」で1ターンずつ、または「自動実行」で連続観戦。「毎回ランダム」ONで毎回違う戦闘、OFF＋seed固定で同じ戦闘を再現できます。</p>
-    </section>
-
-    <section id="paramsWrap" class="params-wrap hidden">
-      <h3>戦闘分析<span class="h3-sub">観戦して「どこをどう直すか」を読む</span></h3>
-      <div id="params" class="params"></div>
-    </section>
-  </div>
-
-  <script src="js/rng.js?v=1011b"></script>
-  <script src="js/data.js?v=1011b"></script>
-  <script src="js/derive.js?v=1011b"></script>
-  <script src="js/sim.js?v=1011b"></script>
-  <script src="js/batch.js?v=1011b"></script>
-  <script src="js/squad.js?v=1011b"></script>
-  <script src="js/lineage.js?v=1011b"></script>
-  <script src="js/ui.js?v=1011b"></script>
-  <script src="js/mini.js?v=1011b"></script>
-  <script src="js/story.js?v=1011b"></script>
-  <script src="js/squadui.js?v=1011b"></script>
-  <script src="js/lineageui.js?v=1011b"></script>
-  <script src="js/onboard.js?v=1011b"></script>
-  <div id="onboard" class="onboard hidden"></div>
-  <!-- タイトル画面＝メインメニュー（キービジュ案3）。起動時に毎回出す（共有リプレイURLでは出さない） -->
-  <div id="titleSplash" class="title-splash" role="dialog" aria-label="タイトル画面">
-    <img src="assets/title.jpg" alt="S.C.S. AI — Simple Circle Showdown" />
-    <nav class="ts-menu">
-      <button class="ts-main" data-go="squad-free" type="button">▶ 分隊戦をはじめる</button>
-      <div class="ts-row">
-        <button data-go="squad-camp" type="button">制圧戦</button>
-        <button data-go="squad-chal" type="button">挑戦</button>
-        <button data-go="demo" type="button">観戦デモ</button>
-      </div>
-      <div class="ts-row ts-sub">
-        <button data-go="lineage" type="button">系譜</button>
-        <button data-go="free" type="button">自由対戦</button>
-        <button data-go="story" type="button">ストーリー</button>
-      </div>
-    </nav>
-  </div>
-  <script src="js/title.js?v=1011b"></script>
-  <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(function () {});</script>
+<script src="../js/rng.js"></script>
+<script src="../js/data.js"></script>
+<script src="../js/derive.js"></script>
+<script src="../js/squad.js"></script>
+<script src="js/world.js?b=1011c3"></script>
+<script src="js/store.js?b=1011c3"></script>
+<script src="js/board.js?b=1011c3"></script>
+<script src="js/runner.js?b=1011c3"></script>
+<script src="js/app.js?b=1011c3"></script>
+<script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("../sw.js", { scope: "../" }).catch(function () {});</script>
 </body>
 </html>

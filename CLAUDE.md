@@ -1,5 +1,7 @@
 # Simple Circle Showdown (S.C.S. AI) — コード
 
+> **2026-10-11〜 入口は v2**（Obsidian [[v2ゲーム設計]]）。リポ直下の `index.html` は `tools/make_root.js` が `v2/index.html` から作る自動生成（`<base href="v2/">`）。**v2 の画面は v2/ を直してから `node tools/make_root.js`**。旧版（分隊戦・系譜・1v1 の画面・build 1011b）は `classic.html` に残し、旧共有リプレイ（?r=）は classic.html へ転送。エンジン（js/rng・data・derive・squad.js）は v2 も旧版も共通＝不可触のまま。
+
 観戦オートバトラー。プレーヤーは戦闘中操作せず、事前に「人格（10大パラ）」を設計。人格→24小パラ/HP/武器に派生し、フル2Dシムで自動戦闘した結果を観戦する。
 **新主役＝系譜モード**（個体群12体の世代交代を観察。`js/lineage.js`＋`js/lineageui.js`。[[系譜モード設計]]）。分隊戦(3v3・`js/squad.js`＋`js/squadui.js`。[[分隊戦設計]])はサブ、1v1（本セクション以下）はさらにサブ。詳細は各Obsidianノート＋本リポの`ノート構成.md`相当（Obsidian側の[[ノート構成]]参照）。
 

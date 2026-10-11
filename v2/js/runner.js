@@ -12,7 +12,7 @@ window.SCS2 = window.SCS2 || {};
 
   // cfg: {mine:{choices[],emb[],names[]}, foe:{...}, seed, arena, mod, formP, formC}
   SCS2.makeRunner = function (cfg) {
-    const W = SCS2.board.W, H = SCS2.board.H, PX = SCS2.board.PX, R = SCS2.board.R, FW = cfg.arena.w, FH = cfg.arena.h;
+    const W = SCS2.board.W, H = SCS2.board.H, R = SCS2.board.R, FW = cfg.arena.w, FH = cfg.arena.h, PX = W / FW;
     const battle = SCS.makeSquadBattle(cfg.mine.choices.map((c) => c.slice()), cfg.foe.choices.map((c) => c.slice()), cfg.seed, cfg.arena.name, cfg.mod, cfg.formP, cfg.formC, cfg.mine.names.slice(), cfg.foe.names.slice());
     const views = battle.teams.P.concat(battle.teams.C).map((u) => {
       const P = u.team === "P", a = Math.atan2(u.faceY, u.faceX);
@@ -97,7 +97,7 @@ window.SCS2 = window.SCS2 || {};
         if (Math.hypot(v.x - px, v.y - py) > 0.02 && Math.hypot(v.tx - v.fx, v.ty - v.fy) > 2.5) v.trail.push({ x: v.x, y: v.y, t: clock });
         while (v.trail.length && clock - v.trail[0].t > 520) v.trail.shift();
       }
-      SCS2.board.camStep(cam, SCS2.board.camGoal(views), clamp(dt * speed * 0.0022, 0, 1));
+      SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena }), clamp(dt * speed * 0.0022, 0, 1));
     }
     // 残りを一瞬で解く（「結果へ」）
     function finish(clock) { let n = 0; while (!battle.over && n++ < 200) doTurn(clock, true); if (!overAt) overAt = clock; }
@@ -110,7 +110,7 @@ window.SCS2 = window.SCS2 || {};
       return "";
     }
     return {
-      battle, views, fx, snaps, cam, tick, finish, whyOf, TURN,
+      battle, views, fx, snaps, cam, tick, finish, whyOf, TURN, arena: cfg.arena,
       get focus() { return focus; }, setFocus(v, clock) { focus = v; focusLock = clock + 8 * TURN; },
       get overAt() { return overAt; }, get kills() { return kills; },
     };

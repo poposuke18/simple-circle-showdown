@@ -1,5 +1,5 @@
 /* S.C.S. AI service worker — network-first（常に最新）＋オフライン時はキャッシュfallback */
-const CACHE = "scs-rt-v4";
+const CACHE = "scs-rt-v5";
 self.addEventListener("install", (e) => { self.skipWaiting(); });
 self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener("fetch", (e) => {

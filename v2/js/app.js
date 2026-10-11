@@ -4,7 +4,8 @@
 (function () {
   "use strict";
   const D = SCS.DATA, Wd = SCS2.world, St = SCS2.store, Bd = SCS2.board;
-  const W = 1920, H = 1080, PX = Bd.PX;
+  const W = 1920, H = 1080;
+  const pxOf = (arena) => W / arena.w;
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -46,7 +47,7 @@
   function newDemo() {
     const g = SCS.makeRNG((Date.now() & 0x7fffffff) >>> 0), n = Wd.RIVALS.length, a = g.int(n); let b = g.int(n - 1); if (b >= a) b++;
     const pool = Wd.RIVALS.filter((r) => !r.mirror), A = pool[a % pool.length], Bv = pool[b % pool.length] === A ? pool[(b + 1) % pool.length] : pool[b % pool.length];
-    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: Wd.PLAZA, mod: "通常", formP: A.form, formC: Bv.form });
+    demo = SCS2.makeRunner({ mine: { choices: A.squad, emb: A.emb, names: A.names }, foe: { choices: Bv.squad, emb: Bv.emb, names: uniqNames(A.names, Bv.names) }, seed: g.int(0x7fffffff), arena: Wd.ARENAS[g.int(Wd.ARENAS.length)], mod: "通常", formP: A.form, formC: Bv.form });
     demoClock = 0; demoEnd = 0;
   }
   function enterTitle() { if (!demo) newDemo(); }
@@ -55,7 +56,7 @@
     demoClock += dt; demo.tick(demoClock, dt, 1);
     if (demo.battle.over) { if (!demoEnd) demoEnd = demoClock; else if (demoClock - demoEnd > 3000) newDemo(); }
     const o = cvTitle, c = o.ctx; Bd.view(c, o.s, W, H, demo.cam.x, demo.cam.y, demo.cam.z);
-    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: "通常", arena: Wd.PLAZA });
+    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: "通常", arena: demo.arena });
   }
 
   // ===== 部隊 =====
@@ -140,7 +141,7 @@
     if (!r.mirror) return { choices: r.squad, emb: r.emb, names: r.names, form: r.form };
     const sq = St.data.squad; return { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name + "′"), form: St.data.form };
   }
-  let rivalI = 0, pMod = null;
+  let rivalI = 0, pMod = null, pArena = null;
   function recOf(k) { const r = St.data.records[k]; return r ? `${r.w}勝 ${r.l}敗${r.d ? ` ${r.d}分` : ""}` : "初対戦"; }
   function enterPrep() {
     $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
@@ -155,9 +156,12 @@
     $("rvName").textContent = r.name; $("rvRec").textContent = recOf(r.key); $("rvFlavor").textContent = r.flavor; $("rvScout").textContent = r.scout;
     $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e)).join("");
     if (!keepMod || !pMod) pMod = r.mod;
+    if (!keepMod || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
+    $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<span class="chip ${a === pArena ? "on" : ""}" data-a="${i}">${esc(a.name)}</span>`).join("");
     $("pMod").innerHTML = Wd.MODS.map((m) => `<span class="chip ${m === pMod ? "on" : ""}" data-m="${esc(m)}">${esc(m)}</span>`).join("");
   }
   $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) selectRival(+c.dataset.i, false); });
+  $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pMod").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; pMod = c.dataset.m; $("pMod").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); });
   $("pGo").addEventListener("click", () => sortie());
@@ -169,9 +173,9 @@
     const r = Wd.RIVALS[rivalI], sq = St.data.squad, foe = foeOf(r);
     const seed = sameSeed && sortieCfg ? sortieCfg.seed : ((Date.now() ^ Math.floor(Math.random() * 0x7fffffff)) & 0x7fffffff) >>> 0;
     sortieCfg = { mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.choices, emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed, arena: Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r };
+      seed, arena: pArena || Wd.PLAZA, mod: pMod || r.mod, formP: St.data.form, formC: foe.form, rival: r };
     run = SCS2.makeRunner(sortieCfg); clock = 0; paused = false; ended = false; endAt = 0; result = null;
-    $("wVs").textContent = `VS ${r.name}`; $("wSub").textContent = `${Wd.PLAZA.name}・${sortieCfg.mod}`;
+    $("wVs").textContent = `VS ${r.name}`; $("wSub").textContent = `${sortieCfg.arena.name}・${sortieCfg.mod}`;
     $("wEnd").classList.remove("show"); setPause(false);
     go("watch"); updWatch();
   }
@@ -200,10 +204,10 @@
     if (run.battle.over && !ended) endBattle(false);
     if (ended && !paused && clock - endAt > 2600) showResult();
     const o = cvWatch, c = o.ctx; Bd.view(c, o.s, W, H, run.cam.x, run.cam.y, run.cam.z);
-    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: Wd.PLAZA });
+    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
     const vg = c.createRadialGradient(W / 2, H / 2, H * 0.38, W / 2, H / 2, H * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.55)"); c.fillStyle = vg; c.fillRect(0, 0, W, H);
-    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: Wd.PLAZA }, run.cam);
+    const m = cvMini; m.ctx.setTransform(m.s, 0, 0, m.s, 0, 0); Bd.drawMini(m.ctx, 276, 153, { views: run.views, arena: sortieCfg.arena }, run.cam);
   }
   function outcome() { const r = run.battle.result || {}; return r.type === "draw" ? "d" : r.winner === "PLR" ? "w" : "l"; }
   function endBattle(skip) {
@@ -265,12 +269,12 @@
   }
   function drawCards() {
     hls.forEach((h, i) => {
-      const o = cardCvs[i]; if (!o) return; const { vs, by } = snapViews(run.snaps[h.t]), sub = by.get(h.id), oth = h.other ? by.get(h.other) : null;
+      const PX = pxOf(sortieCfg.arena), o = cardCvs[i]; if (!o) return; const { vs, by } = snapViews(run.snaps[h.t]), sub = by.get(h.id), oth = h.other ? by.get(h.other) : null;
       const xs = [sub.x * PX].concat(oth ? [oth.x * PX] : []), ys = [sub.y * PX].concat(oth ? [oth.y * PX] : []);    // 主役と相手が両方入るように寄る
       const z = clamp(Math.min(564 / (Math.max(...xs) - Math.min(...xs) + 420), 317 / (Math.max(...ys) - Math.min(...ys) + 300)), 0.32, 0.69);
       const cx = clamp((Math.max(...xs) + Math.min(...xs)) / 2, 282 / z, W - 282 / z), cy = clamp((Math.max(...ys) + Math.min(...ys)) / 2, 158 / z, H - 158 / z);
       Bd.view(o.ctx, o.s, 564, 317, cx, cy, z);
-      Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, whyOn: true, obstacles: run.snaps[h.t].obstacles, hazards: run.snaps[h.t].hazards, mod: sortieCfg.mod, arena: Wd.PLAZA });
+      Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, whyOn: true, obstacles: run.snaps[h.t].obstacles, hazards: run.snaps[h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
     });
   }
   $("rsCards").addEventListener("click", (e) => { const c = e.target.closest(".hl"); if (c) openWhy(hls[+c.dataset.i]); });
@@ -283,7 +287,7 @@
   function cleanLine(t) { return t.replace(/^[\s　─]+/, "").replace(/（[^）]*）/g, ""); }
   function drawWhy() {
     if (!why || !run) return;
-    const snap = run.snaps[why.t], { vs, by } = snapViews(snap), sub = by.get(why.id);
+    const PX = pxOf(sortieCfg.arena), snap = run.snaps[why.t], { vs, by } = snapViews(snap), sub = by.get(why.id);
     const arrows = []; let n = 1;
     const nearestId = (p) => { let b = null, bd = 1e9; for (const u of snap.units) { const d = Math.hypot(u.x - p.x, u.y - p.y); if (d < bd) { bd = d; b = u.id; } } return b; };
     const evs = snap.events.filter((e) => e.from && e.to);
@@ -294,7 +298,7 @@
     const z = clamp(Math.min(1278 / (x1 - x0 + 600), 738 / (y1 - y0 + 420)), 0.66, 1.25);
     const cx = clamp((x0 + x1) / 2, 639 / z, W - 639 / z), cy = clamp((y0 + y1) / 2, 369 / z, H - 369 / z);
     const o = cvWhy; Bd.view(o.ctx, o.s, 1278, 738, cx, cy, z);
-    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: Wd.PLAZA });
+    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena });
     const nm = `>${esc(sub.name)}</span>`, isSubj = (l) => l.text.indexOf(nm + " は") >= 0;
     const now = snap.lines.filter((l) => l.cls !== "dim" && l.text.indexOf(nm) >= 0).slice(0, 3);
     const before = [];                                                                          // それまで：この駒が主語の記録（「〜ため、X は …した」）を新しい順に
@@ -329,7 +333,7 @@
   }
   // 絵が読み込まれたら止まっている画面（結果・なぜ？）を描き直す。先に読み込んでおく
   Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); };
-  Bd.img(Wd.PLAZA.map); Bd.img(Wd.PLAZA.mini); Wd.EMB.forEach((e) => Bd.emb(e));
+  Wd.ARENAS.forEach((a) => { Bd.img(a.map); Bd.img(a.mini); }); Wd.EMB.forEach((e) => Bd.emb(e));
   addEventListener("resize", fit); fit();
   requestAnimationFrame(frame);
   // 検証用：タブが裏で requestAnimationFrame が止まっていても時間を進めて描く（遊びには使わない）
