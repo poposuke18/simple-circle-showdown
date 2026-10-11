@@ -56,6 +56,68 @@ window.SCS = window.SCS || {};
   // 堅牢性：draw() が「まだ動くものがある」と返した時だけ次フレームを予約＝アイドルで回し続けない（電池/CPU節約）。sync/pushFxで再開
   function loop() { let more = false; try { more = draw(); } catch (e) { more = false; } if (more) raf = requestAnimationFrame(loop); else running = false; }
 
+  // ===== 戦場の絵（assets/map/*.jpg）＝キービジュ案2の描き込み。読み込めない時は従来の線画で描く =====
+  const ARTS = {};
+  function art(name) {
+    let im = ARTS[name];
+    if (!im) { im = new Image(); im.onload = () => start(); im.src = "assets/map/" + name + ".jpg"; ARTS[name] = im; }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  // 分隊戦の battle.arena は {name, flavor} だけ＝名前から ARENAS のキーを引く（エンジンは触らない）
+  function arenaKey() {
+    const a = battle && battle.arena; if (!a) return "ruins"; if (a.key) return a.key;
+    const d = SCS.DATA && SCS.DATA.ARENAS ? SCS.DATA.ARENAS.find((x) => x.name === a.name) : null;
+    return d ? d.key : "ruins";
+  }
+  const OBS_ART = { ruins: "o_building", collapse: "o_stone", bunker: "o_block", arena: "o_block", bridge: "o_block", plain: "o_boulder", forest: "o_boulder", volcano: "o_boulder" };
+  // 画像の一部（戦場座標に対応する位置）を矩形に描く＝地形パッチの模様の細かさが戦場全体でそろう
+  function drawWorldCrop(img, fx, fy, fw, fh, f, x, y, w, h) {
+    const iw = img.naturalWidth, ih = img.naturalHeight, k = Math.min(iw / f.w, ih / f.h);
+    let sw = Math.max(8, fw * k), sh = Math.max(8, fh * k);
+    let sx = (fx / f.w) * (iw - sw), sy = (fy / f.h) * (ih - sh);
+    ctx.drawImage(img, Math.max(0, sx), Math.max(0, sy), Math.min(iw, sw), Math.min(ih, sh), x, y, w, h);
+  }
+  function drawCover(img, x, y, w, h) { // 縦横比を保って中央を切り出す
+    const iw = img.naturalWidth, ih = img.naturalHeight, r = w / h;
+    let sw = iw, sh = ih, sx = 0, sy = 0;
+    if (iw / ih > r) { sw = ih * r; sx = (iw - sw) / 2; } else { sh = iw / r; sy = (ih - sh) / 2; }
+    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  }
+  function drawArtField(ground, SX, SY, scale, ox, oy, drawW, drawH) {
+    const f = battle.field, key = arenaKey();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(ox, oy, drawW, drawH); ctx.clip();
+    drawCover(ground, ox, oy, drawW, drawH);
+    ctx.fillStyle = "rgba(0,8,3,.22)"; ctx.fillRect(ox, oy, drawW, drawH); // 丸と線が浮くよう地面を少し沈める
+    // 地形パッチ（茂み/沼地/溶岩/瓦礫/高所）：同じ素材の対応位置を切り出して置き、縁を淡く光らせる
+    for (const z of battle.terrain || []) {
+      const tex = art("t_" + z.t); const x = SX(z.x), y = SY(z.y), w = z.w * scale, h = z.h * scale;
+      if (tex) { ctx.globalAlpha = 0.92; drawWorldCrop(tex, z.x, z.y, z.w, z.h, f, x, y, w, h); ctx.globalAlpha = 1; }
+      else { const c = TCOL[z.t]; if (c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); } }
+      ctx.lineWidth = 0.8; ctx.strokeStyle = z.t === "lava" ? "rgba(255,150,60,.55)" : "rgba(110,255,170,.28)"; ctx.strokeRect(x + .4, y + .4, w - .8, h - .8);
+    }
+    // 薄い方眼（レーダーの名残）
+    ctx.lineWidth = 0.5; ctx.strokeStyle = "rgba(90,255,150,.10)";
+    for (let gx = 1; gx < 6; gx++) { const x = ox + (drawW * gx) / 6; ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + drawH); ctx.stroke(); }
+    for (let gy = 1; gy < 4; gy++) { const y = oy + (drawH * gy) / 4; ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + drawW, y); ctx.stroke(); }
+    // 遮蔽物＝建物/岩の絵。HPで暗くなり、崩れたら瓦礫の跡だけ残る
+    const ob = art(OBS_ART[key] || "o_block"), rub = art("t_rubble");
+    for (const o of battle.obstacles || []) {
+      const x = SX(o.x), y = SY(o.y), w = o.w * scale, h = o.h * scale, fr = Math.max(0, Math.min(1, o.hp / 70));
+      if (o.hp <= 0) { if (rub) { ctx.globalAlpha = 0.45; drawCover(rub, x, y, w, h); ctx.globalAlpha = 1; } continue; }
+      ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fillRect(x + w * 0.08, y + h * 0.1, w, h); // 影
+      if (ob) { drawCover(ob, x, y, w, h); if (fr < 1) { ctx.fillStyle = "rgba(0,0,0," + (0.5 * (1 - fr)) + ")"; ctx.fillRect(x, y, w, h); } }
+      else { ctx.fillStyle = "rgba(58,116,86,.3)"; ctx.fillRect(x, y, w, h); }
+      ctx.lineWidth = 0.8; ctx.strokeStyle = "rgba(120,255,180," + (0.25 + 0.35 * fr) + ")"; ctx.strokeRect(x + .4, y + .4, w - .8, h - .8);
+    }
+    // ブラウン管の陰り（四隅を暗く）
+    const g = ctx.createRadialGradient(ox + drawW / 2, oy + drawH / 2, Math.min(drawW, drawH) * 0.35, ox + drawW / 2, oy + drawH / 2, Math.max(drawW, drawH) * 0.75);
+    g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, "rgba(0,0,0,.5)");
+    ctx.fillStyle = g; ctx.fillRect(ox, oy, drawW, drawH);
+    ctx.restore();
+    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(47,224,122,.7)"; ctx.strokeRect(ox + .5, oy + .5, drawW - 1, drawH - 1);
+  }
+
   function draw() {
     cv = document.getElementById(cvId); // モードで対象キャンバスが変わる（1v1=mini／分隊=miniSquad）
     if (!cv || !battle) return false;
@@ -64,15 +126,19 @@ window.SCS = window.SCS || {};
     const f = battle.field;
     // data-big="1"（分隊戦の観戦＝キービジュ採用の大きな戦場）：戦場の縦横比で高さを決め、丸・線・エフェクトを US 倍で描く
     const big = !!(cv.dataset && cv.dataset.big === "1");
+    // 観戦画面（.sqb-canvas の中）は入れ物いっぱいに描く＝高さはCSSが決める
+    const fill = big && cv.parentElement && cv.parentElement.classList.contains("sqb-canvas");
     let cssH;
-    if (big) {
+    if (fill) cssH = cv.clientHeight;
+    else if (big) {
       const maxH = Math.max(260, Math.min(680, Math.round((window.innerHeight || 800) * 0.72)));
       cssH = Math.max(240, Math.min(maxH, Math.round(cssW * (f.h / f.w)) + 24));
     } else cssH = Math.max(110, Math.min(190, Math.round(cssW * 0.46))); // 安定した横長レーダー
-    const US = big ? Math.max(1, Math.min(2.6, cssW / 420)) : 1;
-    BIGU = big ? 1.6 : 1;
+    if (!cssH) return false;
+    const US = big ? Math.max(1, Math.min(2.6, Math.min(cssW / 420, cssH / 250))) : 1;
+    BIGU = big ? 1.35 : 1;
     const dpr = window.devicePixelRatio || 1;
-    if (cv.style.height !== cssH + "px") cv.style.height = cssH + "px";
+    if (!fill && cv.style.height !== cssH + "px") cv.style.height = cssH + "px";
     const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
     if (cv.width !== W) cv.width = W;
     if (cv.height !== H) cv.height = H;
@@ -88,31 +154,40 @@ window.SCS = window.SCS || {};
     const ox = Math.round((vW - drawW) / 2), oy = Math.round((vH - drawH) / 2);
     const SX = (x) => ox + (x / f.w) * drawW, SY = (y) => oy + (y / f.h) * drawH;
 
-    // 地形ゾーン（全域の床＋個別ゾーン。テキストの地形描写と整合）
-    const baseC = TCOL[battle.baseTerrainKey];
-    if (baseC) { ctx.fillStyle = baseC; ctx.fillRect(ox, oy, drawW, drawH); }
-    for (const z of battle.terrain || []) {
-      const c = TCOL[z.t]; if (!c) continue;
-      const x = SX(z.x), y = SY(z.y), w = z.w * scale, h = z.h * scale;
-      ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
-      const sc = TSTROKE[z.t]; if (sc) { ctx.lineWidth = 1; ctx.strokeStyle = sc; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1); }
+    // ★キービジュ案2：大きな戦場は生成した絵で描く（地面1枚＋地形パッチ＋遮蔽物の絵）。当たり判定はエンジンの矩形のまま＝絵をその位置に置くだけ
+    const ground = big ? art("g_" + arenaKey()) : null;
+    if (ground) {
+      // 戦場の外（レターボックスの余白）にも同じ地面を暗く敷く＝キービジュのように画面いっぱいが地面
+      ctx.save(); ctx.globalAlpha = 0.32; drawCover(ground, 0, 0, vW, vH); ctx.globalAlpha = 1; ctx.fillStyle = "rgba(0,6,2,.35)"; ctx.fillRect(0, 0, vW, vH); ctx.restore();
+      drawArtField(ground, SX, SY, scale, ox, oy, drawW, drawH);
     }
+    else {
+      // 地形ゾーン（全域の床＋個別ゾーン。テキストの地形描写と整合）
+      const baseC = TCOL[battle.baseTerrainKey];
+      if (baseC) { ctx.fillStyle = baseC; ctx.fillRect(ox, oy, drawW, drawH); }
+      for (const z of battle.terrain || []) {
+        const c = TCOL[z.t]; if (!c) continue;
+        const x = SX(z.x), y = SY(z.y), w = z.w * scale, h = z.h * scale;
+        ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
+        const sc = TSTROKE[z.t]; if (sc) { ctx.lineWidth = 1; ctx.strokeStyle = sc; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1); }
+      }
 
-    // 走査線グリッド（淡・戦場枠内）
-    ctx.lineWidth = 1; ctx.strokeStyle = "rgba(31,107,67,.22)";
-    for (let gx = 1; gx < 6; gx++) { const x = ox + (drawW * gx) / 6; ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + drawH); ctx.stroke(); }
-    for (let gy = 1; gy < 3; gy++) { const y = oy + (drawH * gy) / 3; ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + drawW, y); ctx.stroke(); }
-    // 戦場の枠
-    ctx.lineWidth = 1.3; ctx.strokeStyle = "#1f6b43"; ctx.strokeRect(ox + .5, oy + .5, drawW - 1, drawH - 1);
+      // 走査線グリッド（淡・戦場枠内）
+      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(31,107,67,.22)";
+      for (let gx = 1; gx < 6; gx++) { const x = ox + (drawW * gx) / 6; ctx.beginPath(); ctx.moveTo(x, oy); ctx.lineTo(x, oy + drawH); ctx.stroke(); }
+      for (let gy = 1; gy < 3; gy++) { const y = oy + (drawH * gy) / 3; ctx.beginPath(); ctx.moveTo(ox, y); ctx.lineTo(ox + drawW, y); ctx.stroke(); }
+      // 戦場の枠
+      ctx.lineWidth = 1.3; ctx.strokeStyle = "#1f6b43"; ctx.strokeRect(ox + .5, oy + .5, drawW - 1, drawH - 1);
 
-    // 障害物（遮蔽。HPで濃さが変わり、崩れると消える＝回り込みが読める文脈）
-    for (const o of battle.obstacles || []) {
-      if (o.hp <= 0) continue;
-      const x = SX(o.x), y = SY(o.y), w = o.w * scale, h = o.h * scale, fr = Math.max(0, Math.min(1, o.hp / 70));
-      ctx.fillStyle = "rgba(58,116,86," + (0.1 + 0.14 * fr) + ")";
-      ctx.fillRect(x, y, w, h);
-      ctx.lineWidth = 1; ctx.strokeStyle = "rgba(95,160,120," + (0.25 + 0.4 * fr) + ")";
-      ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+      // 障害物（遮蔽。HPで濃さが変わり、崩れると消える＝回り込みが読める文脈）
+      for (const o of battle.obstacles || []) {
+        if (o.hp <= 0) continue;
+        const x = SX(o.x), y = SY(o.y), w = o.w * scale, h = o.h * scale, fr = Math.max(0, Math.min(1, o.hp / 70));
+        ctx.fillStyle = "rgba(58,116,86," + (0.1 + 0.14 * fr) + ")";
+        ctx.fillRect(x, y, w, h);
+        ctx.lineWidth = 1; ctx.strokeStyle = "rgba(95,160,120," + (0.25 + 0.4 * fr) + ")";
+        ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+      }
     }
 
     // 動的ハザード：燃え広がる炎（テキストの「業火に巻かれ」と整合・ゆらぐ）
@@ -163,11 +238,11 @@ window.SCS = window.SCS || {};
       if (!u.alive || !u.target || !u.target.alive) continue;
       const d = sdisp.get(u), td = sdisp.get(u.target); if (!d || !td) continue;
       const los = battle.losClear ? battle.losClear({ x: u.x, y: u.y }, { x: u.target.x, y: u.target.y }) : true;
-      ctx.strokeStyle = u.team === "P" ? "rgba(92,200,255,.17)" : "rgba(255,94,94,.15)";
-      ctx.setLineDash(los ? [] : [2, 4]);
+      if (BIGU > 1) { ctx.lineWidth = 1.1; ctx.strokeStyle = u.team === "P" ? "rgba(120,215,255,.9)" : "rgba(255,110,110,.75)"; ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 4; ctx.setLineDash(los ? [1.2, 2.2] : [0.6, 4.5]); } // キービジュ案2の光る点線
+      else { ctx.strokeStyle = u.team === "P" ? "rgba(92,200,255,.17)" : "rgba(255,94,94,.15)"; ctx.setLineDash(los ? [] : [2, 4]); }
       ctx.beginPath(); ctx.moveTo(SX(d.x), SY(d.y)); ctx.lineTo(SX(td.x), SY(td.y)); ctx.stroke();
     }
-    ctx.setLineDash([]);
+    ctx.setLineDash([]); ctx.shadowBlur = 0;
     // 集中砲火の的：2体以上に狙われている敵にリング＝キルオーダーが一目（意図テレグラフ）
     const focusN = new Map();
     for (const u of units) { if (u.alive && u.target && u.target.alive) focusN.set(u.target, (focusN.get(u.target) || 0) + 1); }
@@ -213,12 +288,25 @@ window.SCS = window.SCS || {};
   }
   function drawSquadUnit(x, y, u) {
     const col = ushade(u);
-    if (u.hp <= 0) { ctx.globalAlpha = 0.5; ctx.lineWidth = 1.3; ctx.strokeStyle = col; ctx.beginPath(); const q = 3.5 * BIGU; ctx.moveTo(x - q, y - q); ctx.lineTo(x + q, y + q); ctx.moveTo(x + q, y - q); ctx.lineTo(x - q, y + q); ctx.stroke(); ctx.globalAlpha = 1; return; }
+    if (u.hp <= 0) { ctx.globalAlpha = BIGU > 1 ? 0.85 : 0.5; ctx.lineWidth = BIGU > 1 ? 2 : 1.3; ctx.strokeStyle = col; if (BIGU > 1) { ctx.shadowColor = col; ctx.shadowBlur = 6; } ctx.beginPath(); const q = 3.5 * BIGU; ctx.moveTo(x - q, y - q); ctx.lineTo(x + q, y + q); ctx.moveTo(x + q, y - q); ctx.lineTo(x - q, y + q); ctx.stroke(); ctx.shadowBlur = 0; ctx.globalAlpha = 1; return; }
     const ghost = battle.spotted && !battle.spotted(u); // 敵に発見されていない＝薄く中空で描く（観戦者には見えるが"気配を消している"＝奇襲の予兆）
     const fl = Math.hypot(u.faceX, u.faceY) || 1, ux = u.faceX / fl, uy = u.faceY / fl;
-    ctx.globalAlpha = ghost ? 0.4 : 1;
-    ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9 * BIGU, y + uy * 9 * BIGU); ctx.stroke();
     const low = u.hp / u.maxHp < 0.3, t = perfNow() / 1000, r = (low ? 3.6 + Math.sin(t * 6) * 1.1 : 3.4) * BIGU;
+    ctx.globalAlpha = ghost ? 0.4 : 1;
+    if (BIGU > 1) { // キービジュ案2：光る輪＋中の玉＋残りHPの弧＋向きの短い線
+      const R = r * 1.45, frac = Math.max(0, Math.min(1, u.hp / u.maxHp));
+      ctx.lineWidth = 1.1; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = ghost ? 2 : 10;
+      ctx.beginPath(); ctx.moveTo(x + ux * R, y + uy * R); ctx.lineTo(x + ux * (R + 4.5), y + uy * (R + 4.5)); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, R, 0, 6.2832); ctx.stroke();
+      ctx.lineWidth = 1.6; ctx.globalAlpha = (ghost ? 0.4 : 1) * 0.25; ctx.beginPath(); ctx.arc(x, y, R + 2.2, 0, 6.2832); ctx.stroke();
+      ctx.globalAlpha = ghost ? 0.4 : 1; ctx.beginPath(); ctx.arc(x, y, R + 2.2, -1.5708, -1.5708 + 6.2832 * frac); ctx.stroke();
+      if (ghost) { ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.stroke(); }
+      else { const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r); g.addColorStop(0, "#eaf8ff"); g.addColorStop(0.35, col); g.addColorStop(1, u.team === "P" ? "#0b4a70" : "#6a1414"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = ghost ? col : "#ffffff"; ctx.font = "bold " + (4.6 * BIGU).toFixed(1) + "px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(u.idx + 1), x, y + 0.4);
+      ctx.globalAlpha = 1; return;
+    }
+    ctx.lineWidth = 1.4; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 9 * BIGU, y + uy * 9 * BIGU); ctx.stroke();
     ctx.shadowColor = col; ctx.shadowBlur = ghost ? 2 : 9;
     if (ghost) { ctx.lineWidth = 1.2; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.stroke(); }
     else { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }

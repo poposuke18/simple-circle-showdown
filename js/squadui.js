@@ -9,7 +9,7 @@ window.SCS = window.SCS || {};
   const SIZE = 3;
   const DEFAULT = [D.PRESETS["重剣の闘士"], D.PRESETS["鉄律の射手"], D.PRESETS["海千山千の暗殺者"]]; // 補完的な叩き台（壁/射手/遊撃）
   let squad = DEFAULT.map((c) => c.slice());
-  let hintsOn = true; // 各ダイヤルの効果説明をインライン表示（初見が各軸の意味を掴めるよう既定ON・トグルで消せる）
+  let hintsOn = false; // 10軸の意味＝分隊編成の〔軸の意味〕で開く小窓（キービジュの画面を崩さないよう既定は閉じる。各軸名のツールチップにも同じ説明）
   const CPU_SQUADS = {
     "鉄壁分隊": ["専守要塞", "鉄律の射手", "毒手の刺客"],
     "猛攻分隊": ["猪突ガラスキャノン", "重剣の闘士", "海千山千の暗殺者"],
@@ -233,6 +233,8 @@ window.SCS = window.SCS || {};
   }
   function setPlayMode(m) {
     playMode = m;
+    { const ml = $("sqModeLabel"); if (ml) ml.textContent = { free: "模擬戦", camp: "制圧戦", chal: "挑戦" }[m] || ""; }
+    { const sb = $("sqStageBtn"); if (sb) { sb.classList.toggle("hidden", m === "free"); sb.textContent = m === "chal" ? "挑戦の内容" : "ステージ選択"; } }
     const btns = { free: $("sqModeFree"), camp: $("sqModeCamp"), chal: $("sqModeChal") };
     for (const k in btns) if (btns[k]) btns[k].classList.toggle("active", m === k);
     const campBox = $("sqCamp"); if (campBox) campBox.classList.toggle("hidden", m !== "camp");
@@ -275,37 +277,42 @@ window.SCS = window.SCS || {};
   // 3体を同時に見比べて直せる（旧：1体ずつ切り替えるプルダウン）。非公開ライン（24小パラ・重み）は出さない。
   const ROLE_FRONT = { rush: 1, melee: 1 }, ROLE_BACK = { range: 1, kite: 1, turtle: 1 }; // 表示のみの数え分け（隊列のwinDistには使わない）
   const AXHELP_KEY = "scs_sq_axhelp";
-  try { const h = localStorage.getItem(AXHELP_KEY); if (h != null) hintsOn = h === "1"; } catch (e) {}
   const statusTag = (w) => (w.status ? `<em class="wtag ${w.status.type}">${D.STATUS_JP[w.status.type] || w.status.type}</em>` : "");
   function renderAxHelp() {
     const tog = $("sqAxTog"), body = $("sqAxHelp"); if (!tog || !body) return;
-    tog.textContent = hintsOn ? "▾ 10の軸の意味を隠す" : "▸ 10の軸がそれぞれ戦いの何に効くかを見る";
+    tog.classList.toggle("on", hintsOn);
     body.classList.toggle("hidden", !hintsOn);
-    body.innerHTML = hintsOn ? D.MACROS.map((m, i) => `<div class="sq-axh"><b>${m.name}</b><span>${SCS.ui.macroHint(i)}</span></div>`).join("") : "";
+    body.innerHTML = hintsOn ? `<div class="kvp-h">10の軸が戦いの何に効くか</div>` + D.MACROS.map((m, i) => `<div class="sq-axh"><b>${m.name}</b><span>${SCS.ui.macroHint(i)}</span></div>`).join("") : "";
   }
+  // キービジュ案1の小物：射撃＝照準、近接＝刃、前衛＝盾、後衛＝照準（インラインSVG・絵文字は使わない）
+  const ICON = {
+    aim: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5" stroke="currentColor" stroke-width="2"/></svg>`,
+    blade: `<svg viewBox="0 0 24 24" class="ico"><path d="M20 2l-9.5 9.5 2 2L22 4z" fill="currentColor"/><path d="M8.5 13.5l2 2-3 3-1-1-2.5 2.5-1.5-1.5 2.5-2.5-1-1z" fill="currentColor"/></svg>`,
+    shield: `<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 6v12" stroke="currentColor" stroke-width="2"/></svg>`,
+    both: `<svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 12h10M12 7v10" stroke="currentColor" stroke-width="2"/></svg>`,
+  };
   function colHtml(i) {
     const p = SCS.ui.cardParts(squad[i]), u = p.u;
     const tk = SCS.squadTank ? SCS.squadTank(squad[i]) : null; // 盾資質（目立つ×持ちこたえる）を設計時に可視化
     const shield = tk && tk.isTank ? `<span class="sqr-tank" title="火力を引きつける前衛の資質">盾</span>` : "";
-    const rows = D.MACROS.map((m, ax) => `<div class="sqd-row" data-ax="${ax}"><span class="sqd-lbl" title="${SCS.ui.macroHint(ax)}">${m.name}</span><div class="sqd-opts">` +
+    const rows = D.MACROS.map((m, ax) => `<div class="sqd-row" data-ax="${ax}"><span class="sqd-lbl" title="${SCS.ui.macroHint(ax)}">${m.name.replace("(テンポ)", "")}</span><div class="sqd-opts">` +
       m.poles.map((pole, ci) => `<button type="button" class="sqd-opt${squad[i][ax] === ci ? " on" : ""}" data-i="${i}" data-ax="${ax}" data-c="${ci}">${pole}</button>`).join("") + `</div></div>`).join("");
-    const traits = p.traits.length ? p.traits.map((t) => `<span class="bc-trait">${t}</span>`).join("") : `<span class="bc-trait neutral">中庸（突出した気質なし）</span>`;
+    const seg = Math.round(p.hpPct / 5); // HPバーは20コマの区切り表示（キービジュ案1）
     return `<div class="sq-col" data-i="${i}">` +
       `<div class="sqc-head"><div class="sqc-orb"><span>${i + 1}</span></div>` +
-      `<input class="sqc-name" data-i="${i}" maxlength="8" value="${names[i]}" title="この戦士に名前を付ける（8字まで）">` +
+      `<input class="sqc-name kv-frame" data-i="${i}" maxlength="8" value="${names[i]}" title="この戦士に名前を付ける（8字まで）">` +
       `<div class="sqc-role">${p.tag}${shield}</div><div class="sqc-career">${careerLine(i)}</div></div>` +
       `<div class="sqc-dials">${rows}</div>` +
-      `<div class="sqc-foot"><div class="sqc-hp"><span class="sqc-hpl">HP</span><div class="sqc-hpbar"><i style="width:${p.hpPct}%"></i></div><b>${u.maxHp}</b></div>` +
-      `<div class="sqc-w"><span class="sqc-wk" title="射撃">R</span><b>${u.ranged.name}</b>${statusTag(u.ranged)}</div>` +
-      `<div class="sqc-w"><span class="sqc-wk" title="近接">M</span><b>${u.melee.name}</b>${statusTag(u.melee)}</div>` +
-      `<div class="bc-traits">${traits}</div><div class="bc-trade">${p.trade}</div></div></div>`;
+      `<div class="sqc-foot"><div class="sqc-hp"><span class="sqc-hpl">HP</span><div class="sqc-hpbar">${Array.from({ length: 20 }, (_, k) => `<i class="${k < seg ? "on" : ""}"></i>`).join("")}</div><b>${u.maxHp}</b></div>` +
+      `<div class="sqc-w"><span class="sqc-wk" title="射撃">R</span>${ICON.aim}<b>${u.ranged.name}</b>${statusTag(u.ranged)}</div>` +
+      `<div class="sqc-w"><span class="sqc-wk" title="近接">M</span>${ICON.blade}<b>${u.melee.name}</b>${statusTag(u.melee)}</div></div></div>`;
   }
   function renderCols() { const el = $("sqCols"); if (!el) return; el.innerHTML = Array.from({ length: SIZE }, (_, i) => colHtml(i)).join(""); renderRoleBal(); }
   function renderRoleBal() { // [[分隊戦設計]]§7「役割バランス表示（前衛/後衛/万能の構成を戦法ラベルで）」
     const el = $("sqRoleBal"); if (!el) return;
     let f = 0, b = 0, a = 0;
     for (const ch of squad) { const k = SCS.ui.styleKey(SCS.derive.buildUnit("U", ch)); if (ROLE_FRONT[k]) f++; else if (ROLE_BACK[k]) b++; else a++; }
-    el.innerHTML = `<span class="srb-lbl">役割バランス</span><span class="srb-n front">前衛 <b>${f}</b></span><span class="srb-n back">後衛 <b>${b}</b></span><span class="srb-n all">万能 <b>${a}</b></span>`;
+    el.innerHTML = `<span class="srb-lbl">役割バランス</span><span class="srb-sep"></span><span class="srb-n front">${ICON.shield}前衛 <b>${f}</b></span><span class="srb-sep"></span><span class="srb-n back">${ICON.aim}後衛 <b>${b}</b></span><span class="srb-sep"></span><span class="srb-n all">${ICON.both}万能 <b>${a}</b></span>`;
   }
 
   function randomCpu(seed) {
@@ -358,7 +365,7 @@ window.SCS = window.SCS || {};
     try { localStorage.setItem("scs_sq_legend", "1"); } catch (e) {}
   }
   function sortie(fixedSeed) {
-    isDemo = false;
+    isDemo = false; closePops();
     let seed = fixedSeed != null ? (fixedSeed >>> 0) : (Math.floor(Math.random() * 0x7fffffff) >>> 0);
     // モード別の対戦条件（enemy/戦場/戦況/敵隊形/ヘッダ行）
     let cpuChoices, bArena, bMod, formC, enemyLabel, headLine = null;
@@ -386,7 +393,6 @@ window.SCS = window.SCS || {};
     if (SCS.mini) SCS.mini.reset();
     $("squadDesign").classList.add("hidden");
     $("squadStage").classList.remove("hidden");
-    maybeShowLegendFirstRun();
     $("sqArenaChip").textContent = battle.arena.name;
     const fc = $("sqFormChip"); if (fc) { const pf = battle.formP && battle.formP !== "loose" ? (D.FORMATIONS.find((f) => f.key === battle.formP) || {}).name : null; fc.textContent = pf ? ("陣形：" + pf) : ""; fc.style.display = pf ? "" : "none"; }
     const mc = $("sqModChip"); if (battle.modifier) { mc.textContent = battle.modifier.name; mc.style.display = ""; } else mc.style.display = "none";
@@ -449,8 +455,7 @@ window.SCS = window.SCS || {};
       stopAuto();
       if (isDemo) { append(">> デモ終了 — 次はあなたの分隊を設計する番だ（名前も付けられる）。", "arena"); isDemo = false; }
       else { recordCareer(); recordCampResult(); recordChalResult(); }
-      $("sqParamsWrap").classList.remove("hidden"); renderAnalysis();
-      setTimeout(() => { const w = $("sqParamsWrap"); if (w && w.scrollIntoView) w.scrollIntoView({ behavior: "smooth", block: "start" }); }, 450); // 決着→勝敗バナーへ
+      setTimeout(() => { if (battle && battle.over) showResult(); }, 1100); // 決着→一拍おいて結果画面（キービジュ案4）
     }
     return r;
   }
@@ -473,7 +478,8 @@ window.SCS = window.SCS || {};
   function stopAuto() { if (autoT) { clearTimeout(autoT); autoT = null; } const b = $("sqAuto"); if (b) b.textContent = "▶ 自動実行"; }
   function skipToEnd() { stopAuto(); let g = 0; while (battle && !battle.over && g < 200) { nextStep(); g++; } }
 
-  // 決着後の分析（キービジュ GPT 4 採用 [[分隊戦設計]]§14）：大きな勝敗バナー＋総評／1体1枚のカード／戦評・次の方向性（§13のディープリンク）／設計を直す・再戦
+  // 結果画面（キービジュ案4）：大きな勝敗バナー＋総評／1体1枚のカード（丸の中に人影・戦いぶり）／戦評・次の方向性（§13のディープリンク）／戦闘を見返す・設計を直す・再戦
+  const SILHOUETTE = `<svg viewBox="0 0 48 48" class="sil"><circle cx="24" cy="17" r="8.5" fill="currentColor"/><path d="M8 44c1.5-10 8-15 16-15s14.5 5 16 15z" fill="currentColor"/></svg>`;
   function renderAnalysis() {
     if (!battle) return;
     const a = battle.getAnalysis(), P = a.plr, C = a.cpu;
@@ -481,26 +487,33 @@ window.SCS = window.SCS || {};
     const banner = { win: "勝利", lose: "敗北", draw: "引き分け", pending: "途中経過" }[res];
     const card = (c, i, side) => {
       const tags = [c.flanks ? "側背" + c.flanks : "", c.counters ? "反撃" + c.counters : "", c.grabs ? "投げ" + c.grabs : "", c.ults ? "必殺" + c.ults : "", c.wasFlanked ? "被側背" + c.wasFlanked : ""].filter(Boolean).join("・");
-      return `<div class="sqa-card ${side}${c.alive ? "" : " down"}"><div class="sqa-chead"><div class="sqa-orb"><span>${i + 1}</span></div><div class="sqa-who"><div class="sqa-nm">${c.name}</div><div class="sqa-role">${c.role}</div></div><div class="sqa-st">${c.alive ? "生存" : "T" + c.downTurn + " 脱落"}</div></div>` +
+      return `<div class="sqa-card kv-frame ${side}${c.alive ? "" : " down"}"><div class="sqa-chead"><div class="sqa-orb">${SILHOUETTE}</div><div class="sqa-who"><div class="sqa-nm">${c.name}</div><div class="sqa-role">${c.role}</div></div><div class="sqa-st">${c.alive ? "生存" : "T" + c.downTurn + " 脱落"}</div></div>` +
         `<div class="sqa-sub">戦いぶり</div><table class="sqa-tab"><tr><td>与ダメージ</td><td>${c.dealt}</td></tr><tr><td>被ダメージ</td><td>${c.taken}</td></tr><tr><td>撃破</td><td>${c.kills}</td></tr><tr><td>命中率</td><td>${c.hitRate}%</td></tr></table>` +
-        (tags ? `<div class="sqa-tags">${tags}</div>` : "") + `<div class="sqa-w">${c.weapon}</div></div>`;
+        `<div class="sqa-tags">${tags || "&nbsp;"}</div><div class="sqa-w">${c.weapon}</div></div>`;
     };
     const notes = (s) => (s.notes.length ? `<b>戦評</b><ul>${s.notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : "");
-    const advice = (s) => (s.advice && s.advice.length ? `<b>次の方向性</b><ul>${s.advice.map((n) => `<li class="adv-link" title="クリックで設計画面へ（該当ダイヤルを強調）">${n}</li>`).join("")}</ul>` : "");
+    const advice = (s) => (s.advice && s.advice.length ? `<b>次の方向性</b><ul>${s.advice.map((n) => `<li class="adv-link" title="クリックで編成画面へ（該当する軸を光らせる）">→ ${n}</li>`).join("")}</ul>` : "");
     const eBadge = res === "pending" ? "" : res === "draw" ? `<span class="abadge draw">DRAW</span>` : res === "lose" ? `<span class="abadge win">WIN</span>` : `<span class="abadge lose">LOSE</span>`;
     $("sqParams").innerHTML =
-      `<div class="sqa-banner ${res}"><span>${banner}</span></div>` +
+      `<div class="sqa-banner kv-frame ${res}"><span>${banner}</span></div>` +
       (P.verdict ? `<div class="sqa-verdict">${P.verdict}</div>` : "") +
-      `<div class="sqa-meta">分隊戦：${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン　｜　与ダメ計 ${P.dealt}／撃破 ${P.kills}／生存 ${P.survivors}/${P.cards.length}</div>` +
+      `<div class="sqa-meta">${a.arena}${a.mod ? "・" + a.mod : ""}・全${a.turns}ターン　｜　与ダメ計 ${P.dealt}／撃破 ${P.kills}／生存 ${P.survivors}/${P.cards.length}</div>` +
       `<div class="sqa-cards">${P.cards.map((c, i) => card(c, i, "plr")).join("")}</div>` +
-      `<div class="sqa-lower"><div class="sqa-box anotes">${notes(P)}</div><div class="sqa-box aadvice">${advice(P)}</div></div>` +
+      `<div class="sqa-lower"><div class="sqa-box kv-frame anotes">${notes(P)}</div><div class="sqa-box kv-frame aadvice">${advice(P)}</div></div>` +
       `<details class="sqa-enemy"><summary>敵分隊 ${eBadge}　${C.verdict || ""}</summary><div class="sqa-cards small">${C.cards.map((c, i) => card(c, i, "cpu")).join("")}</div>${C.notes.length ? `<div class="sqa-box anotes">${notes(C)}</div>` : ""}</details>` +
-      `<div class="sqa-actions"><button id="sqaBack" class="btn ghost" type="button">設計を直す</button>` +
-      (playMode !== "chal" ? `<button id="sqaAgain" class="btn primary" type="button" title="同じ設計・同じ相手で、乱数だけ変えてもう一戦">再戦（別の展開）</button>` : "") + `</div>` +
-      `<p class="ahint">※ 役割の補完と相性を設計するのが分隊戦の肝。総評と「次の方向性」を手がかりに、人格のダイヤルを回して再設計しよう。</p>`;
+      `<div class="sqa-actions"><button id="sqaReview" class="kv-mini" type="button">戦闘を見返す</button><button id="sqaBack" class="kv-mini" type="button">編成を直す</button>` +
+      (playMode !== "chal" ? `<button id="sqaAgain" class="kv-go kv-frame" type="button" title="同じ設計・同じ相手で、乱数だけ変えてもう一戦"><span>再戦</span></button>` : "") + `</div>`;
   }
 
-  function backToDesign() { stopAuto(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); if (playMode === "camp") renderCampaign(); if (playMode === "chal") renderChal(); }
+  function backToDesign() { stopAuto(); closePops(); $("squadStage").classList.add("hidden"); $("sqParamsWrap").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); buildDesign(); if (playMode === "camp") renderCampaign(); if (playMode === "chal") renderChal(); window.scrollTo(0, 0); }
+  // 画面の切替（分隊編成／観戦／結果＝キービジュの3画面）
+  function showResult() { closePops(); renderAnalysis(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.add("hidden"); $("sqParamsWrap").classList.remove("hidden"); window.scrollTo(0, 0); }
+  function showStage() { $("sqParamsWrap").classList.add("hidden"); $("squadDesign").classList.add("hidden"); $("squadStage").classList.remove("hidden"); render(); window.scrollTo(0, 0); }
+  function closePops() {
+    document.querySelectorAll("#squad .kv-pop").forEach((el) => el.classList.add("hidden"));
+    hintsOn = false; const at = $("sqAxTog"); if (at) at.classList.remove("on");
+    const kt = $("sqKeyTog"); if (kt) kt.classList.remove("on");
+  }
 
   // ===== 勝率試算（設計→試算→出撃の閉ループ）：現在の編成×条件で固定seed20戦＝決定論の推定 =====
   function estimate() {
@@ -543,7 +556,9 @@ window.SCS = window.SCS || {};
   }
 
   SCS.squad = {
-    enter() { buildDesign(); $("squadStage").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); },
+    enter() { buildDesign(); $("squadStage").classList.add("hidden"); $("sqParamsWrap").classList.add("hidden"); $("squadDesign").classList.remove("hidden"); },
+    setPlayMode(m) { stopAuto(); setPlayMode(m); backToDesign(); },
+    demo() { runDemo(); },
     leave() { stopAuto(); },
   };
   function init() {
@@ -555,9 +570,10 @@ window.SCS = window.SCS || {};
     { const rb = $("sqRecords"); if (rb) rb.addEventListener("click", () => { const p = $("sqRecordsPanel"); if (!p) return; const show = p.classList.contains("hidden"); p.classList.toggle("hidden", !show); if (show) renderRecords(); }); }
     { const pb = $("sqPredict"); if (pb) pb.addEventListener("click", estimate); }
     { const pp = $("sqParams"); if (pp) pp.addEventListener("click", (e) => {
-      const id = e.target && e.target.id;
-      if (id === "sqaBack") { backToDesign(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-      if (id === "sqaAgain") { sortie(); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+      const bt = e.target && e.target.closest ? e.target.closest("button") : null, id = bt && bt.id;
+      if (id === "sqaBack") { backToDesign(); return; }
+      if (id === "sqaAgain") { sortie(); return; }
+      if (id === "sqaReview") { showStage(); return; }
       const li = e.target.closest ? e.target.closest("li.adv-link") : null; if (!li) return; const axes = axesInText(li.textContent || ""); backToDesign(); if (axes.length) flashDials(axes);
     }); }
     { const cols = $("sqCols"); if (cols) {
@@ -571,7 +587,14 @@ window.SCS = window.SCS || {};
       });
       cols.addEventListener("change", (e) => { const t = e.target; if (!t || !t.classList || !t.classList.contains("sqc-name")) return; const i = +t.dataset.i; names[i] = sanitizeName(t.value) || `戦士${i + 1}`; t.value = names[i]; saveDesign(); });
     } }
-    { const at = $("sqAxTog"); if (at) at.addEventListener("click", () => { hintsOn = !hintsOn; try { localStorage.setItem(AXHELP_KEY, hintsOn ? "1" : "0"); } catch (e) {} renderAxHelp(); }); }
+    { const at = $("sqAxTog"); if (at) at.addEventListener("click", () => { const open = !hintsOn; closePops(); hintsOn = open; renderAxHelp(); }); }
+    { const sb = $("sqStageBtn"); if (sb) sb.addEventListener("click", () => { const id = playMode === "chal" ? "sqChal" : "sqCamp", el = $(id); if (!el) return; const open = el.classList.contains("hidden"); closePops(); el.classList.toggle("hidden", !open); }); }
+    // 小窓（kv-pop）の外をクリックしたら閉じる（キービジュの画面を保つ）
+    document.addEventListener("click", (e) => {
+      const t = e.target; if (!t || !t.closest) return;
+      if (t.closest(".kv-pop") || t.closest(".kv-mini") || t.closest("select") || t.closest(".sqd-opt")) return;
+      closePops();
+    });
     { const cc = $("sqCodeCopy"); if (cc) cc.addEventListener("click", () => copyText(encodeSquad(squad, form), cc)); }
     { const cl = $("sqCodeLoad"); if (cl) cl.addEventListener("click", () => { const code = prompt("分隊コードを貼り付け（S1…）"); if (!code) return; const d = decodeSquad(code); if (!d) { cl.textContent = "コードが不正"; setTimeout(() => (cl.textContent = "コードを読み込む"), 1600); return; } squad = d.squad.map((c) => c.slice()); form = d.form; saveDesign(); buildDesign(); cl.textContent = "読み込んだ"; setTimeout(() => (cl.textContent = "コードを読み込む"), 1400); }); }
     { const sb = $("sqShare"); if (sb) sb.addEventListener("click", () => { const url = buildShareURL(); if (url) copyText(url, sb, "URLをコピーした"); }); }
@@ -581,9 +604,9 @@ window.SCS = window.SCS || {};
     $("sqAuto").addEventListener("click", auto);
     { const sp = $("sqSpeed"); if (sp) sp.addEventListener("click", cycleSpeed); }
     { const sk = $("sqSkip"); if (sk) sk.addEventListener("click", skipToEnd); }
-    $("sqAnalyze").addEventListener("click", () => { const w = $("sqParamsWrap"); w.classList.toggle("hidden"); if (!w.classList.contains("hidden")) renderAnalysis(); });
+    $("sqAnalyze").addEventListener("click", () => { stopAuto(); showResult(); });
     $("sqBack").addEventListener("click", backToDesign);
-    const kt = $("sqKeyTog"); if (kt) kt.addEventListener("click", () => { const k = $("sqKey"); k.classList.toggle("hidden"); kt.textContent = k.classList.contains("hidden") ? "▸ 見方" : "▾ 見方"; });
+    const kt = $("sqKeyTog"); if (kt) kt.addEventListener("click", () => { const k = $("sqKey"), open = k.classList.contains("hidden"); closePops(); k.classList.toggle("hidden", !open); kt.classList.toggle("on", open); });
     const ct = $("sqConeTog"); if (ct) ct.addEventListener("click", () => { const on = !(SCS.mini && SCS.mini.conesOn && SCS.mini.conesOn()); if (SCS.mini && SCS.mini.setCones) SCS.mini.setCones(on); ct.textContent = on ? "視界 ON" : "視界 OFF"; ct.classList.toggle("on", on); render(); });
   }
   document.addEventListener("DOMContentLoaded", init);

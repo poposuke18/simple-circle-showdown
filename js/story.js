@@ -46,6 +46,7 @@ window.SCS = window.SCS || {};
   // ---- モード切替（系譜 / 分隊戦 / 自由対戦 / ストーリー）----
   function setMode(m) {
     mode = m;
+    document.body.classList.toggle("kv", m === "squad"); // 分隊戦＝キービジュの全画面（ヘッダ・タブを隠す）／他モードは従来の画面
     $("tabFree").classList.toggle("active", m === "free");
     $("tabStory").classList.toggle("active", m === "story");
     const sq = $("tabSquad"); if (sq) sq.classList.toggle("active", m === "squad");
@@ -199,7 +200,7 @@ window.SCS = window.SCS || {};
     $("tabStory").addEventListener("click", () => setMode("story"));
     { const sq = $("tabSquad"); if (sq) sq.addEventListener("click", () => setMode("squad")); }
     { const ln = $("tabLineage"); if (ln) ln.addEventListener("click", () => setMode("lineage")); }
-    setMode("lineage"); // 既定＝系譜（新主役）。分隊戦・1v1は各タブから
+    setMode("squad"); // 既定＝分隊戦（キービジュに寄せたメインのゲーム・2026-10-11）。系譜・自由対戦・ストーリーはタイトルのメニューから
   }
   document.addEventListener("DOMContentLoaded", init);
 })();

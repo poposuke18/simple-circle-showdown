@@ -64,7 +64,7 @@ window.SCS = window.SCS || {};
     const help = $("btnHelp"); if (help) help.addEventListener("click", () => open(true));
     let seen = false;
     try { seen = !!localStorage.getItem(KEY); } catch (e) {}
-    if (!seen) open(false); // 初回のみ自動表示（戦闘は静止状態のまま——観るより先に設計を促す）
+    void seen; // 2026-10-11：起動はタイトル画面（メニュー）から。系譜向けのこの案内は自動では出さず、ヘッダーの「？」で開く
   }
   document.addEventListener("DOMContentLoaded", init);
 })();
