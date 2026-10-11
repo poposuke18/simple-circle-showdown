@@ -157,9 +157,34 @@ window.SCS = window.SCS || {};
         if (blocks.concat(obstacles).some((r) => px > r.x - 0.8 && px < r.x + r.w + 0.8 && py > r.y - 0.8 && py < r.y + r.h + 0.8)) navBlocked[j * GW + i] = 1;
       }
     }
-    const moveBlocked = (a, b) => blocks.some((r) => segIntersectsRect(a, b, r)) || obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
     const cellOf = (p) => clamp(Math.floor(p.y / NC), 0, GH - 1) * GW + clamp(Math.floor(p.x / NC), 0, GW - 1);
     const cellPt = (c) => ({ x: (c % GW + 0.5) * NC, y: (Math.floor(c / GW) + 0.5) * NC });
+    // 抜け道の無い小部屋（遺跡の囲いなど）：点の動きなら狭い隙間から入れるが、道探しでは出られず固まる（2026-10-11 実測）。
+    // 始めに、道でつながる一番大きな広がり（主領域）以外の空きを埋めて入れないようにする。NAV の時だけ＝旧来の戦場は不変
+    const navComp = NAV ? new Int32Array(GW * GH).fill(-1) : null; let navMain = 0;
+    if (NAV) {
+      const sizes = [];
+      for (let s0 = 0; s0 < GW * GH; s0++) {
+        if (navBlocked[s0] || navComp[s0] >= 0) continue;
+        const id = sizes.length, q = [s0]; navComp[s0] = id;
+        for (let h = 0; h < q.length; h++) { const c = q[h], ci = c % GW, cj = (c - ci) / GW;
+          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = ci + di, nj = cj + dj; if (ni < 0 || nj < 0 || ni >= GW || nj >= GH) continue; const n = nj * GW + ni; if (navBlocked[n] || navComp[n] >= 0) continue; navComp[n] = id; q.push(n); } }
+        sizes.push(q.length);
+      }
+      sizes.forEach((v, i) => { if (v > sizes[navMain]) navMain = i; });
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW;) {
+        const c = j * GW + i; if (navBlocked[c] || navComp[c] === navMain) { i++; continue; }
+        let k = i; while (k < GW && !navBlocked[j * GW + k] && navComp[j * GW + k] !== navMain) { navBlocked[j * GW + k] = 1; k++; }
+        blocks.push({ x: i * NC, y: j * NC, w: (k - i) * NC, h: NC, trap: true }); i = k;
+      }
+    }
+    // それでも入り込んでいたら（壁際の隙間など）、主領域の一番近い所へ出す
+    function rescueTrapped(u) {
+      const c = cellOf(u); if (navComp[c] === navMain) return;
+      let best = -1, bd = Infinity; for (let k = 0; k < GW * GH; k++) { if (navComp[k] !== navMain) continue; const p = cellPt(k), d = Math.hypot(p.x - u.x, p.y - u.y); if (d < bd) { bd = d; best = k; } }
+      if (best >= 0 && bd > 2.5) { const p = cellPt(best); u.x = p.x; u.y = p.y; }
+    }
+    const moveBlocked = (a, b) => blocks.some((r) => segIntersectsRect(a, b, r)) || obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
     let navCache = new Map();                                                         // 目標の格子→距離場（ターンごとに作り直す）
     function navField(goal) {
       let g = cellOf(goal);
@@ -783,19 +808,21 @@ window.SCS = window.SCS || {};
       if (FORM2) for (const u of ALL) { if (!u.alive) { u._formHeld = false; continue; } const sl = formSlot2(u); u._formHeld = !!sl && dist(u, sl) < 12; } // 表示用：隊形の位置にいるか
       // 3.5) アンチストール：膠着したら攻撃的な体だけ最寄り敵へ引き寄せる（専守・待ちは引かない→待ち戦はタイムアップ）
       if (noDmgTurns >= 3) {
-        const pull = Math.min((noDmgTurns - 2) * 2.5, 12);
+        const pull = Math.min((noDmgTurns - 2) * 2.5, 12), longQuiet = NAV && noDmgTurns >= 6;   // 長い膠着（v2 の戦場だけ）＝待つ性格も動き出す
         for (const u of ALL) {
-          if (!u.alive || !restless(u)) continue;
-          const e = nearestKnownEnemy(u); if (!e) continue;
+          if (!u.alive) continue;
+          const calm = !restless(u); if (calm && !longQuiet) continue;
+          const e = nearestKnownEnemy(u) || (longQuiet ? nearestLiveEnemy(u) : null); if (!e) continue;   // 見失っていても気配の方へ
           const d = dist(u, e);
           // 近接は距離で・射手は idleTurns で判断（射程内でも0ダメ往復の振動を強制接触で断ち切る）
           const inMelee = d <= u.melee.reach && losClear(u, e);
           const rangedEngaging = u.ranged.effRange > u.melee.reach + 12 && d <= u.ranged.effRange && losClear(u, e) && (u.idleTurns || 0) < 3;
           if (inMelee || rangedEngaging) continue;
-          const tp = NAV ? waypoint(u, e) : e, dx = tp.x - u.x, dy = tp.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(pull, l);
+          const tp = NAV ? waypoint(u, e) : e, dx = tp.x - u.x, dy = tp.y - u.y, l = Math.hypot(dx, dy) || 1, st = Math.min(calm ? pull * 0.6 : pull, l);
           const q = pushOutObstacle(cx(u.x + (dx / l) * st), cy(u.y + (dy / l) * st)); u.x = q.x; u.y = q.y;
         }
       }
+      if (NAV) for (const u of ALL) if (u.alive) rescueTrapped(u);
       // 4) 向き
       for (const u of ALL) {
         if (!u.alive) continue;
@@ -927,6 +954,7 @@ window.SCS = window.SCS || {};
       // 動的ラベル（今ターンの役割行動を1語で・HUD/レーダー用）
       const evByAtt = new Map(); for (const ev of evs) if (!evByAtt.has(ev.att)) evByAtt.set(ev.att, ev);
       for (const u of ALL) { if (!u.alive) { u._ultHold = 0; continue; } const evU = evByAtt.get(u); if (evU && evU.ult) u._ultHold = 0; else if (u.resolve >= 1) u._ultHold = (u._ultHold || 0) + 1; else u._ultHold = 0; }
+      if (NAV) for (const u of ALL) { if (!u.alive) continue; if (insideAny(u.x, u.y)) { const q = pushOutBlocks(u.x, u.y); u.x = q.x; u.y = q.y; } rescueTrapped(u); }   // 吹き飛ばし等で壁・谷に入った駒を出す（v2 の戦場だけ）
       for (const u of ALL) u.label = dynLabel(u, evByAtt.get(u), decs.get(u));
 
       // 9) 描写フィード
