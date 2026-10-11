@@ -1,10 +1,9 @@
-/* v2/js/runner.js — 1戦を進める係。エンジン squad.js（無改変）を1ターンずつ回し、
+/* v2/js/runner.js — 1戦を進める係。エンジン squad3.js（v2 用・頭は既定で両軍 v3）を1ターンずつ回し、
  * 描画用の駒（view）・演出（fx）・毎ターンの記録（snaps＝結果とハイライト・なぜ？の材料）を持つ。
  * 表示の押し離し（駒が重ならないよう描く位置だけずらす）は戦闘に一切影響しない。 */
 window.SCS2 = window.SCS2 || {};
 (function () {
   "use strict";
-  const B = () => SCS2.board;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
   const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -26,10 +25,10 @@ window.SCS2 = window.SCS2 || {};
       us.forEach((v) => { v.rank = ord.indexOf(v.idx); });
     }
     const fx = [], pops = [], snaps = [], hist = [];
-    let turnStart = 0, nextAt = 600, overAt = 0, kills = 0, focus = null, focusUntil = 0, focusLock = 0;
+    let turnStart = 0, nextAt = 600, focus = null, focusUntil = 0, focusLock = 0;
     const cam = { x: W / 2, y: H / 2, z: 1.1, vw: cfg.vw || W, vh: cfg.vh || H, m: cfg.vw ? 160 : 0 };               // vw×vh＝戦場を映す枠の大きさ
 
-    function sync(v) { const u = v.u; v.plan = u.alive && u._plan ? { x: u._plan.x, y: u._plan.y } : null; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; v.winDist = u.winDist; } // hidden＝敵にまだ見つかっていない
+    function sync(v) { const u = v.u; v.plan = u.alive && u.target && u._plan && u._plan.turn === battle.turn ? { x: u._plan.x, y: u._plan.y } : null; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; } // hidden＝敵にまだ見つかっていない
     function separate(snap) {
       const minD = (R * 2 * 0.92) / PX, pts = views.map((v) => ({ v, x: v.u.x, y: v.u.y }));
       for (let it = 0; it < 6; it++) for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
@@ -41,31 +40,35 @@ window.SCS2 = window.SCS2 || {};
       }
       const solid = cfg.arena.terrain.filter((z) => (SCS.DATA.TERRAIN[z.t] || {}).block).concat(cfg.arena.obstacles), inside = (x, y) => solid.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
       const pushOut = (x, y) => { for (let it = 0; it < 3; it++) { const r = solid.find((q) => x > q.x && x < q.x + q.w && y > q.y && y < q.y + q.h); if (!r) break;
-          const c = [[x - r.x, r.x - 0.1, y], [r.x + r.w - x, r.x + r.w + 0.1, y], [y - r.y, x, r.y - 0.1], [r.y + r.h - y, x, r.y + r.h + 0.1]].filter((k) => k[1] > 0 && k[1] < FW && k[2] > 0 && k[2] < FH).sort((a, b) => a[0] - b[0]);
+          const c = [[x - r.x, r.x - 0.1, y], [r.x + r.w - x, r.x + r.w + 0.1, y], [y - r.y, x, r.y - 0.1], [r.y + r.h - y, x, r.y + r.h + 0.1]].filter((k) => k[1] >= 3 && k[1] <= FW - 3 && k[2] >= 3 && k[2] <= FH - 3).sort((a, b) => a[0] - b[0]);
           if (!c.length) break; x = c[0][1]; y = c[0][2]; } return { x, y }; };
-      for (const p of pts) { if (inside(p.x, p.y)) { const q = pushOut(p.x, p.y); if (inside(q.x, q.y)) { p.x = p.v.u.x; p.y = p.v.u.y; } else { p.x = q.x; p.y = q.y; } } // ずらした先が谷・壁の中なら、外へ出す（出せなければずらさない）
-        p.v.tx = clamp(p.x, 3, FW - 3); p.v.ty = clamp(p.y, 3, FH - 3); if (snap) { p.v.x = p.v.fx = p.v.tx; p.v.y = p.v.fy = p.v.ty; } }
+      const edge = (x, y) => ({ x: clamp(x, 3, FW - 3), y: clamp(y, 3, FH - 3) });     // 駒が画面の端で切れない余白。壁の判定より先に寄せる（寄せた先が谷・壁の中にならないように）
+      for (const p of pts) {
+        let q = edge(p.x, p.y); p.x = q.x; p.y = q.y;
+        if (inside(p.x, p.y)) { q = pushOut(p.x, p.y); if (inside(q.x, q.y)) q = edge(p.v.u.x, p.v.u.y); p.x = q.x; p.y = q.y; } // ずらした先が谷・壁の中なら外へ（出せなければ本当の位置）
+        p.v.tx = p.x; p.v.ty = p.y; if (snap) { p.v.x = p.v.fx = p.v.tx; p.v.y = p.v.fy = p.v.ty; } }
     }
     function snapshot(res, died) {
-      snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.target ? byU.get(v.u.target).id : null, stamina: v.u.stamina, hidden: v.u.alive && !battle.spotted(v.u) })),
+      snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.alive && v.u.target ? byU.get(v.u.target).id : null, stamina: v.u.stamina, hidden: v.u.alive && !battle.spotted(v.u) })),
         events: res ? res.events || [] : [], lines: res ? res.lines || [] : [], died: died || [], obstacles: battle.obstacles.map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h, hp: o.hp })), hazards: battle.hazards.map((h) => ({ ...h })) });
     }
     separate(true); views.forEach(sync); snapshot(null, []);
 
-    function nearest(p) { let b = null, bd = 1e9; for (const v of views) { const d = Math.hypot(v.u.x - p.x, v.u.y - p.y); if (d < bd) { bd = d; b = v; } } return b; }
+    function nearest(p, notTeam) { let b = null, bd = 1e9; for (const v of views) { if (v.team === notTeam) continue; const d = Math.hypot(v.u.x - p.x, v.u.y - p.y); if (d < bd) { bd = d; b = v; } } return b; }
     function pushFx(events, clock) {
       let k = 0;
       for (const e of events) {
         if (!e.from || !e.to) continue;
-        const va = views.find((v) => v.team === (e.aTeam || e.team) && v.idx === e.aIdx) || nearest(e.from), vb = nearest(e.to);
+        const aT = e.aTeam || e.team, va = views.find((v) => v.team === aT && v.idx === e.aIdx) || nearest(e.from);
+        const vb = (e.dTeam && views.find((v) => v.team === e.dTeam && v.idx === e.dIdx)) || nearest(e.to, aT);
         if (!va || !vb) continue;
-        const kind = { ranged: "tracer", melee: "slash", "ult-ranged": "beam", "ult-melee": "burst", dodge: "dodge", guard: "guard", counter: "slash", grab: "slash" }[e.type]; if (!kind) continue;
+        const kind = { ranged: "tracer", melee: "slash", "ult-ranged": "beam", "ult-melee": "burst", counter: "slash", grab: "slash" }[e.type]; if (!kind) continue;   // 反撃・投げは斬撃と同じ見た目
         const t0 = clock + Math.min(300, k++ * 55), base = { t0, va, vb, team: va.team, hit: (e.hits || 0) > 0, crit: !!e.crit };
         fx.push(Object.assign({}, base, { kind, dur: kind === "beam" || kind === "burst" ? 640 : 380 }));
-        if (base.hit && kind !== "dodge" && kind !== "guard") fx.push(Object.assign({}, base, { kind: "impact", t0: t0 + (kind === "tracer" || kind === "beam" ? 210 : 120), dur: 340 }));
-        const pt0 = t0 + (kind === "tracer" || kind === "beam" ? 230 : 140), dx = ((pops.length * 37) % 5 - 2) * 14;   // 当たりの文字（数字・会心・外れ）
-        if ((e.hits || 0) > 0 && (e.dmg || 0) > 0) pops.push({ v: vb, t0: pt0, dx, kind: e.crit ? "crit" : "dmg", text: (e.crit ? "会心 " : "") + "-" + Math.round(e.dmg) });
-        else if (e.whiff || (e.hits || 0) === 0) pops.push({ v: vb, t0: pt0, dx, kind: "miss", text: "外れ" });
+        if (base.hit) fx.push(Object.assign({}, base, { kind: "impact", t0: t0 + (kind === "tracer" || kind === "beam" ? 210 : 120), dur: 340 }));
+        const pt0 = t0 + (kind === "tracer" || kind === "beam" ? 230 : 140);                        // 当たりの文字（数字・会心・外れ）
+        if ((e.hits || 0) > 0 && (e.dmg || 0) > 0) pops.push({ v: vb, t0: pt0, kind: e.crit ? "crit" : "dmg", text: (e.crit ? "会心 " : "") + "-" + Math.round(e.dmg) });
+        else if (e.whiff || (e.hits || 0) === 0) pops.push({ v: vb, t0: pt0, kind: "miss", text: "外れ" });
       }
       if (fx.length > 90) fx.splice(0, fx.length - 90); if (pops.length > 40) pops.splice(0, pops.length - 40);
     }
@@ -77,7 +80,7 @@ window.SCS2 = window.SCS2 || {};
       separate(false);
       for (const v of views) {
         if (v.u.hp < v.hp0) v.hitT = clock + 240;
-        if (!v.u.alive && !v.koT) { v.koT = clock + 320; kills++; died.push(v.id); }
+        if (!v.u.alive && !v.koT) { v.koT = clock + 320; died.push(v.id); }
         const ic = v.u.alive ? SCS2.board.ICON_OF[v.u.label] || "dots" : null; if (ic !== v.icon) { v.icon = ic; v.iconT = clock; }
         v.ang1 = Math.atan2(v.u.faceY, v.u.faceX);
         sync(v);
@@ -86,7 +89,6 @@ window.SCS2 = window.SCS2 || {};
       snapshot(res, died);
       if (!instant) { pushFx(res.events || [], clock); chooseFocus(clock); }
       turnStart = clock;
-      if (battle.over && !overAt) overAt = clock;
       return res;
     }
     function interest(v) {
@@ -112,7 +114,7 @@ window.SCS2 = window.SCS2 || {};
       SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena, vw: cfg.vw, vh: cfg.vh, margin: cam.m }), clamp(dt * speed * 0.0022, 0, 1));
     }
     // 残りを一瞬で解く（「結果へ」）
-    function finish(clock) { let n = 0; while (!battle.over && n++ < 200) doTurn(clock, true); if (!overAt) overAt = clock; }
+    function finish(clock) { let n = 0; while (!battle.over && n++ < 200) doTurn(clock, true); }
     // 注目の駒が主語の記録（「〜ため、X は …した」）を直近のターンから探す
     const strip = (s) => s.replace(/<[^>]+>/g, "").replace(/^[\s　─]+/, "").replace(/（[^）]*）/g, "").trim();
     function whyOf(v) {
@@ -123,10 +125,8 @@ window.SCS2 = window.SCS2 || {};
     }
     if (cfg.vw) SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena, vw: cfg.vw, vh: cfg.vh, margin: cam.m }), 1);   // 始めから全員が映る位置に
     return {
-      battle, views, fx, pops, snaps, cam, tick, finish, whyOf, TURN, arena: cfg.arena,
+      battle, views, fx, pops, snaps, cam, tick, finish, whyOf, arena: cfg.arena,
       get focus() { return focus; }, setFocus(v, clock) { focus = v; focusLock = clock + 8 * TURN; },
-      get overAt() { return overAt; }, get kills() { return kills; },
     };
   };
-  SCS2.strip = (s) => s.replace(/<[^>]+>/g, "").replace(/^[\s　─]+/, "").trim();
 })();

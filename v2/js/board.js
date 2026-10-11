@@ -126,8 +126,9 @@ window.SCS2 = window.SCS2 || {};
       const k = stack.get(p.v) || 0; stack.set(p.v, k + 1);
       const x = p.v.x * PX - R * 0.75, y = p.v.y * PX - R * 1.05 - k * 40 - q * 40, a = q < 0.75 ? 1 : (1 - q) / 0.25, big = p.kind === "crit";
       ctx.globalAlpha = a; ctx.font = `${big ? 900 : 800} ${big ? 46 : p.kind === "miss" ? 26 : 34}px "Noto Sans JP", sans-serif`;
-      ctx.lineWidth = big ? 8 : 6; ctx.strokeStyle = "rgba(6,10,18,.9)"; ctx.strokeText(p.text, x, y);
-      ctx.fillStyle = big ? "#ffd84a" : p.kind === "miss" ? "#c9d4e2" : "#ffffff"; ctx.fillText(p.text, x, y);
+      const hw = ctx.measureText(p.text).width / 2 + 14, tx = Math.max(hw, Math.min(W - hw, x)), ty = Math.max(30, y);   // 戦場の端の駒でも文字が切れないように
+      ctx.lineWidth = big ? 8 : 6; ctx.strokeStyle = "rgba(6,10,18,.9)"; ctx.strokeText(p.text, tx, ty);
+      ctx.fillStyle = big ? "#ffd84a" : p.kind === "miss" ? "#c9d4e2" : "#ffffff"; ctx.fillText(p.text, tx, ty);
     }
     ctx.restore();
   }
@@ -255,10 +256,6 @@ window.SCS2 = window.SCS2 || {};
         ctx.fillStyle = `rgba(255,236,170,${0.75 * al})`; circ(ctx, bx, by, R * (0.35 + p * 0.7)); ctx.fill();
         ctx.strokeStyle = `rgba(255,190,80,${al})`; ctx.lineWidth = 3.5;
         for (let k = 0; k < 9; k++) { const a = k * 0.698 + (f.t0 % 7), r0 = R * (0.5 + p * 0.9), r1 = r0 + R * (0.35 + 0.25 * ((k * 37) % 5) / 5) * (f.crit ? 1.6 : 1); ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * r0, by + Math.sin(a) * r0); ctx.lineTo(bx + Math.cos(a) * r1, by + Math.sin(a) * r1); ctx.stroke(); }
-      } else if (f.kind === "dodge") {
-        ctx.strokeStyle = `rgba(220,240,255,${0.6 * (1 - p)})`; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); circ(ctx, bx - ux * 14 * p, by - uy * 14 * p, R + 6); ctx.stroke(); ctx.setLineDash([]);
-      } else if (f.kind === "guard") {
-        const ang = Math.atan2(uy, ux); ctx.shadowColor = "rgba(120,220,255,1)"; ctx.shadowBlur = 20; ctx.strokeStyle = `rgba(150,230,255,${1 - p})`; ctx.lineWidth = 9; ctx.beginPath(); ctx.arc(ax, ay, R * 1.5, ang - 0.9, ang + 0.9); ctx.stroke();
       }
       ctx.globalCompositeOperation = "source-over"; ctx.shadowBlur = 0;
     }
@@ -371,5 +368,5 @@ window.SCS2 = window.SCS2 || {};
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }
 
-  SCS2.board = { W, H, R, usePX, usePal, get PX() { return PX; }, img, emb, token, icon, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, teamCol, circ };
+  SCS2.board = { W, H, R, img, emb, token, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, circ };   // 外から使うものだけ
 })();

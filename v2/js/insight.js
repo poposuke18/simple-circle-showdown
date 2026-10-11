@@ -9,7 +9,17 @@ window.SCS2 = window.SCS2 || {};
   const lerp = (a, b, t) => a + (b - a) * t;
   const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
   const strip = (s) => s.replace(/<[^>]+>/g, "").replace(/^[\s　─]+/, "").replace(/（[^）]*）/g, "").trim();
-  const ATTACK = ["攻勢", "詰め", "斬", "背後", "必殺"], RETREAT = ["退避", "立て直し"];
+  const FX_KIND = { ranged: "tracer", melee: "slash", "ult-ranged": "beam", "ult-melee": "burst", counter: "slash", grab: "slash" };   // エンジンが出す攻撃の記録（反撃・投げは斬撃の見た目）
+  const attOf = (e) => (e.aTeam || e.team) + e.aIdx;                                          // 攻め手の id
+  // 当てた相手の id：記録の dTeam/dIdx（無い古い記録だけ、攻め手の敵のうち当たった所に一番近い駒）
+  function defOf(e, sn) {
+    if (e.dTeam) return e.dTeam + e.dIdx;
+    let b = null, bd = 1e9; for (const u of sn.units) { if (u.team === (e.aTeam || e.team)) continue; const d = Math.hypot(u.x - e.to.x, u.y - e.to.y); if (d < bd) { bd = d; b = u.id; } } return b;
+  }
+  // そのターンに id を倒した駒（id に一番多く当てた敵）。毒・炎・溶岩などで倒れた時は null
+  function killerOf(sn, id) {
+    let best = null, bd = 0; for (const e of sn.events) { if (!e.to || (e.hits || 0) <= 0 || !(e.dmg > 0) || defOf(e, sn) !== id) continue; if (e.dmg > bd) { bd = e.dmg; best = attOf(e); } } return best;
+  }
 
   // ===== ①「そう来たか」：性格の言葉と逆の行動 =====
   // 振り切った言葉（4択の端）だけを見る。[軸, 段, 逆の行動ラベル]。した事は行動ラベルから
@@ -33,17 +43,17 @@ window.SCS2 = window.SCS2 || {};
         const was = pv.get(u.id); if (was && was.label === u.label) continue;            // その行動を始めた瞬間だけ
         const r = RULES.find(([ax, v, labels, until]) => c[ax] === v && labels.includes(u.label) && (!until || s.turn <= until)); if (!r) continue;
         // 行動ラベルだけでなく、実際の動きで確かめる（攻めた＝敵へ近づいた/攻撃した・退いた＝敵から離れた）
-        const foes0 = snaps[t - 1].units.filter((x) => x.alive && x.team !== u.team), foes1 = s.units.filter((x) => x.alive && x.team !== u.team);
+        const keep = (x) => x.alive && x.team !== u.team && !s.died.includes(x.id);
+        const foes0 = snaps[t - 1].units.filter(keep), foes1 = s.units.filter(keep); if (!foes0.length || !foes1.length) continue;
         const dn = (p, fs) => fs.reduce((m, f) => Math.min(m, Math.hypot(f.x - p.x, f.y - p.y)), 1e9);
-        const closer = was ? dn(was, foes0) - dn(u, foes1) : 0, attacked = s.events.some((e) => (e.aTeam || e.team) + e.aIdx === u.id && (e.type === "melee" || e.type === "ult-melee" || e.type === "ult-ranged"));
+        const closer = was ? dn(was, foes0) - dn(u, foes1) : 0, attacked = s.events.some((e) => attOf(e) === u.id && (e.type === "melee" || e.type === "ult-melee" || e.type === "ult-ranged"));
         const isRetreat = r[2].includes("退避") || r[2].includes("立て直し");
         if (isRetreat ? closer > -3 : !(attacked || closer > 3 || u.label === "背後")) continue;
         usedUnit.add(u.id);                                                               // 1体につき1回（一番最初の「そう来たか」）
         out.push({ t, id: u.id, other: u.tgt, score: 5 + (u.team === "P" ? 0.8 : 0), cap: `${u.name}、${D.MACROS[r[0]].poles[r[1]]}なのに${VERB[u.label] || u.label}`, sub: "", surprise: true });
       }
       for (const id of s.died) {                                                          // お人好しなのに仕留めた
-        let killer = null, bd = 1e9; const pu = pv.get(id); if (!pu) continue;
-        for (const e of s.events) { if (!e.to || (e.hits || 0) <= 0 || (e.aTeam || e.team) === pu.team) continue; const d = Math.hypot(e.to.x - pu.x, e.to.y - pu.y); if (d < bd) { bd = d; killer = (e.aTeam || e.team) + e.aIdx; } }
+        const pu = pv.get(id); if (!pu) continue; const killer = killerOf(s, id);
         const c = killer && choicesOf(killer), ku = killer && s.units.find((x) => x.id === killer);
         if (c && ku && c[7] === 0) out.push({ t, id: killer, other: id, score: 5 + (ku.team === "P" ? 0.8 : 0), cap: `${ku.name}、${D.MACROS[7].poles[0]}なのに仕留めた`, sub: `${pu.name} が倒れた`, surprise: true });
       }
@@ -63,18 +73,17 @@ window.SCS2 = window.SCS2 || {};
       vs.forEach((v) => (v.tgt = v.tgt && typeof v.tgt === "string" ? vs.get(v.tgt) || null : null));
       k = from; segStart = clock; holdUntil = 0; started = true; segBegun = -1;
     }
-    function nearest(p, sn, notTeam) { let b = null, bd = 1e9; for (const u of sn.units) { if (u.team === notTeam) continue; const d = Math.hypot(u.x - p.x, u.y - p.y); if (d < bd) { bd = d; b = u.id; } } return b; }
     function beginSeg(clock) {                                                              // k→k+1 の始まり：演出・ラベル・HP・撃破
       const nx = snaps[k + 1]; let n = 0;
       for (const v of vs.values()) { v.fx0 = v.x; v.fy0 = v.y; v.ang0 = v.ang; }
       for (const e of nx.events) {
         if (!e.from || !e.to) continue;
-        const va = vs.get((e.aTeam || e.team) + e.aIdx), vb = vs.get(nearest(e.to, nx, e.aTeam || e.team)); if (!va || !vb) continue;
-        const kind = { ranged: "tracer", melee: "slash", "ult-ranged": "beam", "ult-melee": "burst", dodge: "dodge", guard: "guard", counter: "slash", grab: "slash" }[e.type]; if (!kind) continue;
+        const va = vs.get(attOf(e)), vb = vs.get(defOf(e, nx)); if (!va || !vb) continue;
+        const kind = FX_KIND[e.type]; if (!kind) continue;
         const t0 = clock + 120 + Math.min(300, n++ * 70), hit = (e.hits || 0) > 0, slow = k + 1 === slowT ? 1.8 : 1;
         fx.push({ t0, va, vb, team: va.team, hit, crit: !!e.crit, kind, dur: (kind === "beam" || kind === "burst" ? 640 : 380) * slow });
-        if (hit && kind !== "dodge" && kind !== "guard") fx.push({ t0: t0 + 200 * slow, va, vb, team: va.team, hit, crit: !!e.crit, kind: "impact", dur: 340 * slow });
-        if (hit && (e.dmg || 0) > 0) pops.push({ v: vb, t0: t0 + 220 * slow, dx: 0, kind: e.crit ? "crit" : "dmg", text: (e.crit ? "会心 " : "") + "-" + Math.round(e.dmg) });
+        if (hit) fx.push({ t0: t0 + 200 * slow, va, vb, team: va.team, hit, crit: !!e.crit, kind: "impact", dur: 340 * slow });
+        if (hit && (e.dmg || 0) > 0) pops.push({ v: vb, t0: t0 + 220 * slow, kind: e.crit ? "crit" : "dmg", text: (e.crit ? "会心 " : "") + "-" + Math.round(e.dmg) });
       }
       for (const u of nx.units) {
         const v = vs.get(u.id); if (!v) continue;
@@ -101,18 +110,18 @@ window.SCS2 = window.SCS2 || {};
       }
       if (clock - segStart >= dur) { k++; segStart = clock; }
     }
-    return { tick, get views() { return [...vs.values()]; }, fx, pops, get turnIdx() { return k; } };
+    return { tick, get views() { return [...vs.values()]; }, fx, pops };
   }
 
   // ===== ③ なぜ？の因果の鎖 =====
-  // 返り値: [{ n, a:{x,y}, b:{x,y}, team, text }]（a→b の矢印と、その説明）
+  // 返り値: [{ n, kind:"cause"|"act"|"result", a:{x,y}, b:{x,y}, team, text }]（a→b の矢印と、その説明）
   function chainFor(snaps, t, id, ACT_OF) {
     const s = snaps[t], prev = snaps[Math.max(0, t - 1)], next = snaps[Math.min(snaps.length - 1, t + 1)];
     const U = (sn, uid) => sn.units.find((u) => u.id === uid), sub = U(s, id); if (!sub) return [];
-    const nearest = (p, sn) => { let b = null, bd = 1e9; for (const u of sn.units) { if (u.team === sub.team) continue; const d = Math.hypot(u.x - p.x, u.y - p.y); if (d < bd) { bd = d; b = u; } } return b; };   // 攻撃の当たり先は敵だけ
+    const defU = (e, sn) => U(sn, defOf(e, sn));                                              // 当てた相手の駒
     const nm = ">" + sub.name.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]) + "</span> は";
     const subjLines = s.lines.filter((l) => (l.cls === "ex" || l.cls === "cm") && l.text.indexOf(nm) >= 0);
-    const myEv0 = s.events.find((e) => (e.aTeam || e.team) + e.aIdx === id && e.to), def0 = myEv0 ? nearest(myEv0.to, s) : null;
+    const myEv0 = s.events.find((e) => attOf(e) === id && e.to), def0 = myEv0 ? defU(myEv0, s) : null;
     const matched = def0 && subjLines.find((l) => strip(l.text).indexOf(def0.name) >= 0), line = matched || subjLines[0];
     let cause = "", act = "";
     if (line) { const raw = line.text, i = raw.indexOf(nm), before = strip(raw.slice(0, raw.lastIndexOf("<span", i) >= 0 ? raw.lastIndexOf("<span", i) : i)), after = strip(raw.slice(i + nm.length)); cause = before.replace(/、$/, "").trim(); act = after.replace(/。$/, ""); }
@@ -121,36 +130,36 @@ window.SCS2 = window.SCS2 || {};
     // ① きっかけ
     let ca = null, ctext = "";
     const fellAlly = [t, t - 1].map((k) => snaps[Math.max(0, k)]).flatMap((sn) => sn.died.map((d) => U(sn, d))).find((u) => u && u.team === sub.team && u.id !== id);
-    const hitBy = [s, prev].flatMap((sn) => sn.events).find((e) => e.to && (e.hits || 0) > 0 && (e.aTeam || e.team) !== sub.team && Math.hypot(e.to.x - sub.x, e.to.y - sub.y) < 12);
+    const hitBy = [s, prev].flatMap((sn) => sn.events.filter((e) => e.to && (e.hits || 0) > 0 && defOf(e, sn) === id))[0];   // 自分に当てた敵（記録どおり）
     if (fellAlly) { ca = fellAlly; ctext = `${fellAlly.name} が倒れた`; }
-    else if (hitBy) { ca = U(s, (hitBy.aTeam || hitBy.team) + hitBy.aIdx); if (ca) ctext = `${ca.name} に撃たれた`; }
+    else if (hitBy) { ca = U(s, attOf(hitBy)); if (ca) ctext = `${ca.name} に撃たれた`; }
     if (!ca) { ca = s.units.find((u) => u.alive && u.team !== sub.team && u.tgt === id); if (ca) ctext = `${ca.name} に狙われた`; }
     if (!ca && sub.tgt) { ca = U(s, sub.tgt); if (ca) ctext = `${ca.name} を見つけた`; }
-    if (ca) steps.push({ n: 1, a: { x: ca.x, y: ca.y }, b: { x: sub.x, y: sub.y }, team: ca.team, text: cause || ctext });
+    if (ca) steps.push({ n: 1, kind: "cause", a: { x: ca.x, y: ca.y }, b: { x: sub.x, y: sub.y }, team: ca.team, text: cause || ctext });
     // ② した事
-    const myEv = s.events.find((e) => (e.aTeam || e.team) + e.aIdx === id && e.to);
+    const myEv = myEv0;
     const was = U(prev, id), moved = was && Math.hypot(was.x - sub.x, was.y - sub.y) > 2;
     let bpt = null;
-    if (myEv) { const d = nearest(myEv.to, s); if (d && d.id !== id) bpt = d; }
-    if (bpt) steps.push({ n: steps.length + 1, a: { x: sub.x, y: sub.y }, b: { x: bpt.x, y: bpt.y }, team: sub.team, text: act || `${bpt.name} を攻撃した` });
-    else if (moved) steps.push({ n: steps.length + 1, a: { x: was.x, y: was.y }, b: { x: sub.x, y: sub.y }, team: sub.team, text: act || (ACT_OF[sub.label] || sub.label) });
-    else steps.push({ n: steps.length + 1, a: { x: sub.x, y: sub.y }, b: { x: sub.x, y: sub.y }, team: sub.team, text: act || (ACT_OF[sub.label] || sub.label), still: true });
+    if (myEv) { const d = defU(myEv, s); if (d && d.id !== id) bpt = d; }
+    if (bpt) steps.push({ n: steps.length + 1, kind: "act", a: { x: sub.x, y: sub.y }, b: { x: bpt.x, y: bpt.y }, team: sub.team, text: act || `${bpt.name} を攻撃した` });
+    else if (moved) steps.push({ n: steps.length + 1, kind: "act", a: { x: was.x, y: was.y }, b: { x: sub.x, y: sub.y }, team: sub.team, text: act || (ACT_OF[sub.label] || sub.label) });
+    else steps.push({ n: steps.length + 1, kind: "act", a: { x: sub.x, y: sub.y }, b: { x: sub.x, y: sub.y }, team: sub.team, text: act || (ACT_OF[sub.label] || sub.label), still: true });
     // ③ その結果（この瞬間と次のターン）
     let rtext = "", ra = null, rb = null;
     if (bpt && myEv) {                                                                    // ②が攻撃なら、その攻撃の結果
-      const hits = s.events.filter((e) => (e.aTeam || e.team) + e.aIdx === id && e.to && nearest(e.to, s) === bpt), dmg = hits.reduce((a2, e) => a2 + ((e.hits || 0) > 0 ? e.dmg || 0 : 0), 0);
+      const hits = s.events.filter((e) => attOf(e) === id && e.to && defOf(e, s) === bpt.id), dmg = hits.reduce((a2, e) => a2 + ((e.hits || 0) > 0 ? e.dmg || 0 : 0), 0);
       rtext = s.died.includes(bpt.id) ? `${bpt.name} を仕留めた` : dmg > 0 ? `${bpt.name} に −${Math.round(dmg)}` : `${bpt.name} に外れた`; ra = sub; rb = bpt;
     }
     for (const sn of [s, next]) {
       if (rtext) break;
-      if (sn.died.includes(id)) { const ke = sn.events.find((e) => e.to && (e.hits || 0) > 0 && (e.aTeam || e.team) !== sub.team && Math.hypot(e.to.x - U(sn, id).x, e.to.y - U(sn, id).y) < 12); const k2 = ke && U(sn, (ke.aTeam || ke.team) + ke.aIdx); rtext = k2 ? `${k2.name} に倒された` : "倒れた"; if (k2) { ra = U(s, k2.id) || k2; rb = sub; } break; }
-      const mine = sn.events.filter((e) => (e.aTeam || e.team) + e.aIdx === id && (e.hits || 0) > 0 && e.to);
-      if (mine.length) { const d = nearest(mine[0].to, sn), dmg = mine.reduce((a, e) => a + (e.dmg || 0), 0); if (d) { rtext = sn.died.includes(d.id) ? `${d.name} を仕留めた` : `${d.name} に −${Math.round(dmg)}`; ra = sub; rb = U(s, d.id) || d; } }
+      if (sn.died.includes(id)) { const kid = killerOf(sn, id), k2 = kid && U(sn, kid); rtext = k2 ? `${k2.name} に倒された` : "倒れた"; if (k2) { ra = U(s, k2.id) || k2; rb = sub; } break; }
+      const mine = sn.events.filter((e) => attOf(e) === id && (e.hits || 0) > 0 && e.to);
+      if (mine.length) { const d = defU(mine[0], sn), dmg = mine.filter((e) => d && defOf(e, sn) === d.id).reduce((a, e) => a + (e.dmg || 0), 0); if (d) { rtext = sn.died.includes(d.id) ? `${d.name} を仕留めた` : `${d.name} に −${Math.round(dmg)}`; ra = sub; rb = U(s, d.id) || d; } }
     }
     if (!rtext) { const nu = U(next, id); if (nu) { rtext = nu.alive ? `${ACT_OF[nu.label] || nu.label}` : "倒れた"; } }
-    if (rtext) steps.push({ n: steps.length + 1, a: ra ? { x: ra.x, y: ra.y } : null, b: rb ? { x: rb.x, y: rb.y } : null, team: ra ? ra.team : sub.team, text: rtext });
+    if (rtext) steps.push({ n: steps.length + 1, kind: "result", a: ra ? { x: ra.x, y: ra.y } : null, b: rb ? { x: rb.x, y: rb.y } : null, team: ra ? ra.team : sub.team, text: rtext });
     return steps;
   }
 
-  SCS2.insight = { surprises, makeReplay, chainFor };
+  SCS2.insight = { surprises, makeReplay, chainFor, killerOf };
 })();

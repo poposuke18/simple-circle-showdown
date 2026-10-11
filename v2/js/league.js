@@ -10,7 +10,9 @@ window.SCS2 = window.SCS2 || {};
   const rivalOf = (k) => RIV.find((r) => r.key === k) || null;
 
   // 組み合わせ：円卓方式（1つ固定・残りを回す）。シーズンごとに並びを混ぜる
+  const schedCache = new Map();
   function schedule(season) {
+    if (schedCache.has(season)) return schedCache.get(season);
     const g = SCS.makeRNG(W.hashStr("league-" + season)), ids = TEAMS.slice(1);
     for (let i = ids.length - 1; i > 0; i--) { const j = g.int(i + 1); [ids[i], ids[j]] = [ids[j], ids[i]]; }
     const arr = ["you"].concat(ids), n = arr.length, rounds = [], homes = {};
@@ -23,13 +25,18 @@ window.SCS2 = window.SCS2 || {};
       rounds.push(m);
       arr.splice(1, 0, arr.pop());
     }
+    schedCache.set(season, rounds);
     return rounds;
   }
   function fresh(season) {
     const table = {}; for (const k of TEAMS) table[k] = { p: 0, w: 0, d: 0, l: 0, pts: 0 };
     return { season, round: 0, table, log: [] };
   }
-  const valid = (L) => L && typeof L.season === "number" && typeof L.round === "number" && L.table && TEAMS.every((k) => L.table[k]) && Array.isArray(L.log);
+  const nat = (v) => Number.isInteger(v) && v >= 0;
+  const valid = (L) => !!L && Number.isInteger(L.season) && L.season >= 1 && Number.isInteger(L.round) && L.round >= 0 && L.round <= TEAMS.length - 1
+    && !!L.table && TEAMS.every((k) => { const t = L.table[k]; return t && nat(t.p) && nat(t.w) && nat(t.d) && nat(t.l) && nat(t.pts); })
+    && Array.isArray(L.log) && L.log.length === L.round && L.log.every((r) => Array.isArray(r) && r.every((m) => m && TEAMS.includes(m.a) && TEAMS.includes(m.b) && (m.res === "a" || m.res === "b" || m.res === "d")))
+    && (L.pending == null || (Number.isInteger(L.pending.round) && Number.isFinite(L.pending.seed)));
 
   // ほかの試合を裏で戦わせる（ホーム側＝前の部隊の本拠地と天気）
   function simulate(ka, kb, seed) {
@@ -44,6 +51,7 @@ window.SCS2 = window.SCS2 || {};
   }
   // あなたの試合の結果（w/l/d・あなたから見て）で、その節を締める
   function finishRound(L, yourRes) {
+    if (L.round >= TEAMS.length - 1) return null;                                            // シーズンは終わっている
     const ms = schedule(L.season)[L.round], out = [];
     ms.forEach(([a, b], i) => {
       let res;
@@ -51,7 +59,7 @@ window.SCS2 = window.SCS2 || {};
       else res = simulate(a, b, W.hashStr(`m-${L.season}-${L.round}-${i}`));
       apply(L, a, b, res); out.push({ a, b, res });
     });
-    L.log.push(out); L.round++; return out;
+    L.log.push(out); L.round++; delete L.pending; return out;                                // この節の戦いの種はもう要らない
   }
   function standings(L) {
     return TEAMS.slice().sort((x, y) => L.table[y].pts - L.table[x].pts || L.table[y].w - L.table[x].w || (L.table[x].l - L.table[y].l) || TEAMS.indexOf(x) - TEAMS.indexOf(y));

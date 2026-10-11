@@ -55,7 +55,11 @@ window.SCS2 = window.SCS2 || {};
     while (L.rows.length > KEEP) L.rows.shift();
     return L;
   }
-  const valid = (L) => L && typeof L.seed === "number" && Array.isArray(L.founders) && Array.isArray(L.rows) && L.rows.length > 0 && L.rows.every((r) => Array.isArray(r.pop) && r.pop.length === POP && r.pop.every((x) => typeof x.line === "number"));
+  const okChoices = (c) => Array.isArray(c) && c.length === 10 && c.every((v) => v === 0 || v === 1 || v === 2 || v === 3);
+  const valid = (L) => !!L && Number.isFinite(L.seed) && Array.isArray(L.founders) && L.founders.length === 3 && L.founders.every((f) => f && typeof f.emb === "string")
+    && Array.isArray(L.rows) && L.rows.length > 0 && L.rows.length <= KEEP
+    && L.rows.every((r) => r && Number.isInteger(r.gen) && r.env && W.ARENAS.some((a) => a.key === r.env.arena) && Array.isArray(r.pop) && r.pop.length === POP
+      && r.pop.every((x) => x && typeof x.id === "string" && typeof x.emb === "string" && [-1, 0, 1, 2].includes(x.line) && okChoices(x.choices)));
   // あなたの3体の血筋が、いまの12体のうち何体に続いているか（0..1）
   const bloodShare = (L) => { const pop = L.rows[L.rows.length - 1].pop; return [0, 1, 2].map((k) => pop.filter((x) => x.line === k).length / POP); };
 
