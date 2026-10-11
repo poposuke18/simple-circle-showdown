@@ -10,7 +10,7 @@
   <title>S.C.S. AI — Simple Circle Showdown</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=M+PLUS+1+Code:wght@400;600;700&display=swap" media="print" onload="this.media='all'" />
   <link rel="stylesheet" href="style.css?v=1011b" />
 </head>
 <body class="kv">
@@ -239,7 +239,7 @@
   <script src="js/onboard.js?v=1011b"></script>
   <div id="onboard" class="onboard hidden"></div>
   <!-- タイトル画面＝メインメニュー（キービジュ案3）。起動時に毎回出す（共有リプレイURLでは出さない） -->
-  <div id="titleSplash" class="title-splash hidden" role="dialog" aria-label="タイトル画面">
+  <div id="titleSplash" class="title-splash" role="dialog" aria-label="タイトル画面">
     <img src="assets/title.jpg" alt="S.C.S. AI — Simple Circle Showdown" />
     <nav class="ts-menu">
       <button class="ts-main" data-go="squad-free" type="button">▶ 分隊戦をはじめる</button>

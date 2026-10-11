@@ -1,5 +1,5 @@
 /* title.js — タイトル画面＝メインメニュー（キービジュ案3・[[分隊戦設計]]§15）。
- * 起動時に毎回表示（共有リプレイURL ?r= で開いた時は出さない＝すぐ観戦させる）。
+ * 起動時に毎回表示＝HTMLの初期状態で出しておく（スクリプトや外部フォントの読込を待たずに見える）。共有リプレイURL ?r= の時は消す。
  * メニュー：分隊戦（模擬戦）／制圧戦／挑戦／観戦デモ／系譜・自由対戦・ストーリー。
  * 各画面の〔≡ メニュー〕〔タイトルへ〕（data-go="title"）でここへ戻る。
  */
@@ -35,7 +35,7 @@
       if (el.classList.contains("hidden")) return;
       if (e.key === "Enter") { e.preventDefault(); go("squad-free"); }
     });
-    if (/[?&]r=/.test(location.search)) return;
+    if (/[?&]r=/.test(location.search)) { hide(); return; } // 共有リプレイ＝すぐ観戦（タイトルはHTMLの初期状態で出ている）
     show();
   }
   document.addEventListener("DOMContentLoaded", init);
