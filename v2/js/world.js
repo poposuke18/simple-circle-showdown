@@ -86,14 +86,19 @@ window.SCS2 = window.SCS2 || {};
   const arenaFor = (r) => ARENA_OF[r.arena] || PLAZA;
 
   // ===== 紋章 =====
-  const EMB = ["wolf", "flame", "shield", "frost", "skull", "leaf", "sun", "crown"];
+  const EMB_BASE = ["wolf", "flame", "shield", "frost", "skull", "leaf", "sun", "crown"];      // 相手の駒は性格からこの8種（assignEmblems）
+  const EMB_MORE = ["eagle", "bear", "snake", "fox", "owl", "shark", "scorpion", "bull",         // あなたの駒は全40種から選べる（[[v2ゲーム設計]] v2.emblem）
+    "raven", "tiger", "spider", "dragon", "stag", "lion", "octopus", "bat",
+    "moon", "star", "bolt", "wave", "peak", "oak", "rose", "mushroom",
+    "swords", "axe", "anchor", "key", "hourglass", "eye", "gear", "bomb"];
+  const EMB = EMB_BASE.concat(EMB_MORE);
   const EMB_NAME = { wolf: "WOLF", flame: "FLAME", shield: "AEGIS", frost: "FROST", skull: "SKULL", leaf: "LEAF", sun: "SOL", crown: "CROWN" };
   function embScores(c) {
     const [bel, risk, comp, pat, disc, adapt, pride, ruth, conf, cur] = c;
     return { wolf: bel * 1.2 + (3 - pat) * 0.6, flame: risk * 1.1 + (3 - comp) * 0.7, shield: (3 - bel) + pat * 0.6 + disc * 0.3, frost: comp + disc * 0.6,
       skull: ruth * 1.1 + (3 - pride) * 0.6, leaf: adapt * 0.8 + cur * 0.8, sun: pride * 1.1 + conf * 0.5, crown: conf + pride * 0.4 + disc * 0.3 };
   }
-  function assignEmblems(team) { const used = new Set(); return team.map((c) => { const s = embScores(c); const k = EMB.filter((e) => !used.has(e)).sort((a, b) => s[b] - s[a])[0]; used.add(k); return k; }); }
+  function assignEmblems(team) { const used = new Set(); return team.map((c) => { const s = embScores(c); const k = EMB_BASE.filter((e) => !used.has(e)).sort((a, b) => s[b] - s[a])[0]; used.add(k); return k; }); }
 
   // 人格の言葉（振り切った軸から2つ）＝カードの見出し用。大カテゴリの言葉だけ（v2.hidden）
   function wordsOf(c) { return c.map((v, i) => ({ i, v, e: Math.abs(v - 1.5) })).sort((a, b) => b.e - a.e || a.i - b.i).slice(0, 2).map((x) => D.MACROS[x.i].poles[x.v]); }
@@ -126,5 +131,5 @@ window.SCS2 = window.SCS2 || {};
     { name: "FROST-4", emb: "frost", choices: D.PRESETS["鉄律の射手"].slice() },
   ];
 
-  SCS2.world = { PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
+  SCS2.world = { PLAZA, LAVA, FOREST, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
 })();

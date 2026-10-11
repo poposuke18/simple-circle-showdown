@@ -84,7 +84,7 @@
     editI = i; const f = St.data.squad[i];
     $("edName").value = f.name;
     $("edRows").innerHTML = D.MACROS.map((m, ax) => `<div class="ax" data-ax="${ax}"><div class="ax-name">${esc(axName(ax))}</div>${m.poles.map((p, k) => `<button class="opt ${f.choices[ax] === k ? "on" : ""}" data-ax="${ax}" data-k="${k}">${esc(p)}</button>`).join("")}</div>`).join("");
-    core.gears = gearsFor(f.choices); core.old = []; core.t0 = -1e9;
+    core.gears = gearsFor(f.choices); core.old = []; core.t0 = -1e9; $("edPick").classList.remove("show");
     renderBody(false); go("edit");
   }
   function renderBody(flash) {
@@ -101,6 +101,22 @@
     core.old = core.gears; core.gears = gearsFor(f.choices); core.t0 = real;                    // 中で何かが動いた気配だけ（何が変わったかは出さない）
     renderBody(true);
   });
+  // 紋章を選ぶ（見た目だけ。戦いには関係しない）
+  function openPick() {
+    const f = St.data.squad[editI], taken = new Set(St.data.squad.filter((x, i) => i !== editI).map((x) => x.emb));
+    $("edPick").innerHTML = Wd.EMB.map((e) => `<button class="pk ${e === f.emb ? "on" : ""} ${taken.has(e) ? "taken" : ""}" data-e="${e}"><img src="assets/emblem/${e}.png" alt=""></button>`).join("");
+    $("edPick").classList.add("show");
+  }
+  $("edEmb").addEventListener("click", (e) => { e.stopPropagation(); if ($("edPick").classList.contains("show")) $("edPick").classList.remove("show"); else openPick(); });
+  $("cvCore").addEventListener("click", (e) => { e.stopPropagation(); openPick(); });
+  $("edPick").addEventListener("click", (e) => {
+    e.stopPropagation(); const b = e.target.closest(".pk"); if (!b) return;
+    const f = St.data.squad[editI], other = St.data.squad.find((x, i) => i !== editI && x.emb === b.dataset.e);
+    if (other) other.emb = f.emb;                                                            // 仲間が使っている紋章なら取り替える
+    f.emb = b.dataset.e; St.save(); $("edPick").classList.remove("show");
+    core.t0 = real;
+  });
+  document.addEventListener("click", () => { const p = $("edPick"); if (p && p.classList.contains("show")) p.classList.remove("show"); });
   $("edName").addEventListener("change", () => { const n = cleanName($("edName").value); const f = St.data.squad[editI]; if (n) f.name = n; $("edName").value = f.name; St.save(); });
   function gearPath(c, g, rot) {
     const n = g.teeth, ro = g.r, ri = g.r * 0.82; c.beginPath();
@@ -356,7 +372,8 @@
   // 絵が読み込まれたら止まっている画面（結果・なぜ？）を描き直す。先に読み込んでおく
   Bd.onLoad = () => { if (cur === "result") drawCards(); else if (cur === "why") drawWhy(); };
   Wd.ARENAS.forEach((a) => { Bd.img(a.map); Bd.img(a.mini); });
-  Object.values(Wd.WEAPON_ICON).forEach((k) => Bd.img(`assets/weapon/${k}.png`));               // 武器アイコンも先に読む（初回に遅れて出ないように） Wd.EMB.forEach((e) => Bd.emb(e));
+  Wd.EMB.forEach((e) => Bd.emb(e));
+  Object.values(Wd.WEAPON_ICON).forEach((k) => Bd.img(`assets/weapon/${k}.png`));               // 武器アイコンも先に読む（初回に遅れて出ないように）
   addEventListener("resize", fit); fit();
   requestAnimationFrame(frame);
   // 検証用：タブが裏で requestAnimationFrame が止まっていても時間を進めて描く（遊びには使わない）

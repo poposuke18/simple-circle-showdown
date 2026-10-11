@@ -224,3 +224,17 @@ button { font-family: inherit; color: inherit; }
 .pl-slot:hover { transform: scale(1.08); }
 .pl-slot.sel { box-shadow: 0 0 0 4px #8fe6ff, 0 0 22px rgba(95,210,255,.8); }
 .pl-slot .tk { pointer-events: none; }
+
+/* 紋章を選ぶ（性格を決める画面の大きな駒の右上のボタン・駒を押しても開く） */
+.ed-left { position: absolute; }
+#cvCore { cursor: pointer; }
+.emb-btn { position: absolute; left: 600px; top: 60px; width: 76px; height: 76px; border-radius: 50%; border: 2px solid #6fd6ff; background: rgba(12,28,48,.95); display: grid; place-items: center; cursor: pointer; box-shadow: 0 0 16px rgba(95,210,255,.45); padding: 0; }
+.emb-btn svg { width: 40px; height: 40px; fill: none; stroke: #8fe0ff; stroke-width: 3.4; stroke-linejoin: round; stroke-linecap: round; }
+.emb-btn:hover { transform: scale(1.06); }
+.emb-pick { position: absolute; left: 30px; top: 30px; right: 30px; z-index: 5; display: none; grid-template-columns: repeat(8, 1fr); gap: 10px; padding: 18px; background: rgba(6,14,26,.97); border: 1.5px solid var(--line2); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.6); }
+.emb-pick.show { display: grid; }
+.pk { aspect-ratio: 1; border-radius: 50%; border: 5px solid #2f86ff; background: radial-gradient(circle at 38% 34%, #4a505c, #1b1e24 70%); display: grid; place-items: center; cursor: pointer; padding: 0; transition: transform .12s, box-shadow .12s; }
+.pk img { width: 62%; height: 62%; opacity: .92; }
+.pk:hover { transform: scale(1.08); box-shadow: 0 0 14px rgba(95,210,255,.6); }
+.pk.on { border-color: #8fe6ff; box-shadow: 0 0 0 3px #8fe6ff, 0 0 20px rgba(95,210,255,.8); }
+.pk.taken { opacity: .45; }

@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Noto+Sans+JP:wght@500;700;900&display=swap" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="v2.css?b=1011d1">
+<link rel="stylesheet" href="v2.css?b=1011d2">
 </head>
 <body>
 <div id="stage">
@@ -46,6 +46,8 @@
     <header class="hd"><span class="hd-logo">S.C.S. AI</span></header>
     <div class="pnl ed-left">
       <canvas id="cvCore"></canvas>
+      <button class="emb-btn" id="edEmb" title="紋章"><svg viewBox="0 0 48 48"><path d="M24 6 L39 12 V24 C39 33 32 39 24 42 C16 39 9 33 9 24 V12 Z"/><path d="M17 24 L22 29 L31 19"/></svg></button>
+      <div class="emb-pick" id="edPick"></div>
       <input class="ed-name" id="edName" maxlength="10" spellcheck="false" autocomplete="off">
       <div class="ed-body">
         <div class="ed-hp"><span>HP</span><b id="edHp">0</b></div>
@@ -149,12 +151,12 @@
 <script src="../js/rng.js"></script>
 <script src="../js/data.js"></script>
 <script src="../js/derive.js"></script>
-<script src="../js/squad.js?b=1011d1"></script>
-<script src="js/world.js?b=1011d1"></script>
-<script src="js/store.js?b=1011d1"></script>
-<script src="js/board.js?b=1011d1"></script>
-<script src="js/runner.js?b=1011d1"></script>
-<script src="js/app.js?b=1011d1"></script>
+<script src="../js/squad.js?b=1011d2"></script>
+<script src="js/world.js?b=1011d2"></script>
+<script src="js/store.js?b=1011d2"></script>
+<script src="js/board.js?b=1011d2"></script>
+<script src="js/runner.js?b=1011d2"></script>
+<script src="js/app.js?b=1011d2"></script>
 <script>if ("serviceWorker" in navigator && /^https?:/.test(location.protocol)) navigator.serviceWorker.register("../sw.js", { scope: "../" }).catch(function () {});</script>
 </body>
 </html>
