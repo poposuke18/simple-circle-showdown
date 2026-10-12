@@ -299,9 +299,10 @@
   // 連戦の状態（v2.s4.cond.ui）：各駒の体力と士気の棒と言葉、★隊長、隊長への信頼
   function lgCond(L, k) {
     const you = k === "you", sq = you ? St.data.squad : Lg.rivalOf(k), choices = you ? sq.map((f) => f.choices) : sq.squad, names = you ? sq.map((f) => f.name) : sq.names, embs = you ? sq.map((f) => f.emb) : sq.emb, pal = you ? Wd.YOU : sq.pal;
-    const c = Lg.ensureCond(L)[k], lead = Lg.leaderOf(choices);
+    const c = Lg.ensureCond(L)[k], lead = Lg.leaderOf(choices, c), fit = Lg.fitOf(choices, lead), ev = c.log && c.log.length ? c.log[c.log.length - 1] : null;
     return `<div class="lg-cond"><div class="lg-cond-h"><span>${esc(you ? "あなたの部隊" : sq.name)}</span><small>隊長 ${esc(names[lead])}・信頼は${Lg.trustWord(c.trust)}</small></div>`
-      + c.units.map((u, i) => `<div class="lg-cu">${tkHtml(you ? "P" : "C", embs[i], "tk-xs", pal)}<span class="nm">${esc(names[i])}${i === lead ? '<i class="lead">★</i>' : ""}</span>
+      + (ev ? `<div class="lg-ev">第${ev.round + 1}節　${esc(ev.text)}</div>` : "")
+      + c.units.map((u, i) => `<div class="lg-cu">${tkHtml(you ? "P" : "C", embs[i], "tk-xs", pal)}<span class="nm">${esc(names[i])}${i === lead ? '<i class="lead">★</i>' : `<i class="fit f${fit[i] >= 0.1 ? 2 : fit[i] >= -0.3 ? 1 : 0}">${Lg.fitWord(fit[i])}</i>`}</span>
         <span class="lb">体力</span><i class="bar2"><b style="width:${Math.round((1 - u.fat) * 100)}%"></b></i><span class="wd">${Lg.fatWord(u.fat)}</span>
         <span class="lb">士気</span><i class="bar2 m"><b style="width:${Math.round((u.mor + 1) / 2 * 100)}%"></b></i><span class="wd">${Lg.morWord(u.mor)}</span></div>`).join("") + `</div>`;
   }

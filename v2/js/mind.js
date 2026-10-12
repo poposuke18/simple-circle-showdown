@@ -10,7 +10,7 @@ window.SCS2 = window.SCS2 || {};
   // 狙いの理由（寄与の大きい順に2つ）。stick（狙いを変えない）は順位に入れず、末尾に添える
   const AIM = [
     ["ward", 0.01, "守る味方に迫っている"], ["peel", 0.01, "後衛に食らいついている"], ["taunt", 0.01, "割り込んで盾になっている"],
-    ["opened", 0.3, "味方が崩したばかり"], ["lead", 0.01, "隊長と同じ的"], ["focus", 0.35, "味方と狙いを合わせる"], ["low", 0.3, "手負いで仕留めやすい"],
+    ["cmd", 0.01, "隊長の号令"], ["opened", 0.3, "味方が崩したばかり"], ["lead", 0.01, "隊長と同じ的"], ["focus", 0.35, "味方と狙いを合わせる"], ["low", 0.3, "手負いで仕留めやすい"],
     ["iso", 0.8, "味方から孤立している"], ["threat", 0.3, "放っておくと危ない相手"], ["flank", 0.2, "側面や背後を取りやすい"],
     ["tank", 0.4, "目立つ固い敵から目が離せない"], ["lone", 0.3, "単騎で獲れる手柄"], ["near", -0.25, "一番近くにいる"], ["los", 0.01, "今すぐ撃てる"],
   ];
@@ -64,7 +64,9 @@ window.SCS2 = window.SCS2 || {};
     if (m.reload) out.push("装填中"); else if (m.ammo <= 0) out.push("弾切れ");
     if (m.fat >= 0.55) out.push("消耗が激しい"); else if (m.fat >= 0.35) out.push("疲れが残る");                 // 連戦の状態（v2.s4.cond）
     if (m.mor >= 0.4) out.push("士気が高い"); else if (m.mor <= -0.4) out.push("士気が低い");
-    if (m.lead === "self") out.push("隊長"); else if (m.lead === "fell") out.push("隊長を失った");
+    const OW = { fallback: "退け", guard: "守れ", focus: "集中", charge: "突っ込め", hold: "固まれ" };
+    if (m.lead === "self") out.push(m.order && m.order.startsWith("give:") ? `隊長・号令「${OW[m.order.slice(5)] || ""}」` : "隊長"); else if (m.lead === "fell") out.push("隊長を失った");
+    else if (m.order) out.push(m.obey >= 0.35 ? `号令に従う（${OW[m.order] || m.order}）` : "号令を無視");
     return out.slice(0, 5);
   }
   function eyes(m, nameOf) {
