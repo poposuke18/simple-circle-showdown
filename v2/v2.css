@@ -161,7 +161,7 @@ button { font-family: inherit; color: inherit; }
 .why-title { font-size: 50px; font-weight: 900; letter-spacing: 4px; }
 .why-map { left: 40px; top: 120px; width: 1300px; height: 760px; padding: 10px; }
 #cvWhy { width: 1278px; height: 738px; display: block; border-radius: 10px; }
-.why-side { left: 1370px; top: 120px; width: 510px; height: 760px; padding: 26px 26px; overflow: hidden; }
+.why-side { left: 1370px; top: 120px; width: 510px; height: 760px; padding: 26px 26px; overflow: hidden auto; scrollbar-width: thin; }
 .ws-head { display: flex; gap: 16px; align-items: center; }
 .ws-head .tk { width: 88px; height: 88px; }
 .ws-name { font-family: "Russo One", sans-serif; font-size: 30px; } .ws-cap { font-size: 22px; font-weight: 700; color: #bfe6ff; margin-top: 4px; }
@@ -226,6 +226,28 @@ button { font-family: inherit; color: inherit; }
 .hl.sp .hl-cap { color: #ffe39a; }
 /* なぜ？：①②③の鎖 */
 .ws-chain { margin-top: 22px; display: flex; flex-direction: column; gap: 6px; }
+/* 考えの札（v2.s4.think）：観戦は戦場の右端に重ねる。なぜ？は右の欄の下に */
+.w-think { left: 1456px; top: 20px; width: 444px; max-height: 1040px; padding: 16px 20px 14px; display: none; overflow: hidden; background: rgba(7, 15, 27, .9); }
+.w-think.show { display: block; }
+.mc-head { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(140,190,255,.2); }
+.mc-head b { font-family: "Russo One", sans-serif; font-size: 26px; font-weight: 400; }
+.mc-head small { margin-left: auto; font-size: 17px; color: var(--dim); font-weight: 700; white-space: nowrap; }
+.mc-x { width: 40px; height: 40px; border-radius: 10px; border: 1.5px solid var(--line2); background: rgba(12, 28, 48, .9); color: #cfe8ff; font-size: 26px; line-height: 1; cursor: pointer; padding: 0; }
+.mc-sec { padding: 9px 0 6px; border-bottom: 1px solid rgba(140,190,255,.12); }
+.mc-sec:last-child { border-bottom: 0; }
+.mc-sec small { display: block; font-size: 15px; color: #8fd0ff; font-weight: 700; letter-spacing: 2px; }
+.mc-sec p { margin: 3px 0 0; font-size: 20px; line-height: 1.45; color: #eef4ff; }
+.mc-sec p b { color: #fff; }
+.mc-cands { margin-top: 5px; display: flex; flex-direction: column; gap: 4px; }
+.mc-c { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; font-size: 18px; color: #c9d8ea; }
+.mc-c.on { color: #fff; font-weight: 700; }
+.mc-c i { display: block; height: 12px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+.mc-c i b { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #3f8fe0, #8fd0ff); opacity: .55; }
+.mc-c.on i b { background: linear-gradient(90deg, #ffb73d, #ffe08a); opacity: 1; }
+.mc-sec em { display: block; margin-top: 5px; font-style: normal; font-size: 16px; color: var(--dim); font-weight: 700; }
+.mc-tag { display: inline-block; margin: 2px 6px 2px 0; padding: 1px 10px; border-radius: 999px; border: 1px solid rgba(143,230,255,.45); font-size: 17px; }
+.why-side .mc-head { margin-top: 18px; border-top: 1px solid rgba(140,190,255,.2); padding-top: 14px; }
+.why-side .mc-sec p { font-size: 19px; }
 .ws-step { display: flex; gap: 14px; align-items: flex-start; padding: 14px 14px; border: 1.5px solid rgba(120,200,255,.35); border-radius: 12px; background: rgba(14,32,54,.7); }
 .ws-n { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-family: "Russo One", sans-serif; font-size: 22px; background: #0b1a2c; border: 3px solid #5fb4ff; color: #fff; box-shadow: 0 0 10px rgba(95,180,255,.6); }
 .ws-step small { display: block; font-size: 16px; color: var(--dim); font-weight: 700; }

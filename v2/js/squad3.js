@@ -494,43 +494,44 @@ window.SCS = window.SCS || {};
       if (!live.length) { u._focusCount = 0; u.peeling = false; return null; } // 未発見＝索敵へ（decideでhome方向へ前進）
       const iAmSupport = sup(u);
       const myWard = (isFrontline(u) && u.coop > 0.45) ? findWard(u) : null; // 守る後衛がいれば迎撃対象に。★協調性が高い前衛だけがかばう（一匹狼は味方を守らない）
-      let best = null, bv = -Infinity, bestPeel = false;
+      let best = null, bv = -Infinity, bestPeel = false, bestParts = null;
       for (const e of live) {
         const d = dist(u, e), fl = flankOf(u, e);
-        let v = -d / maxDist * 1.0;                                   // 近いほど良い
-        v += (1 - e.hp / e.maxHp) * (0.55 + u.micros.A6 * 0.9);       // 仕留め（非情ほど低HP優先）
-        v += losClear(u, e) ? 0.3 : -0.25;                            // 撃てるか
-        v += fl.tier === "rear" ? 0.55 : fl.tier === "side" ? 0.22 : 0; // 側背面の取りやすさ
+        const parts = { near: -d / maxDist * 1.0 }; let v = parts.near;                   // 考えの札（v2.s4.think）用：項目ごとの寄与                                   // 近いほど良い
+        v += (parts.low = (1 - e.hp / e.maxHp) * (0.55 + u.micros.A6 * 0.9));       // 仕留め（非情ほど低HP優先）
+        v += (parts.los = losClear(u, e) ? 0.3 : -0.25);                            // 撃てるか
+        v += (parts.flank = fl.tier === "rear" ? 0.55 : fl.tier === "side" ? 0.22 : 0); // 側背面の取りやすさ
         // ★脅威優先：敵の出力(DPS見込み)が高い＝危険な敵キャリーを先に落とす（相手読みD1で評価）
         const eThreat = expEx0(e, u, d, true);
-        v += clamp(eThreat / 32, 0, 1) * (0.3 + u.micros.D1 * 0.35);
+        v += (parts.threat = clamp(eThreat / 32, 0, 1) * (0.3 + u.micros.D1 * 0.35));
         // ★集中砲火：味方が既に狙う敵に束ねる（規律B4/順応D2で連携↑）＝キルオーダー収束
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
-        v += Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）
+        v += (parts.focus = Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop)); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）
         // ★連携アシスト（高coop＝味方思い）：味方が直前に崩した敵（_opened＝側背/投げ/大打）を逃さず突く＝集中の質↑。一匹狼はこれを重視しない。
-        if (e._opened != null && turn - e._opened <= 1) v += u.coop * (0.9 + u.micros.A2 * 0.3);
+        if (e._opened != null && turn - e._opened <= 1) v += (parts.opened = u.coop * (0.9 + u.micros.A2 * 0.3));
         // ★一匹狼（低coop＝我流・利己）：味方の連携でなく、手柄になる手負い/孤立の獲物を単騎で追う。
-        v += (1 - u.coop) * (clamp(isolationOf(e) / 40, 0, 1) * 0.45 + (1 - e.hp / e.maxHp) * 0.4);
+        v += (parts.lone = (1 - u.coop) * (clamp(isolationOf(e) / 40, 0, 1) * 0.45 + (1 - e.hp / e.maxHp) * 0.4));
         // ★ヘイト（脅威吸引）：タンク度の高い敵（目立つ×持ちこたえる）に火力が吸われる＝デコイ・タンク成立。
         //   A3近接傾倒で釣られやすく・D1相手読みで釣られにくい（脅威eThreatが主・tankは従）。脆い体はtankが低く吸引も弱い＝早死にしない
-        v += clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3); // 床0.2＝タンク度の低い脆い体は吸引が立たない
+        v += (parts.tank = clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3)); // 床0.2＝タンク度の低い脆い体は吸引が立たない
         // ★各個撃破：味方から孤立した敵ほど狙う（囲んで飲みやすい・剝がされにくい）。順応D2/規律B4の連携で強まる
-        v += clamp(isolationOf(e) / 35, 0, 1) * (0.7 + u.micros.D2 * 0.5 + u.micros.B4 * 0.3);
+        v += (parts.iso = clamp(isolationOf(e) / 35, 0, 1) * (0.7 + u.micros.D2 * 0.5 + u.micros.B4 * 0.3));
         // ★釣り出し耐性：その敵を追うと【他の】敵の脅威下に晒される＝罠なら見送る（標的自身は除外して二重計上を防ぐ）
         const chaseThreat = threatAt(u, { x: e.x, y: e.y }, e);
-        v -= clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3);
+        v -= (parts.trap = clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3));
         // ★迎撃：守る後衛に張り付いた敵を最優先で狙う＝前衛が戦線を離れず割り込める（誇りC6で死守）
-        if (myWard && e === myWard.foe) v += 1.2 + u.micros.C6 * 0.5;
+        if (myWard && e === myWard.foe) v += (parts.ward = 1.2 + u.micros.C6 * 0.5);
         // ★タウント：味方をかばって割り込んでいる敵前衛は『邪魔』＝優先して狙う（前ターンのguardingフラグ）
-        if (e.guarding) v += 0.3 + u.micros.A2 * 0.2;
+        if (e.guarding) v += (parts.taunt = 0.3 + u.micros.A2 * 0.2);
         // ★ピール：サポート資質は後衛味方に近接で張り付いた敵を最優先で剝がしに行く
         let peel = false;
         if (iAmSupport) { for (const a of alliesOf(u)) { if (a.alive && a !== u && isBackline(a) && dist(e, a) <= imminentBand(e)) { peel = true; break; } } }
-        if (peel) v += 0.6 + u.micros.D1 * 0.4;
-        if (u.target === e && e.alive) v += 0.4 + u.micros.B4 * 0.3; // ヒステリシス（規律）＝狙いを定めた的を無駄に変えない
-        if (v > bv) { bv = v; best = e; bestPeel = peel; }
+        if (peel) v += (parts.peel = 0.6 + u.micros.D1 * 0.4);
+        if (u.target === e && e.alive) v += (parts.stick = 0.4 + u.micros.B4 * 0.3); // ヒステリシス（規律）＝狙いを定めた的を無駄に変えない
+        if (v > bv) { bv = v; best = e; bestPeel = peel; bestParts = parts; }
       }
       u.peeling = bestPeel; // ラベル用（_focusCount は step でターゲット確定後に一括集計＝リングと同基準）
+      u._aim = best ? { e: best, parts: bestParts, n: live.length } : null;
       return best;
     }
 
@@ -886,7 +887,7 @@ window.SCS = window.SCS || {};
     function updateEngage3(u) {
       const R = 58, hpFrac = clamp(u.hp / u.maxHp, 0, 1), m = u.micros;
       const foes = knownEnemies(u).filter((e) => dist(u, e) < R);
-      if (!foes.length) { updateEngage(u); return; }                                       // 交戦していない＝今までどおり
+      if (!foes.length) { u._eng = null; updateEngage(u); return; }                       // 交戦していない＝今までどおり
       const allies = alliesOf(u).filter((a) => a.alive && dist(u, a) < R);
       let dU = 0, hU = 0, dT = 0, hT = 0;
       for (const a of allies) { let best = 0; for (const e of foes) best = Math.max(best, reachDps3(a, e)); dU += best; hU += a.hp; }
@@ -899,6 +900,7 @@ window.SCS = window.SCS || {};
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
+      u._eng = { ratio, hpFrac, tgtLow, foes: foes.length, allies: allies.length, up: aliveCount(u.team) > aliveCount(u.team === "P" ? "C" : "P") };   // 考えの札用
     }
 
     // ===== 段4：見えない敵を探す（[[AI思考エンジン設計]] ai3.s4）=====
@@ -972,9 +974,17 @@ window.SCS = window.SCS || {};
       const np = applyMove(u, sp, "ADVANCE");
       return { move: "ADVANCE", attack: "NONE", newPos: np, target: null, searchDir: sp };
     }
+    function mindBase(u) {
+      const seen = [], sensed = []; for (const [e, info] of known[u.team]) if (e.alive) (info.lastSeen === turn ? seen : sensed).push(e.team + e.idx);
+      return { eng: u.engage, engI: u._eng || null, sta: u.stamina, mom: u.momentum, res: u.resolve, supp: u.supp || 0, flinch: u.flinch > 0, hpf: clamp(u.hp / u.maxHp, 0, 1), ammo: u.ammo, reload: u.reloadLeft > 0, seen, sensed, hunted: 0 };
+    }
+    function mindSearch(u, d0) {
+      let age = -1; for (const info of known[u.team].values()) age = Math.max(age, turn - info.lastSeen);
+      return Object.assign(mindBase(u), { search: true, dir: d0.searchDir ? { x: d0.searchDir.x, y: d0.searchDir.y } : null, age, move: d0.move, atk: d0.attack });
+    }
     function decide3(u) {
       const tgt = u.target;
-      if (!tgt) return V3C.search ? search3(u) : decide(u);                                 // 見えている敵がいない＝探す（段4）
+      if (!tgt) { const d0 = V3C.search ? search3(u) : decide(u); d0.mind = mindSearch(u, d0); return d0; }   // 見えている敵がいない＝探す（段4）
       const c = prepDecide(u, tgt), fp = c.fp, m = u.micros, H = horizonOf(u), st = stepLen(u, u), stClose = u._closing ? st * 1.25 : st;
       c.wAtk *= V3C.atk; c.wDef *= V3C.def;                                                   // 全体の倍率（調整用・性格の重みの上に乗る）
       if (SUP && u.supp) c.wDef *= 1 + u.supp * (1 - m.C5) * SUP.duck;                             // 釘付けの駒は頭を下げる（冷静さが低いほど）
@@ -989,11 +999,12 @@ window.SCS = window.SCS || {};
       // 援護射撃：目標へ寄っていく味方がいる時、目標を撃てる場所に「与えられる制圧」の分だけ値を足す（協調性で強く）
       const exploit = SUP ? alliesOf(u).filter((a) => a !== u && a.alive && a.target === tgt && (a.winDist < 30 || a.engage === "commit") && dist(a, tgt) < 45).length : 0;
       const pinV = exploit && u.ammo > 0 ? Math.min(2, exploit) * u.ranged.fireRate * supShot(u.ranged) * (1 - tgt.micros.C5 * SUP.c5) * SUP.pinK * (0.3 + u.coop) : 0;
-      const memo = new Map();
+      const memo = new Map(), memoT = new Map();
       const U = (pos, moving) => {
         const key = cellOf(pos) * 2 + (moving ? 1 : 0); if (memo.has(key)) return memo.get(key);
         const d2 = dist(pos, fp), los2 = losClear(pos, fp), atk = chooseAttack(u, tgt, pos, d2, los2);
         const ua = utilAt3(u, tgt, c, pos, d2, los2, atk, moving, V3C.pred ? wP : 0), thr = ua.threat;   // 脅威は動いた後の敵の位置も見込む（段2）
+        memoT.set(key, thr);
         let v = ua.v;
         if (pinV && los2 && atk.attack === "RANGED") v += pinV;
         v -= thr * c.wDef * (coverW - 1 + kite * 0.6);                                       // 隠れたがる性格ほど射線に身を晒すのを嫌う
@@ -1004,7 +1015,7 @@ window.SCS = window.SCS || {};
         if (terrainAt(pos) === T.highground) v += (m.D5 * 1.5 + m.B6 * 1.5) * V3C.terrain;    // 高所を取る
         memo.set(key, v); return v;
       };
-      let best = null;
+      let best = null; const kinds = {};                                                      // kinds＝候補の種類ごとの最良（考えの札の「迷い」）
       for (const p of candidates3(u, tgt, st, H, F, f, c.pref)) {
         const stay = dist(u, p) < 0.5;
         const pts = stay ? [] : pathPoints(F, u, p, st, H);
@@ -1016,6 +1027,12 @@ window.SCS = window.SCS || {};
         if (u._plan && u._plan.tgt === tgt && u._plan.turn === turn - 1 && dist(p, u._plan) < 3) v += (1.5 + m.B4 * 4) * V3C.stick;   // 前のターンに決めた目的地はしばらく保つ（規律で長く）
         if (noiseW) v += ((hsh(turn, u.idx * 31 + (u.team === "P" ? 0 : 7), Math.round(p.x), Math.round(p.y), 17) % 1000) / 1000 - 0.5) * noiseW; // 予測不能：決定論の揺らぎ
         if (!best || v > best.v) best = { v, p, s1 };
+        {                                                                                     // 候補の種類（記録の文の why3 と同じ見方）：その場／背後へ回る／側面へ回る／物陰へ／詰める／下がる／横へ
+          let kd = "stay";
+          if (!stay) { const farP = dist(u, p) > st * 1.2, ftP = flankVs3(p, tgt, f), t0 = memoT.get(cellOf(u) * 2), t1 = memoT.get(cellOf(s1) * 2 + 1), dd = dist(p, fp) - dist(u, fp);
+            kd = farP && ftP === 2 ? "rear" : farP && ftP === 1 ? "side" : t0 != null && t1 != null && t0 > 3 && t1 < t0 * 0.6 ? "cover" : dd < -2 ? "adv" : dd > 2 ? "back" : "lat"; }
+          if (!kinds[kd] || v > kinds[kd].v) kinds[kd] = { v, p };
+        }
       }
       if (!best) return decide(u);                                                          // 念のため（その場を必ず残すので通常は来ない）
       u._plan = dist(best.p, u) < 1.5 ? null : { x: best.p.x, y: best.p.y, tgt, turn };
@@ -1034,7 +1051,11 @@ window.SCS = window.SCS || {};
       else if (!moved && los2) { let others = 0; for (const e of knownEnemies(u)) if (e !== tgt && dist(e, u) <= e.ranged.effRange + e.ranged.falloff && losClear(e, u)) others++; if (!others && knownEnemies(u).length > 1) why = "peek"; }
       if (!why && !moved && wP > 0) { const tq = predictPos3(tgt, 1); if (dist(tq, u) < dist(tgt, u) - 3) why = "wait"; }
       const dec = { v: U(np, moved) - gimK(u, np, 0) * 1.2, move, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2, plan: u._plan ? { x: u._plan.x, y: u._plan.y } : null, why3: why };
-      return finishDecide(u, tgt, c, dec);
+      const out = finishDecide(u, tgt, c, dec);
+      // 考えの札（[[v2ゲーム設計]] v2.s4.think）：何を狙い・どう構え・どこへ動こうとして・何と迷ったか。乱数は使わない
+      const cands = Object.entries(kinds).map(([k, o]) => ({ k, v: o.v, on: o.p === best.p })).sort((a, b) => b.v - a.v).slice(0, 3);
+      out.mind = Object.assign(mindBase(u), { tgt: tgt.team + tgt.idx, aim: u._aim && u._aim.e === tgt ? u._aim.parts : null, kind: (cands.find((x) => x.on) || cands[0]).k, cands, why3: why, move, atk: out.attack, grab: out.attack === "GRAB", dodge: out.attack === "DODGE", los: los2, d: d2 });
+      return out;
     }
 
     // ===== 攻撃解決（攻め手→自target。同時適用のためダメージは後でまとめて反映）=====
@@ -1160,6 +1181,7 @@ window.SCS = window.SCS || {};
       // 2) 意思決定
       const decs = new Map();
       for (const u of ALL) if (u.alive) decs.set(u, BRAIN[u.team] === "v3" ? decide3(u) : decide(u));
+      for (const u of ALL) if (u.alive && u.target) { const d = decs.get(u.target); if (d && d.mind) d.mind.hunted++; }   // 考えの札：自分を狙う敵の数
       // 3) 同時移動
       for (const u of ALL) if (u.alive) { const d = decs.get(u); u.x = d.newPos.x; u.y = d.newPos.y; }
       if (FORM2) for (const u of ALL) { if (!u.alive) { u._formHeld = false; continue; } const sl = formSlot2(u); u._formHeld = !!sl && dist(u, sl) < 12; } // 表示用：隊形の位置にいるか
@@ -1596,7 +1618,8 @@ window.SCS = window.SCS || {};
       if (GM && GM.kind === "erupt") scheduleVents(lines);
       result = finishCheck();
       if (result) { over = true; for (const fl of finishNarration(result)) lines.push(fl); }
-      return { turn, lines, events, over, result, kos: deadThisTurn.length }; // kos＝表示用の緩急（KOターンは自動再生を長めに止める）。乱数非消費
+      const minds = {}; for (const u of ALL) { const d = decs.get(u); if (d && d.mind) minds[u.team + u.idx] = d.mind; }   // 考えの札（駒ごと・画面が読む）
+      return { turn, lines, events, over, result, kos: deadThisTurn.length, minds }; // kos＝表示用の緩急（KOターンは自動再生を長めに止める）。乱数非消費
     }
 
     function finishCheck() {

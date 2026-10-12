@@ -25,7 +25,7 @@ window.SCS2 = window.SCS2 || {};
       us.forEach((v) => { v.rank = ord.indexOf(v.idx); });
     }
     const fx = [], pops = [], snaps = [], hist = [];
-    let turnStart = 0, nextAt = 600, focus = null, focusUntil = 0, focusLock = 0;
+    let turnStart = 0, nextAt = 600, focus = null, focusUntil = 0, focusLock = 0, lastMinds = {};
     const cam = { x: W / 2, y: H / 2, z: 1.1, vw: cfg.vw || W, vh: cfg.vh || H, m: cfg.vw ? 160 : 0 };               // vw×vh＝戦場を映す枠の大きさ
 
     function sync(v) { const u = v.u; v.plan = u.alive && u.target && u._plan && u._plan.turn === battle.turn ? { x: u._plan.x, y: u._plan.y } : null; v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.tgt = u.target ? byU.get(u.target) || null : null; v.stamina = u.stamina; v.supp = u.alive ? u.supp || 0 : 0; v.hidden = u.alive && !battle.spotted(u); v.formHeld = u.alive && !!u._formHeld; v.form = u.form; } // hidden＝敵にまだ見つかっていない
@@ -49,7 +49,7 @@ window.SCS2 = window.SCS2 || {};
         p.v.tx = p.x; p.v.ty = p.y; if (snap) { p.v.x = p.v.fx = p.v.tx; p.v.y = p.v.fy = p.v.ty; } }
     }
     function snapshot(res, died) {
-      snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.alive && v.u.target ? byU.get(v.u.target).id : null, stamina: v.u.stamina, supp: v.u.alive ? v.u.supp || 0 : 0, hidden: v.u.alive && !battle.spotted(v.u) })),
+      snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.alive && v.u.target ? byU.get(v.u.target).id : null, stamina: v.u.stamina, supp: v.u.alive ? v.u.supp || 0 : 0, hidden: v.u.alive && !battle.spotted(v.u), mind: res && res.minds ? res.minds[v.id] || null : null })),
         events: res ? res.events || [] : [], lines: res ? res.lines || [] : [], died: died || [], obstacles: battle.obstacles.map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h, hp: o.hp, hp0: o.hp0 })), hazards: battle.hazards.map((h) => ({ ...h })), gimmick: battle.gimmick });
     }
     separate(true); views.forEach(sync); snapshot(null, []);
@@ -78,7 +78,7 @@ window.SCS2 = window.SCS2 || {};
     function doTurn(clock, instant) {
       for (const v of views) { v.fx = instant ? v.tx : v.x; v.fy = instant ? v.ty : v.y; v.hp0 = v.u.hp; v.ang0 = v.ang; }
       prevVents = battle.gimmick ? battle.gimmick.vents : [];
-      const res = battle.step(), died = [];
+      const res = battle.step(), died = []; lastMinds = res.minds || {};
       hist.unshift(res.lines || []); if (hist.length > 4) hist.pop();
       separate(false);
       for (const v of views) {
@@ -131,6 +131,7 @@ window.SCS2 = window.SCS2 || {};
       battle, views, fx, pops, snaps, cam, tick, finish, whyOf, arena: cfg.arena,
       gimmickAt(clock) { const g = battle.gimmick; return g && clock < turnStart + SCS2.board.ERUPT_AT && prevVents.some((v) => v.at === battle.turn) ? Object.assign({}, g, { vents: prevVents }) : g; },   // 描くギミック：このターンに噴く所は、噴くまで前の予告を見せる
       get focus() { return focus; }, setFocus(v, clock) { focus = v; focusLock = clock + 8 * TURN; },
+      mindOf(v) { return lastMinds[v.id] || null; },                                        // その駒の今のターンの考え（考えの札）
     };
   };
 })();

@@ -228,7 +228,7 @@
     const heat = sortieCfg.mod === "灼熱"; $("scWatch").classList.toggle("heat", heat); $("rsCards").classList.toggle("heat", heat); $("cvWhy").parentElement.classList.toggle("heat", heat);   // 灼熱＝枠が赤く光る（v2.fx.heat2）
     clock = 0; paused = false; ended = false; endAt = 0; result = null;
     $("wVs").textContent = vs; $("wVs").classList.toggle("long", vs.length > 12); $("wSub").textContent = sortieCfg.arena.name;
-    $("wEnd").classList.remove("show"); setPause(false);
+    $("wEnd").classList.remove("show"); setPause(false); thinkOn = false; thinkKey = ""; $("wThink").classList.remove("show");
     buildHud(); go("watch"); updWatch();
   }
   // 観戦中の表示：ターン＋両軍3体ずつの駒とHP（v2.k6.hud）。駒を押すとその駒に注目
@@ -249,6 +249,25 @@
     }
   }
   $("huP").parentElement.addEventListener("click", (e) => { const b = e.target.closest(".hu"); if (!b || !run) return; const v = run.views.find((x) => x.id === b.dataset.id); if (v && v.alive) { run.setFocus(v, clock); updWatch(); } });
+  // 考えの札（v2.s4.think）：戦場の駒を押すと、その駒に注目して札を開く。×で閉じる。札は注目の駒のターンごとに書き直す
+  let thinkOn = false, thinkKey = "";
+  $("cvWatch").addEventListener("click", (e) => {
+    if (!run || performance.now() < navLock) return;
+    const rc = $("cvWatch").getBoundingClientRect(), sx = (e.clientX - rc.left) / rc.width * FW, sy = (e.clientY - rc.top) / rc.height * FH;
+    const wx = (sx - FW / 2) / run.cam.z + run.cam.x, wy = (sy - FH / 2) / run.cam.z + run.cam.y, PX = pxOf(sortieCfg.arena);
+    let best = null, bd = Bd.R * 1.5;
+    for (const v of run.views) { if (!v.alive) continue; const d = Math.hypot(v.x * PX - wx, v.y * PX - wy); if (d < bd) { bd = d; best = v; } }
+    if (!best) return;
+    run.setFocus(best, clock); thinkOn = true; thinkKey = ""; updWatch();
+  });
+  $("wThink").addEventListener("click", (e) => { if (e.target.id === "wThinkX") { thinkOn = false; $("wThink").classList.remove("show"); } });
+  const nameOfRun = (id) => { const v = run && run.views.find((x) => x.id === id); return v ? v.name : id; };
+  function updThink(v) {
+    if (!thinkOn || !run) return;
+    const key = v.id + ":" + run.battle.turn + ":" + (v.alive ? 1 : 0); if (key === thinkKey) return; thinkKey = key;
+    $("wThink").innerHTML = SCS2.mind.card(v.alive ? run.mindOf(v) : null, v, run.battle.turn, nameOfRun, tkHtml, sortieCfg.pal[v.team], { close: "wThinkX" });
+    $("wThink").classList.add("show");
+  }
 
   // ===== 観戦する：ライバル同士を戦わせて眺める（記録に残らない・v2.k3.spectate）=====
   const SPEC = Wd.RIVALS.filter((r) => !r.mirror);
@@ -379,6 +398,7 @@
     $("fHp").style.width = (clamp(v.hp / v.maxHp, 0, 1) * 100).toFixed(1) + "%"; $("fHpT").textContent = `${Math.max(0, Math.round(v.hp))} / ${v.maxHp}`;
     $("fAct").textContent = ACT_OF[v.label] || v.label || "待機";
     const w = run.whyOf(v); if (w) $("fWhy").textContent = w;
+    updThink(v);
   }
   let lastTurnShown = -1, lastFocus = null;
   function frameWatch(dt) {
@@ -504,7 +524,8 @@
     Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, gimmick: snap.gimmick, still: true, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     const TAG = { cause: "きっかけ", act: "した事", result: "その結果" };
     $("whySide").innerHTML = `<div class="ws-head">${tkHtml(sub.team, sub.emb, "", sortieCfg.pal[sub.team])}<div><div class="ws-name">${esc(sub.name)}</div><div class="ws-cap">${esc(why.cap)}</div></div></div>`
-      + `<div class="ws-chain">` + steps.map((st) => `<div class="ws-step"><b class="ws-n">${st.n}</b><div><small>${TAG[st.kind] || ""}</small><p>${esc(st.text)}</p></div></div>`).join(`<i class="ws-arrow"></i>`) + `</div>`;
+      + `<div class="ws-chain">` + steps.map((st) => `<div class="ws-step"><b class="ws-n">${st.n}</b><div><small>${TAG[st.kind] || ""}</small><p>${esc(st.text)}</p></div></div>`).join(`<i class="ws-arrow"></i>`) + `</div>`
+      + SCS2.mind.card(sub.alive ? sub.mind || null : null, sub, snap.turn, (id) => (by.get(id) || { name: id }).name, tkHtml, sortieCfg.pal[sub.team], null);   // 考えの札（そのターンに何を考えていたか）
     $("whyTurn").textContent = `ターン ${snap.turn}`;
   }
   $("whyRange").addEventListener("input", () => { if (!why) return; why.t = +$("whyRange").value; drawWhy(); });
