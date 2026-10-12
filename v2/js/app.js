@@ -32,8 +32,10 @@
   const SC = { title: "scTitle", squad: "scSquad", edit: "scEdit", prep: "scPrep", league: "scLeague", line: "scLine", spec: "scSpec", watch: "scWatch", result: "scResult", why: "scWhy", records: "scRecords" };
   let navLock = 0;                                                                           // 画面を切り替えた直後のクリックを捨てる時刻
   document.addEventListener("click", (e) => { if (e.isTrusted && performance.now() < navLock) { e.stopPropagation(); e.preventDefault(); } }, true);
+  let squadBack = "prep";                                                                   // 部隊画面の戻り先（リーグから来たら「リーグへ」・v2.s4.qa.lg.edit.fix）
   function go(name) {
     if (!SC[name]) return;
+    if (name === "squad" && cur !== "edit" && cur !== "squad") squadBack = cur === "league" || (cur === "result" && sortieCfg && sortieCfg.league) ? "league" : "prep";
     if (cur === "edit") St.save();
     cur = name; navLock = performance.now() + 350;
     Object.entries(SC).forEach(([k, id]) => $(id).classList.toggle("on", k === name));
@@ -66,6 +68,7 @@
   // ===== 部隊 =====
   function weapHtml(name) { const k = Wd.WEAPON_ICON[name]; return `<div class="weap">${k ? `<img src="assets/weapon/${k}.png" alt="" onerror="this.remove()">` : ""}<span>${esc(name)}</span></div>`; }
   function enterSquad() {
+    $("sqNext").textContent = squadBack === "league" ? "リーグへ" : "出撃準備へ"; $("sqNext").setAttribute("data-go", squadBack);
     $("sqCards").innerHTML = St.data.squad.map((f, i) => {
       const b = Wd.bodyOf(f.choices), w = Wd.wordsOf(f.choices);
       return `<div class="sq-card" data-i="${i}"><div class="sq-edit">性格を決める ›</div>${tkHtml("P", f.emb)}<div class="sq-name">${esc(f.name)}</div><div class="sq-words">${esc(w.join("・"))}</div>
@@ -172,10 +175,11 @@
     $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
       <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm", r.pal)).join("")}</div></div>`).join("");
     selectRival(rivalI, true);
-    const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
-    $("pForm").innerHTML = Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
+    $("pForm").innerHTML = formChips();
     renderPlace();
   }
+  const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
+  const formChips = () => Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
   function selectRival(i, keepArena) {
     rivalI = i; const r = Wd.RIVALS[i];
     document.querySelectorAll("#rvList .rv").forEach((x) => x.classList.toggle("on", +x.dataset.i === i));
@@ -186,23 +190,25 @@
   }
   $("rvList").addEventListener("click", (e) => { const c = e.target.closest(".rv"); if (c) { selectRival(+c.dataset.i, false); renderPlace(); } });
   $("pArena").addEventListener("click", (e) => { const c = e.target.closest(".acard"); if (!c) return; pArena = Wd.ARENAS[+c.dataset.a]; $("pArena").querySelectorAll(".acard").forEach((x) => x.classList.toggle("on", x === c)); });
-  $("pForm").addEventListener("click", (e) => { const c = e.target.closest(".chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); $("pForm").querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); renderPlace(); });
+  for (const id of ["pForm", "lgSide"]) $(id).addEventListener("click", (e) => { const c = e.target.closest(".fchips .chip"); if (!c) return; St.data.form = c.dataset.f; St.save(); c.parentElement.querySelectorAll(".chip").forEach((x) => x.classList.toggle("on", x === c)); renderPlace(); });
   // ===== 配置：隊形の図の上で3体の位置を入れ替える（敵は右）。入れ替えていない時は間合いの短い駒が前（エンジンの既定）=====
   const SLOT_XY = { 散開: [[-0.2, -1], [0.25, 0], [-0.1, 1]], 戦列: [[0, -1], [0, 0], [0, 1]], 楔: [[1, 0], [-0.6, 0.8], [-0.6, -0.8]], 円陣: [[0.6, -0.45], [0.6, 0.45], [-0.9, 0]] };
   let placeSel = -1;
+  // 並びの相手と戦場：出撃準備なら選んだ相手、リーグなら次の相手（v2.s4.qa.lg.edit.fix）
+  function placeFoe() { if (cur === "league") { const L = lgData(), nm = L.round < Lg.ROUNDS ? Lg.nextMatch(L) : null; if (nm) return { choices: nm.foe.squad, arena: Wd.arenaFor(nm.foe) }; } return { choices: foeOf(Wd.RIVALS[rivalI]).choices, arena: pArena || Wd.PLAZA }; }
   function autoOrder() {                                                                    // 既定の並び＝エンジンと同じ（相手に対する間合いの短い順）
-    const r = Wd.RIVALS[rivalI], foe = foeOf(r), sq = St.data.squad;
-    const b = SCS.makeSquadBattle3(sq.map((f) => f.choices.slice()), foe.choices.map((c) => c.slice()), 1, (pArena || Wd.PLAZA).name, "通常", "散開", "散開");
+    const { choices, arena } = placeFoe(), sq = St.data.squad;
+    const b = SCS.makeSquadBattle3(sq.map((f) => f.choices.slice()), choices.map((c) => c.slice()), 1, arena.name, "通常", "散開", "散開");
     return b.teams.P.slice().sort((p, q) => p.winDist - q.winDist).map((u) => u.idx);
   }
   const curOrder = () => St.data.order || autoOrder();
   function renderPlace() {
-    const box = $("pPlace"); if (!box) return;
+    const box = $(cur === "league" ? "lgPlace" : "pPlace"); if (!box) return;
     const xy = SLOT_XY[St.data.form] || SLOT_XY["散開"], ord = curOrder(), sq = St.data.squad, U = 52, cx0 = 128, cy0 = 84;
     box.innerHTML = `<i class="pl-foe"></i>` + ord.map((si, rank) => { const [x, y] = xy[rank], f = sq[si];
       return `<button class="pl-slot ${placeSel === rank ? "sel" : ""}" data-r="${rank}" title="${esc(f.name)}" style="left:${cx0 + x * U - 29}px;top:${cy0 + y * U - 29}px">${tkHtml("P", f.emb, "tk-sm")}</button>`; }).join("");
   }
-  $("pPlace").addEventListener("click", (e) => {
+  for (const id of ["pPlace", "lgSide"]) $(id).addEventListener("click", (e) => {
     const b = e.target.closest(".pl-slot"); if (!b) return; const r = +b.dataset.r;
     if (placeSel < 0) placeSel = r; else if (placeSel === r) placeSel = -1;
     else { const o = curOrder().slice(); [o[placeSel], o[r]] = [o[r], o[placeSel]]; St.data.order = o; St.save(); placeSel = -1; }
@@ -293,7 +299,7 @@
 
   // ===== リーグ：あなた＋ライバル7部隊の総当たり7節（v2.k5.league）=====
   const Lg = SCS2.league;
-  const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } return L; };
+  const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } if (Lg.syncYou(L, St.data.squad.map((f) => f.choices))) St.save(); return L; };
   const lgName = (k) => (k === "you" ? "あなたの部隊" : Lg.rivalOf(k).name);
   const lgToks = (k) => (k === "you" ? St.data.squad.map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
   // 連戦の状態（v2.s4.cond.ui）：各駒の体力と士気の棒と言葉、★隊長、隊長への信頼
@@ -311,7 +317,7 @@
     return `<div class="lg-h2">${title}</div><div class="lg-story">${ev.map((e) => `<p><small>第${e.round + 1}節</small>${esc(e.text)}</p>`).join("")}</div>`;
   }
   function enterLeague() {
-    const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L);
+    const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L); placeSel = -1;
     $("lgSeason").textContent = `シーズン ${L.season}`;
     $("lgTable").innerHTML = `<div class="lg-row h"><span>順位</span><span>部隊</span><b>試合</b><b>勝</b><b>分</b><b>敗</b><b>勝点</b></div>`
       + order.map((k, i) => { const t = L.table[k]; return `<div class="lg-row ${k === "you" ? "me" : ""}"><span class="rk">${i + 1}</span><span class="nm"><i class="tks">${lgToks(k)}</i>${esc(lgName(k))}</span><b>${t.p}</b><b>${t.w}</b><b>${t.d}</b><b>${t.l}</b><b class="pt">${t.pts}</b></div>`; }).join("");
@@ -326,10 +332,11 @@
       $("lgSide").innerHTML = `<div class="lg-h">第${L.round + 1}節</div>
         <div class="lg-next" style="--rc:${foe.pal.rimA}"><div class="lg-vs"><span>${esc(foe.name)}</span><span class="tks">${lgToks(foe.key)}</span></div>
           <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}</div></div></div>
+        <div class="lg-h2">隊形と並び</div><div class="lg-form"><div class="chips fchips">${formChips()}</div><div class="place" id="lgPlace"></div></div>
         <div class="lg-h2">部隊の状態</div>${lgCond(L, "you")}${lgCond(L, foe.key)}
         ${lgStory(L, "you", 6, "部隊の出来事")}${lgStory(L, foe.key, 2, `${esc(foe.name)}の近況`)}
         <div class="lg-h2">ほかの試合</div>${others.map(([a, b]) => `<div class="lg-m"><span>${esc(lgName(a))}</span><i class="vs">VS</i><span>${esc(lgName(b))}</span></div>`).join("")}` + lastHtml;
-      $("lgGo").textContent = "試合へ";
+      $("lgGo").textContent = "試合へ"; renderPlace();
     }
   }
   // ===== 系譜：12体の世代交代（v2.k4.lineage）。家系図＝新しい5世代、あなたの3体の血筋を色で追う =====

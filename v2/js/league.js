@@ -108,6 +108,13 @@ window.SCS2 = window.SCS2 || {};
     for (const e of ev.sort((a, b) => a.p - b.p).slice(0, 2)) c.log.push({ round: L.round, kind: e.kind, text: e.text });
     while (c.log.length > 20) c.log.shift();
   }
+  // あなたの部隊の性格が変わったら（v2.s4.qa.lg.edit.cond）：シーズン中の隊長交代は白紙にして性格から決め直す。体力・士気・信頼はそのまま。変わった時 true
+  function syncYou(L, choices) {
+    const c = ensureCond(L).you, sig = choices.map((x) => x.join("")).join("|");
+    if (c.sig === sig) return false;
+    const had = c.sig != null; c.sig = sig; if (had && c.lead != null) { c.lead = null; delete c.swapRound; }
+    return true;
+  }
   const storyOf = (L, key, n) => { const c = ensureCond(L)[key]; return (c.log || []).slice(-n); };
   // 画面用の言葉（v2.s4.cond.ui）
   const fatWord = (f) => (f < 0.15 ? "万全" : f < 0.35 ? "少し疲れ" : f < 0.55 ? "疲れが残る" : "消耗が激しい");
@@ -163,5 +170,5 @@ window.SCS2 = window.SCS2 || {};
     if (L.round >= TEAMS.length - 1) return null;
     const m = schedule(L.season)[L.round].find((p) => p.includes("you")); return { home: m[0], away: m[1], foe: rivalOf(m[0] === "you" ? m[1] : m[0]) };
   }
-  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, storyOf, fatWord, morWord, trustWord, fitWord };
+  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, storyOf, syncYou, fatWord, morWord, trustWord, fitWord };
 })();
