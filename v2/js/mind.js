@@ -11,7 +11,7 @@ window.SCS2 = window.SCS2 || {};
     ["opened", 0.3, () => "味方が崩したばかり"], ["focus", 0.25, () => "味方と狙いを合わせる"], ["low", 0.3, () => "手負いで仕留めやすい"],
     ["iso", 0.5, () => "味方から孤立している"], ["threat", 0.3, () => "放っておくと危ない相手"], ["flank", 0.2, () => "側面や背後を取りやすい"],
     ["tank", 0.4, () => "目立つ固い敵に引き寄せられた"], ["lone", 0.3, () => "単騎で獲れる手柄"], ["stick", 0.01, () => "一度決めた狙いを変えない"],
-    ["near", -0.25, () => "一番近くにいる"], ["los", 0.01, () => "今すぐ撃てる"],
+    ["lead", 0.01, () => "隊長と同じ的を狙う"], ["near", -0.25, () => "一番近くにいる"], ["los", 0.01, () => "今すぐ撃てる"],
   ];
   function aimWhy(parts) {
     if (!parts) return [];
@@ -48,7 +48,10 @@ window.SCS2 = window.SCS2 || {};
     if (m.mom > 0.4) out.push("勢いに乗っている"); else if (m.mom < -0.4) out.push("気圧されている");
     if (m.res >= 1) out.push("必殺の機を窺う"); else if (m.res > 0.6) out.push("闘気が高まっている");
     if (m.reload) out.push("装填中"); else if (m.ammo <= 0) out.push("弾切れ");
-    return out.slice(0, 4);
+    if (m.fat >= 0.55) out.push("消耗が激しい"); else if (m.fat >= 0.35) out.push("疲れが残る");                 // 連戦の状態（v2.s4.cond）
+    if (m.mor >= 0.4) out.push("士気が高い"); else if (m.mor <= -0.4) out.push("士気が低い");
+    if (m.lead === "self") out.push("隊長"); else if (m.lead === "fell") out.push("隊長を失った");
+    return out.slice(0, 5);
   }
   function eyes(m, nameOf) {
     const seen = (m.seen || []).map(nameOf), sensed = (m.sensed || []).map(nameOf), out = [];

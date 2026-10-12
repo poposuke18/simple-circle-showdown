@@ -296,6 +296,15 @@
   const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } return L; };
   const lgName = (k) => (k === "you" ? "あなたの部隊" : Lg.rivalOf(k).name);
   const lgToks = (k) => (k === "you" ? St.data.squad.map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
+  // 連戦の状態（v2.s4.cond.ui）：各駒の体力と士気の棒と言葉、★隊長、隊長への信頼
+  function lgCond(L, k) {
+    const you = k === "you", sq = you ? St.data.squad : Lg.rivalOf(k), choices = you ? sq.map((f) => f.choices) : sq.squad, names = you ? sq.map((f) => f.name) : sq.names, embs = you ? sq.map((f) => f.emb) : sq.emb, pal = you ? Wd.YOU : sq.pal;
+    const c = Lg.ensureCond(L)[k], lead = Lg.leaderOf(choices);
+    return `<div class="lg-cond"><div class="lg-cond-h"><span>${esc(you ? "あなたの部隊" : sq.name)}</span><small>隊長 ${esc(names[lead])}・信頼は${Lg.trustWord(c.trust)}</small></div>`
+      + c.units.map((u, i) => `<div class="lg-cu">${tkHtml(you ? "P" : "C", embs[i], "tk-xs", pal)}<span class="nm">${esc(names[i])}${i === lead ? '<i class="lead">★</i>' : ""}</span>
+        <span class="lb">体力</span><i class="bar2"><b style="width:${Math.round((1 - u.fat) * 100)}%"></b></i><span class="wd">${Lg.fatWord(u.fat)}</span>
+        <span class="lb">士気</span><i class="bar2 m"><b style="width:${Math.round((u.mor + 1) / 2 * 100)}%"></b></i><span class="wd">${Lg.morWord(u.mor)}</span></div>`).join("") + `</div>`;
+  }
   function enterLeague() {
     const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L);
     $("lgSeason").textContent = `シーズン ${L.season}`;
@@ -312,6 +321,7 @@
       $("lgSide").innerHTML = `<div class="lg-h">第${L.round + 1}節</div>
         <div class="lg-next" style="--rc:${foe.pal.rimA}"><div class="lg-vs"><span>${esc(foe.name)}</span><span class="tks">${lgToks(foe.key)}</span></div>
           <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}</div></div></div>
+        <div class="lg-h2">部隊の状態</div>${lgCond(L, "you")}${lgCond(L, foe.key)}
         <div class="lg-h2">ほかの試合</div>${others.map(([a, b]) => `<div class="lg-m"><span>${esc(lgName(a))}</span><i class="vs">VS</i><span>${esc(lgName(b))}</span></div>`).join("")}` + lastHtml;
       $("lgGo").textContent = "試合へ";
     }
@@ -379,7 +389,8 @@
     const foe = Lg.nextMatch(L).foe, sq = St.data.squad;
     if (!L.pending || L.pending.round !== L.round) { L.pending = { round: L.round, seed: newSeed() }; St.save(); }   // この節の戦いの種（決着まで保つ）
     sortieCfg = { league: true, mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.squad.map((c) => c.slice()), emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
-      seed: L.pending.seed, arena: Wd.arenaFor(foe), mod: Wd.modOf(Wd.arenaFor(foe)), formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal } };
+      seed: L.pending.seed, arena: Wd.arenaFor(foe), mod: Wd.modOf(Wd.arenaFor(foe)), formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal },
+      cond: { P: Lg.condFor(L, "you", sq.map((f) => f.choices)), C: Lg.condFor(L, foe.key, foe.squad) } };   // 連戦の状態（v2.s4.cond）
     startRun(`第${L.round + 1}節　VS ${foe.name}`);
   });
   function setPause(p) { paused = p; $("icPause").setAttribute("d", paused ? "M16 12 L36 24 L16 36 Z" : "M17 13 V35 M31 13 V35"); $("icPause").style.fill = paused ? "#8fe0ff" : "none"; }
@@ -421,7 +432,7 @@
     if (ended) { if (skip) showResult(); return; }
     ended = true; endAt = clock; result = outcome();
     if (!sortieCfg.spec) St.record(sortieCfg.rival.key, result);
-    if (sortieCfg.league) { SCS2.league.finishRound(lgData(), result); St.save(); }   // ended で一度だけ   // 同じ節のほかの試合もここで決まる
+    if (sortieCfg.league) { SCS2.league.finishRound(lgData(), result, run.battle, sortieCfg.mine.choices); St.save(); }   // ended で一度だけ。同じ節のほかの試合と、連戦の状態もここで決まる
     $("wEndMain").textContent = bannerOf(result); $("wEnd").classList.add("show");
     updWatch();
     if (skip) showResult();

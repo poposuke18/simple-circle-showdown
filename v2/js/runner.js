@@ -12,7 +12,7 @@ window.SCS2 = window.SCS2 || {};
   // cfg: {mine:{choices[],emb[],names[]}, foe:{...}, seed, arena, mod, formP, formC}
   SCS2.makeRunner = function (cfg) {
     const W = SCS2.board.W, H = SCS2.board.H, R = SCS2.board.R, FW = cfg.arena.w, FH = cfg.arena.h, PX = W / FW;
-    const battle = SCS.makeSquadBattle3(cfg.mine.choices.map((c) => c.slice()), cfg.foe.choices.map((c) => c.slice()), cfg.seed, cfg.arena.name, cfg.mod, cfg.formP, cfg.formC, cfg.mine.names.slice(), cfg.foe.names.slice(), { formation: 0.6, orderP: cfg.orderP || null, brain: cfg.brain || { P: "v3", C: "v3" } }); // 隊形が配置と動きに効く・あなたの部隊は配置した順（分隊戦設計§17）
+    const battle = SCS.makeSquadBattle3(cfg.mine.choices.map((c) => c.slice()), cfg.foe.choices.map((c) => c.slice()), cfg.seed, cfg.arena.name, cfg.mod, cfg.formP, cfg.formC, cfg.mine.names.slice(), cfg.foe.names.slice(), { formation: 0.6, orderP: cfg.orderP || null, brain: cfg.brain || { P: "v3", C: "v3" }, cond: cfg.cond || null }); // 隊形が配置と動きに効く・あなたの部隊は配置した順（分隊戦設計§17）
     const views = battle.teams.P.concat(battle.teams.C).map((u) => {
       const P = u.team === "P", a = Math.atan2(u.faceY, u.faceX);
       return { u, id: u.team + u.idx, team: u.team, idx: u.idx, name: u.name, emb: (P ? cfg.mine.emb : cfg.foe.emb)[u.idx], words: SCS2.world.wordsOf((P ? cfg.mine.choices : cfg.foe.choices)[u.idx]),

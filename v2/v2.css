@@ -294,7 +294,21 @@ button { font-family: inherit; color: inherit; }
 .lg-row .tk.tk-xs, .lg-vs .tk.tk-xs { width: 44px; height: 44px; border-width: 5px; }
 .lg-row .pt { font-size: 30px; color: #fff; }
 .lg-row.me { background: rgba(60,140,255,.14); box-shadow: inset 4px 0 0 #58aeff; border-radius: 8px; }
-.lg-side { left: 1130px; top: 120px; width: 750px; height: 800px; padding: 24px 30px; overflow: hidden; }
+.lg-side { left: 1130px; top: 120px; width: 750px; height: 800px; padding: 24px 30px; overflow: hidden auto; scrollbar-width: thin; }
+/* 部隊の状態（v2.s4.cond.ui） */
+.lg-cond { margin-top: 8px; padding: 10px 14px 8px; border: 1.5px solid rgba(120,200,255,.3); border-radius: 12px; background: rgba(12,24,40,.6); }
+.lg-cond + .lg-cond { margin-top: 10px; }
+.lg-cond-h { display: flex; align-items: baseline; gap: 14px; font-size: 21px; font-weight: 900; padding-bottom: 6px; }
+.lg-cond-h small { margin-left: auto; font-size: 17px; color: var(--dim); font-weight: 700; }
+.lg-cu { display: grid; grid-template-columns: 40px 140px 44px 120px 96px 44px 120px 1fr; align-items: center; gap: 8px; height: 44px; font-size: 18px; }
+.lg-cu .tk.tk-xs { width: 38px; height: 38px; border-width: 4px; }
+.lg-cu .nm { font-family: "Russo One", sans-serif; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-cu .lead { font-style: normal; color: #ffd866; margin-left: 6px; }
+.lg-cu .lb { font-size: 15px; color: var(--dim); font-weight: 700; text-align: right; }
+.lg-cu .wd { font-size: 16px; font-weight: 700; color: #cfe0f5; white-space: nowrap; }
+.bar2 { display: block; height: 12px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+.bar2 b { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #22b95c, #4be07f); }
+.bar2.m b { background: linear-gradient(90deg, #3f8fe0, #8fd0ff); }
 .lg-h { font-size: 34px; font-weight: 900; letter-spacing: 3px; }
 .lg-h2 { margin: 22px 0 8px; font-size: 21px; font-weight: 700; color: var(--dim); }
 .lg-next { margin-top: 14px; border: 2px solid var(--rc); border-radius: 14px; padding: 16px 18px; background: rgba(12,24,40,.75); box-shadow: 0 0 18px color-mix(in srgb, var(--rc) 40%, transparent); }

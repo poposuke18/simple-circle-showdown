@@ -97,6 +97,7 @@ window.SCS = window.SCS || {};
   SCS.makeSquadBattle3 = function (teamPChoices, teamCChoices, seed, arenaName, modName, formPName, formCName, namesP, namesC, opts) {
     const FORM2 = !!(opts && opts.formation);                                      // v2：隊形が初期配置と動きに効く（[[分隊戦設計]]§17）。旧来の呼び出しは opts なし＝不変
     const ORDER_P = (opts && Array.isArray(opts.orderP) && opts.orderP.length === teamPChoices.length) ? opts.orderP.slice() : null; // v2：プレーヤーが配置した隊形の順
+    const COND = (opts && opts.cond) || null;                                        // 連戦の状態（[[v2ゲーム設計]] v2.s4.cond）：{P:{lead,trust,units:[{fat,mor}]},C:{...}}。無ければ今までどおり
     const D = SCS.DATA, S = D.SIM, T = D.TERRAIN, rng = SCS.makeRNG(seed);
     // 隊形（プレーヤーの作戦・既定=散開）。CPU側未指定はランダム（seed由来＝決定論）。
     const formKey = (name, salt) => { if (name && name !== "ランダム") { const f = D.FORMATIONS.find((x) => x.key === name || x.name === name); if (f) return f.key; } if (!name) return "loose"; return D.FORMATIONS[SCS.makeRNG((seed ^ salt) >>> 0).int(D.FORMATIONS.length)].key; };
@@ -399,11 +400,18 @@ window.SCS = window.SCS || {};
       Object.assign(u, { team, idx, alive: true, target: null, x: baseX, y: cy(y), faceX: left ? 1 : -1, faceY: 0, idleTurns: 0, label: "待機", guarding: false, peeling: false, engage: "poke", presence, hold, tank, coop, form: team === "P" ? formP : formC, _opened: null, _focusCount: 0, _wardRef: null,
         ammo: u.ranged.mag, reloadLeft: 0, charged: false, spread: 0, statuses: [], stun: 0, stamina: 1, momentum: 0, resolve: 0, flinch: 0, _ultHold: 0, _closing: false,
         st: { dealt: 0, taken: 0, kills: 0, shots: 0, hits: 0, crits: 0, ults: 0, flanks: 0, downTurn: 0, dodges: 0, counters: 0, grabs: 0, grabHits: 0, wasFlanked: 0, winded: 0, resPeak: 0 } });
+      const cu = COND && COND[team] && COND[team].units && COND[team].units[idx];                 // 連戦の疲労・士気（v2.s4.cond.fat/mor）
+      u.fat = cu ? clamp(cu.fat || 0, 0, 1) : 0; u.mor = cu ? clamp(cu.mor || 0, -1, 1) : 0;
+      if (cu) { u.stamina = 1 - 0.55 * u.fat; u.momentum = 0.6 * u.mor; u.resolve = Math.max(0, 0.35 * u.mor); }
       return u;
     }
     const P = teamPChoices.map((c, i) => mkUnit(c, "P", i, teamPChoices.length));
     const C = teamCChoices.map((c, i) => mkUnit(c, "C", i, teamCChoices.length));
     const ALL = P.concat(C);
+    // 指揮（v2.s4.cond.cmd）：隊長と信頼。隊長が生きている間、ほかの駒は信頼が厚いほど隊形と狙いがそろう（薄いとばらける）。cond が無ければ 0
+    const LEAD = { P: null, C: null };
+    for (const tm of ["P", "C"]) { const c = COND && COND[tm], arr = tm === "P" ? P : C; if (c && Number.isInteger(c.lead) && arr[c.lead]) LEAD[tm] = { u: arr[c.lead], trust: clamp(c.trust == null ? 0.6 : c.trust, 0, 1), fell: false }; }
+    const leadK = (u) => { const L = LEAD[u.team]; return L && L.u.alive && L.u !== u ? (L.trust - 0.5) * 0.5 : 0; };
     for (const u of ALL) { u.supp = 0; u._supIn = 0; }                                 // 制圧（次のターンに効く値）と、このターンに受けた分
     const enemiesOf = (u) => (u.team === "P" ? C : P);
     const alliesOf = (u) => (u.team === "P" ? P : C);
@@ -508,6 +516,7 @@ window.SCS = window.SCS || {};
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
         v += (parts.focus = Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop)); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）
         // ★連携アシスト（高coop＝味方思い）：味方が直前に崩した敵（_opened＝側背/投げ/大打）を逃さず突く＝集中の質↑。一匹狼はこれを重視しない。
+        { const L = LEAD[u.team]; if (L && L.u !== u && L.u.alive && L.u.target === e) v += (parts.lead = 0.35 * L.trust * (0.4 + 0.6 * u.coop)); }   // 隊長と同じ的を狙う（v2.s4.cond.cmd）
         if (e._opened != null && turn - e._opened <= 1) v += (parts.opened = u.coop * (0.9 + u.micros.A2 * 0.3));
         // ★一匹狼（低coop＝我流・利己）：味方の連携でなく、手柄になる手負い/孤立の獲物を単騎で追う。
         v += (parts.lone = (1 - u.coop) * (clamp(isolationOf(e) / 40, 0, 1) * 0.45 + (1 - e.hp / e.maxHp) * 0.4));
@@ -636,7 +645,7 @@ window.SCS = window.SCS || {};
       return { x: cx(g.x + fx * off.fx * SP - fy * off.fy * SP), y: cy(g.y + fy * off.fx * SP + fx * off.fy * SP), g };
     }
     // 隊形を保つ力（性格）：規律・忍耐・協調で保ち、攻め急ぐほど崩す
-    const holdOf = (u) => clamp((0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3) * (1.15 - 0.6 * u.micros.A2), 0, 1.1);
+    const holdOf = (u) => clamp((0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3 + leadK(u)) * (1.15 - 0.6 * u.micros.A2), 0, 1.1);
 
     // ===== 必殺の打ち時（温存経済）：即撃ちでなく仕留め確/側背面/窮地でここぞと切る。死蔵防止に強制解放弁 =====
     function ultReady(u, tgt, pos, d2, los) {
@@ -740,7 +749,7 @@ window.SCS = window.SCS || {};
       else if (u.form && u.form !== "loose") {
         formSlotPos = formSlotWorld(u);
         if (formSlotPos) {
-          const holdAbility = clamp(0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3, 0, 1.1); // 一匹狼/気まぐれは守らない
+          const holdAbility = clamp(0.2 + u.micros.B4 * 0.5 + Math.max(0, u.mv[3]) * 0.35 + u.coop * 0.3 + leadK(u), 0, 1.1); // 一匹狼/気まぐれは守らない（隊長への信頼で上下）
           const reach = Math.max(u.melee.reach, u.ranged.effRange);
           const urgency = clamp(1 - (dist(u, fp) - reach) / 45, 0, 1);                          // 交戦圏に近いほど隊形より戦闘
           formW = holdAbility * (1 - urgency) * 0.10;                                            // ★ごく小さい＝接近フェーズに見える緩い癖。戦闘判断が常に上回る＝支配しない・罠にしない
@@ -897,6 +906,7 @@ window.SCS = window.SCS || {};
       let commit = Math.log(ratio) * (0.9 + m.C2 * 0.8) * V3C.engc + tgtLow * (0.3 + m.A6 * 0.4) + (u.resolve > 0.7 ? 0.3 : 0) + (1 - m.A1) * 0.15 - (1 - hpFrac) * 0.3;
       let retreat = -Math.log(ratio) * (0.6 + m.C1 * 0.8) * V3C.engr + (1 - hpFrac) * (0.4 + m.C1 * 0.8) - m.C6 * (hpFrac < 0.35 ? 1.0 : 0.4) - u.resolve * 0.2 - 0.1;
       const stick = 0.12 + m.B4 * 0.18;
+      if (COND) { commit += u.mor * 0.3; retreat -= u.mor * 0.3; }                              // 連戦の士気（v2.s4.cond.mor）
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
@@ -976,7 +986,7 @@ window.SCS = window.SCS || {};
     }
     function mindBase(u) {
       const seen = [], sensed = []; for (const [e, info] of known[u.team]) if (e.alive) (info.lastSeen === turn ? seen : sensed).push(e.team + e.idx);
-      return { eng: u.engage, engI: u._eng || null, sta: u.stamina, mom: u.momentum, res: u.resolve, supp: u.supp || 0, flinch: u.flinch > 0, hpf: clamp(u.hp / u.maxHp, 0, 1), ammo: u.ammo, reload: u.reloadLeft > 0, seen, sensed, hunted: 0 };
+      return { eng: u.engage, engI: u._eng || null, sta: u.stamina, mom: u.momentum, res: u.resolve, supp: u.supp || 0, flinch: u.flinch > 0, hpf: clamp(u.hp / u.maxHp, 0, 1), ammo: u.ammo, reload: u.reloadLeft > 0, seen, sensed, hunted: 0, fat: u.fat || 0, mor: u.mor || 0, lead: LEAD[u.team] ? (LEAD[u.team].u === u ? "self" : LEAD[u.team].u.alive ? "alive" : "fell") : null };
     }
     function mindSearch(u, d0) {
       let age = -1; for (const info of known[u.team].values()) age = Math.max(age, turn - info.lastSeen);
@@ -1168,7 +1178,11 @@ window.SCS = window.SCS || {};
       const lines = [], events = [], envLines = [];
       if (GM) gimStart(envLines);
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive });
-      for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; }
+      for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; u._lost = false; }
+      if (turn === 1 && COND) for (const arr of [P, C]) {                                     // 連戦の状態を1ターン目に一言（部隊ごとに一番目立つ駒だけ・v2.s4.cond.ui）
+        let pick = null, pv = 0; for (const u of arr) { const v = Math.max(u.fat - 0.45, Math.abs(u.mor) - 0.4); if (v > pv) { pv = v; pick = u; } }
+        if (pick) envLines.push({ text: pick.fat - 0.45 >= Math.abs(pick.mor) - 0.4 ? `── ${pick.name} は前の試合の疲れが残っている。` : pick.mor > 0 ? `── ${pick.name} は連戦の勢いに乗っている。` : `── ${pick.name} は前の試合を引きずっている。`, cls: "cm" });
+      }
       // 0) 索敵
       const detectedBefore = { P: new Set(known.P.keys()), C: new Set(known.C.keys()) };
       updateDetection();
@@ -1307,7 +1321,7 @@ window.SCS = window.SCS || {};
         const dealt = u.st.dealt, taken = u.st.taken; // 累積だが増分で十分（簡易）
         const a = acc.get(u); const tookNow = a ? a.dmg : 0;
         const dec = decs.get(u), attacked = dec && (dec.attack === "RANGED" || dec.attack === "MELEE" || dec.attack === "ULT" || dec.attack === "SNAP");
-        u.stamina = clamp(u.stamina + (attacked ? -0.09 * modSta : 0.07), 0, 1);
+        u.stamina = clamp(u.stamina + (attacked ? -0.09 * modSta : 0.07 * (1 - 0.4 * (u.fat || 0))), 0, 1);   // 疲れが残る駒は回復が遅い（v2.s4.cond.fat）
         if (u.stamina < 0.35) u.st.winded++;                    // 息切れターン数（分析用）
         u.st.resPeak = Math.max(u.st.resPeak, u.resolve || 0);  // 気迫ピーク（温存しすぎ判定用）
         u.flinch = u.flinch > 0 ? u.flinch - 1 : 0;
@@ -1329,6 +1343,12 @@ window.SCS = window.SCS || {};
       // ★味方の死への反応（協調性で連続的に）：一匹狼は奮い立ち流れを引き寄せ(+)、献身は気落ちして流れを失う(−)。
       //   ＋一定確率で気力ガクン（献身ほど高確率・大幅／一匹狼は低確率・小幅）。流れ/気力システムが活きる＝散開して仲間を失う一匹狼が、最後に流れを帯びた狂戦士として捲る目を持つ。
       for (const d of deadThisTurn) {
+        const L = LEAD[d.team];
+        if (L && L.u === d && !L.fell) {                                                     // 隊長が倒れた：残る味方が動揺する（信頼が厚く、味方思いなほど）。乱数は使わない
+          L.fell = true;
+          for (const u of (d.team === "P" ? P : C)) { if (!u.alive) continue; const k = L.trust * (0.3 + 0.7 * u.coop); u.momentum = clamp(u.momentum - 0.35 * k, -1, 1); u.stamina = clamp(u.stamina - 0.12 * k, 0, 1); u._lost = true; }
+          envLines.push({ text: `── 隊長 ${d.name} が倒れ、残る味方の足並みが乱れる。`, cls: "cm" });
+        }
         for (const u of (d.team === "P" ? P : C)) {
           if (!u.alive || u === d) continue;
           const delta = (0.48 - u.coop) * 0.6;
@@ -1515,6 +1535,7 @@ window.SCS = window.SCS || {};
         const demeanorOf = (u) => {
           const hp = u.maxHp ? u.hp / u.maxHp : 1, dev = evByAtt.get(u), dhit = dev && (dev.hits || 0) > 0; // 当てた時だけ「勢い」を言う
           if (u._surged) return vary(["仲間の仇とばかりに闘志を燃やし", "むしろ気を吐き", "倒れた味方の分も背負い"], seed, turn, u.idx + 15); // 一匹狼＝味方の死で奮起
+          if (u._lost) return vary(["隊長を失い動揺しつつ", "指揮を失って浮き足立ちながら"], seed, turn, u.idx + 17);       // 隊長が倒れた（v2.s4.cond.cmd）
           if (u._shaken) return vary(["味方を失い動揺しながらも", "仲間の死に気を呑まれつつ"], seed, turn, u.idx + 16);       // 献身＝味方の死に気落ち
           if (u.flinch > 0) return vary(["体勢を崩されながらも", "たたらを踏みつつ"], seed, turn, u.idx + 5);
           if (hp > 0 && hp < 0.25) return vary(["満身創痍で", "血路を探りつつ", "気力を振り絞り"], seed, turn, u.idx + 6);
