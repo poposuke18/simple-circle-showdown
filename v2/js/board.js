@@ -115,7 +115,7 @@ window.SCS2 = window.SCS2 || {};
       for (const v of g.vents || []) {                                                         // 噴く前触れ：暗く沈んだ円に、脈打つ明るい輪とひび（溶岩の明るい地図でも見える）
         const cx = v.x * PX, cy = v.y * PX, r = v.r * PX, pulse = 0.5 + 0.5 * Math.sin(t / 150);
         ctx.save();
-        ctx.fillStyle = `rgba(30,6,0,${0.30 + 0.12 * pulse})`; circ(ctx, cx, cy, r); ctx.fill();
+        ctx.fillStyle = `rgba(90,20,0,${0.14 + 0.08 * pulse})`; circ(ctx, cx, cy, r); ctx.fill();
         ctx.globalCompositeOperation = "lighter";
         const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8); gr.addColorStop(0, `rgba(255,170,60,${0.45 + 0.35 * pulse})`); gr.addColorStop(1, "rgba(255,60,0,0)");
         ctx.fillStyle = gr; circ(ctx, cx, cy, r * 0.8); ctx.fill();
@@ -129,11 +129,12 @@ window.SCS2 = window.SCS2 || {};
     }
   }
   // ギミックの出来事（噴火・壁の崩れ・泉の回復・噴火に巻き込まれた）を演出と文字に（観戦・見どころの再生の両方が使う）
+  const ERUPT_AT = 700;                                                                          // 噴くのは駒が動き終わってから（予告の輪から逃げたのが見えるように）。それまで予告の輪を残す（runner・リプレイ）
   function gimFx(events, clock, viewOf, fx, pops) {
     for (const e of events) {
-      if (e.type === "erupt") fx.push({ t0: clock + 40, kind: "erupt", gx: e.x, gy: e.y, gr: e.r, dur: 1150 });
+      if (e.type === "erupt") fx.push({ t0: clock + ERUPT_AT, kind: "erupt", gx: e.x, gy: e.y, gr: e.r, dur: 1150 });
       else if (e.type === "collapse") fx.push({ t0: clock + 180, kind: "dust", gx: e.x + e.w / 2, gy: e.y + e.h / 2, gw: e.w, gh: e.h, dur: 1400 });
-      else if (e.type === "hazard") { const v = viewOf(e.dTeam + e.dIdx); if (v) pops.push({ v, t0: clock + 360, kind: "burn", text: "-" + Math.round(e.dmg) }); }
+      else if (e.type === "hazard") { const v = viewOf(e.dTeam + e.dIdx); if (v) pops.push({ v, t0: clock + ERUPT_AT + 120, kind: "burn", text: "-" + Math.round(e.dmg) }); }
       else if (e.type === "heal") { const v = viewOf(e.dTeam + e.dIdx); if (v) pops.push({ v, t0: clock + 300, kind: "heal", text: "+" + e.amount }); }
     }
   }
@@ -146,7 +147,6 @@ window.SCS2 = window.SCS2 || {};
       ctx.fillStyle = `rgba(255,190,80,${al})`;
       for (let k = 0; k < 22; k++) { const a = k * 0.2856 + (k % 3) * 0.4, d = r * (0.2 + p * (0.9 + (k % 5) * 0.12)), h = -Math.sin(p * Math.PI) * r * 0.5 * ((k % 4) / 3); circ(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d + h, 6 * al + 2); ctx.fill(); }
       ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = `rgba(60,40,30,${0.5 * al})`; ctx.lineWidth = 10 * al + 2; circ(ctx, cx, cy, r * (0.9 + p * 0.5)); ctx.stroke();
     } else if (f.kind === "dust") {
       const cx = f.gx * PX, cy = f.gy * PX, w = f.gw * PX, h = f.gh * PX, al = (1 - p) * 0.8;
       for (let k = 0; k < 14; k++) { const fx2 = ((k * 41) % 100) / 100 - 0.5, fy2 = ((k * 67) % 100) / 100 - 0.5, rr = (18 + (k % 4) * 9) * (0.6 + p * 1.4);
@@ -476,5 +476,5 @@ window.SCS2 = window.SCS2 || {};
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }
 
-  SCS2.board = { W, H, R, img, emb, token, ICON_OF, gimFx, drawBoard, drawMini, camGoal, camStep, view, circ };   // 外から使うものだけ
+  SCS2.board = { W, H, R, img, emb, token, ICON_OF, gimFx, ERUPT_AT, drawBoard, drawMini, camGoal, camStep, view, circ };   // 外から使うものだけ
 })();

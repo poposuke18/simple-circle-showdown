@@ -112,7 +112,7 @@ window.SCS2 = window.SCS2 || {};
       if (clock - segStart >= dur) { k++; segStart = clock; }
     }
     // 今見せている区間の戦場：壁は区間の後（崩れた跡）、潮・泉は区間のターン、噴く前触れは区間の前のもの
-    function field() { const a = snaps[k], b = snaps[Math.min(k < to ? k + 1 : k, snaps.length - 1)]; return { obstacles: b.obstacles, hazards: b.hazards, gimmick: b.gimmick && a.gimmick ? Object.assign({}, b.gimmick, { vents: a.gimmick.vents }) : b.gimmick }; }
+    function field(clock) { const a = snaps[k], b = snaps[Math.min(k < to ? k + 1 : k, snaps.length - 1)], early = k < to && clock - segStart < 120 + SCS2.board.ERUPT_AT && !!a.gimmick && a.gimmick.vents.some((v) => v.at === b.turn); return { obstacles: b.obstacles, hazards: b.hazards, gimmick: b.gimmick && a.gimmick && early ? Object.assign({}, b.gimmick, { vents: a.gimmick.vents }) : b.gimmick }; }   // 噴くまでは前の予告
     return { tick, get views() { return [...vs.values()]; }, fx, pops, field };
   }
 

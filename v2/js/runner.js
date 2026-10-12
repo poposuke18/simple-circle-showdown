@@ -74,8 +74,10 @@ window.SCS2 = window.SCS2 || {};
       if (fx.length > 90) fx.splice(0, fx.length - 90); if (pops.length > 40) pops.splice(0, pops.length - 40);
     }
     // 1ターン進める（clock＝演出の時刻。instant＝演出なしで一気に解くとき）
+    let prevVents = [];                                                                       // このターンに噴く所の予告（噴くまで画面に残す）
     function doTurn(clock, instant) {
       for (const v of views) { v.fx = instant ? v.tx : v.x; v.fy = instant ? v.ty : v.y; v.hp0 = v.u.hp; v.ang0 = v.ang; }
+      prevVents = battle.gimmick ? battle.gimmick.vents : [];
       const res = battle.step(), died = [];
       hist.unshift(res.lines || []); if (hist.length > 4) hist.pop();
       separate(false);
@@ -127,6 +129,7 @@ window.SCS2 = window.SCS2 || {};
     if (cfg.vw) SCS2.board.camStep(cam, SCS2.board.camGoal(views, { arena: cfg.arena, vw: cfg.vw, vh: cfg.vh, margin: cam.m }), 1);   // 始めから全員が映る位置に
     return {
       battle, views, fx, pops, snaps, cam, tick, finish, whyOf, arena: cfg.arena,
+      gimmickAt(clock) { const g = battle.gimmick; return g && clock < turnStart + SCS2.board.ERUPT_AT && prevVents.some((v) => v.at === battle.turn) ? Object.assign({}, g, { vents: prevVents }) : g; },   // 描くギミック：このターンに噴く所は、噴くまで前の予告を見せる
       get focus() { return focus; }, setFocus(v, clock) { focus = v; focusLock = clock + 8 * TURN; },
     };
   };
