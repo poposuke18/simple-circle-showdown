@@ -111,7 +111,11 @@ window.SCS = window.SCS || {};
     else { const mr = SCS.makeRNG((seed ^ 0x27d4eb2f) >>> 0); let tot = 0; D.MODIFIERS.forEach((m) => (tot += m.weight || 1)); let r = mr.next() * tot; mod = D.MODIFIERS.find((m) => (r -= m.weight || 1) < 0) || D.MODIFIERS[0]; }
     const modAcc = mod.acc || 1, modSta = mod.staMul || 1, modCrit = mod.crit || 0;
     const field = { w: arena.w, h: arena.h }, baseTerrain = T[arena.base];
-    const obstacles = arena.obstacles.map((o) => ({ ...o, hp: 70 }));
+    const GM = arena.gimmick || null;                                                // 戦場のギミック（[[v2ゲーム設計]] v2.more）。無い戦場はギミックの処理を一切通らない
+    const wallHp = (o) => Math.round(clamp(GM.hpk * Math.sqrt(o.w * o.h), GM.hpMin, GM.hpMax));   // 崩れる壁の固さ（大きい壁ほど固い）
+    const obstacles = arena.obstacles.map((o) => (GM && GM.kind === "crumble" ? { ...o, hp: wallHp(o), hp0: wallHp(o) } : { ...o, hp: 70 }));
+    const zones = arena.terrain.slice();                                             // 立つと効く地形（崩れた壁は瓦礫としてここに足す）
+    const gim = { tide: 0, spring: "idle", vents: [] };                              // ギミックの今の状態（潮の高さ・泉・噴く所の予告）
     const hazards = [];
     const maxDist = Math.hypot(arena.w, arena.h), turnCap = Math.round(S.turnCap * 1.5); // 30×1.5=45ターン上限（タイムアップ率↑・待ち戦の余地）
     let turn = 0, over = false, result = null, noDmgTurns = 0, ambushShown = false, lastGap = null, everContact = false;
@@ -153,18 +157,19 @@ window.SCS = window.SCS || {};
     }
     const NC = 2, GW = Math.ceil(field.w / NC), GH = Math.ceil(field.h / NC);
     const navBlocked = NAV ? new Uint8Array(GW * GH) : null;
-    if (NAV) {
-      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
-        const px = (i + 0.5) * NC, py = (j + 0.5) * NC;
-        if (blocks.concat(obstacles).some((r) => px > r.x - 0.8 && px < r.x + r.w + 0.8 && py > r.y - 0.8 && py < r.y + r.h + 0.8)) navBlocked[j * GW + i] = 1;
-      }
-    }
     const cellOf = (p) => clamp(Math.floor(p.y / NC), 0, GH - 1) * GW + clamp(Math.floor(p.x / NC), 0, GW - 1);
     const cellPt = (c) => ({ x: (c % GW + 0.5) * NC, y: (Math.floor(c / GW) + 0.5) * NC });
     // 抜け道の無い小部屋（遺跡の囲いなど）：点の動きなら狭い隙間から入れるが、道探しでは出られず固まる（2026-10-11 実測）。
     // 始めに、道でつながる一番大きな広がり（主領域）以外の空きを埋めて入れないようにする。NAV の時だけ＝旧来の戦場は不変
     const navComp = NAV ? new Int32Array(GW * GH).fill(-1) : null; let navMain = 0;
-    if (NAV) {
+    function buildNav() {                                                             // 塞がった格子と主領域。始めに1回（崩れる壁の戦場は壁が崩れるたびに作り直す）
+      for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].trap) blocks.splice(i, 1);
+      navBlocked.fill(0); navComp.fill(-1); navMain = 0;
+      const solid = blocks.concat(obstacles.filter((o) => o.hp > 0));
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) {
+        const px = (i + 0.5) * NC, py = (j + 0.5) * NC;
+        if (solid.some((r) => px > r.x - 0.8 && px < r.x + r.w + 0.8 && py > r.y - 0.8 && py < r.y + r.h + 0.8)) navBlocked[j * GW + i] = 1;
+      }
       const sizes = [];
       for (let s0 = 0; s0 < GW * GH; s0++) {
         if (navBlocked[s0] || navComp[s0] >= 0) continue;
@@ -180,13 +185,24 @@ window.SCS = window.SCS || {};
         blocks.push({ x: i * NC, y: j * NC, w: (k - i) * NC, h: NC, trap: true }); i = k;
       }
     }
+    if (NAV) buildNav();
     // それでも入り込んでいたら（壁際の隙間など）、主領域の一番近い所へ出す
     function rescueTrapped(u) {
       const c = cellOf(u); if (navComp[c] === navMain) return;
       let best = -1, bd = Infinity; for (let k = 0; k < GW * GH; k++) { if (navComp[k] !== navMain) continue; const p = cellPt(k), d = Math.hypot(p.x - u.x, p.y - u.y); if (d < bd) { bd = d; best = k; } }
       if (best >= 0 && bd > 2.5) { const p = cellPt(best); u.x = p.x; u.y = p.y; }
     }
-    const moveBlocked = (a, b) => blocks.some((r) => segIntersectsRect(a, b, r)) || obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
+    // 遮蔽物の升（8単位）：線分の外接箱にかかる升の遮蔽物だけを調べる。外接箱が重ならない遮蔽物はもともと交わらない＝結果は全部調べるのと同じ（壁の多い戦場で速い）
+    const OBG = 8, obW = Math.ceil(field.w / OBG) + 1, obH = Math.ceil(field.h / OBG) + 1, obGrid = Array.from({ length: obW * obH }, () => []);
+    for (const o of obstacles) for (let j = Math.max(0, Math.floor(o.y / OBG)); j <= Math.min(obH - 1, Math.floor((o.y + o.h) / OBG)); j++) for (let i = Math.max(0, Math.floor(o.x / OBG)); i <= Math.min(obW - 1, Math.floor((o.x + o.w) / OBG)); i++) obGrid[j * obW + i].push(o);
+    let obStamp = 0;
+    function segHitsObstacle(a, b) {
+      const i0 = clamp(Math.floor(Math.min(a.x, b.x) / OBG), 0, obW - 1), i1 = clamp(Math.floor(Math.max(a.x, b.x) / OBG), 0, obW - 1), j0 = clamp(Math.floor(Math.min(a.y, b.y) / OBG), 0, obH - 1), j1 = clamp(Math.floor(Math.max(a.y, b.y) / OBG), 0, obH - 1);
+      const st = ++obStamp;
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) for (const r of obGrid[j * obW + i]) { if (r._st === st) continue; r._st = st; if (r.hp > 0 && segIntersectsRect(a, b, r)) return true; }
+      return false;
+    }
+    const moveBlocked = (a, b) => blocks.some((r) => segIntersectsRect(a, b, r)) || segHitsObstacle(a, b);
     let navCache = new Map();                                                         // 目標の格子→距離場（ターンごとに作り直す）
     function navField(goal) {
       let g = cellOf(goal);
@@ -217,9 +233,84 @@ window.SCS = window.SCS || {};
       return last || cellPt(c);
     }
     function pathDist(from, to) { if (!NAV || !moveBlocked(from, to)) return dist(from, to); const F = navField(to), v = F[cellOf(from)]; return v === Infinity ? dist(from, to) : v * NC; }
-    function terrainAt(p) { for (const z of arena.terrain) if (ptInRect(p, z)) return T[z.t]; return baseTerrain; }
+    const TIDE_T = { tidal: [T.wetsand, T.shallows, T.flood], tidepool: [T.shallows, T.flood, T.flood] };   // 潮の高さ（0 引き・1 満ちかけ・2 満ち）で変わる地形
+    let zoneB = null; const ZB = 8;                                                   // ギミックの戦場は地形が多いので 8単位の升ごとに重なる地形を持つ（順番は保つ＝結果は同じ）
+    function buildZoneB() {
+      if (!GM) return; const bw = Math.ceil(field.w / ZB) + 1, bh = Math.ceil(field.h / ZB) + 1, b = Array.from({ length: bw * bh }, () => []);
+      for (const z of zones) for (let j = Math.max(0, Math.floor(z.y / ZB)); j <= Math.min(bh - 1, Math.floor((z.y + z.h) / ZB)); j++) for (let i = Math.max(0, Math.floor(z.x / ZB)); i <= Math.min(bw - 1, Math.floor((z.x + z.w) / ZB)); i++) b[j * bw + i].push(z);
+      zoneB = { bw, bh, b };
+    }
+    buildZoneB();
+    const zonesAt = (p) => (zoneB ? zoneB.b[clamp(Math.floor(p.y / ZB), 0, zoneB.bh - 1) * zoneB.bw + clamp(Math.floor(p.x / ZB), 0, zoneB.bw - 1)] : zones);
+    function terrainAt(p) { for (const z of zonesAt(p)) if (ptInRect(p, z)) return TIDE_T[z.t] ? TIDE_T[z.t][gim.tide] : T[z.t]; return baseTerrain; }
+    // ===== 戦場のギミック（[[v2ゲーム設計]] v2.more）：時間で変わる戦場。予告と周期は目に見える＝AI もそれを見て動く =====
+    const grng = GM ? SCS.makeRNG((seed ^ 0x6d2b79f5) >>> 0) : null;                // ギミックの乱数（戦いの乱数と分ける）
+    const TIDE_COST = (GM && GM.cost) || { tidal: [0, 2.5, 6], tidepool: [1.2, 6, 6] };   // 水に浸かる所にいる損（足が鈍り、避けにくい）
+    const tideAt = (t) => (GM && GM.kind === "tide" && t > 0 ? GM.cycle[(t - 1) % GM.cycle.length] : 0);
+    function springAt(t) { if (!GM || GM.kind !== "spring") return "idle"; const ph = t - GM.first; if (ph < 0) return "idle"; const k = ph % GM.period; return k === 0 ? "warn" : k <= GM.surge ? "surge" : "idle"; }
+    const inSpring = (p) => Math.hypot(p.x - GM.x, p.y - GM.y) <= GM.r;
+    function tideKind(p) { for (const z of zonesAt(p)) if (ptInRect(p, z)) return TIDE_T[z.t] ? z.t : null; return null; }
+    const ventDmg = () => GM.dmg + GM.burn.dmg * GM.burn.turns;
+    const cautionOf = (u) => clamp(0.55 + (1 - u.micros.C2) * 0.5 + u.micros.C1 * 0.3 + u.micros.D5 * 0.25, 0.4, 1.6);   // 戦場の危険を避ける度合い（安全第一・早く退く・環境を読む性格ほど強い）
+    function gimCost(u, p, k) {                                                       // k ターン先にそこにいる時の、戦場から受ける損（＋）と得（−）
+      const t = turn + k;
+      if (GM.kind === "erupt") { if (k !== 0) return 0; let d = 0; for (const v of gim.vents) if (v.at === t && Math.hypot(p.x - v.x, p.y - v.y) <= v.r + 0.8) d += ventDmg(); return d * cautionOf(u); }
+      if (GM.kind === "tide") { const z = tideKind(p); return z ? TIDE_COST[z][tideAt(t)] * cautionOf(u) : 0; }
+      if (GM.kind === "spring") { if (springAt(t) !== "surge" || !inSpring(p)) return 0; const f = clamp(u.hp / u.maxHp, 0, 1); const w = GM.want || [0.8, 2.2, 0.8]; return -Math.min(GM.heal, Math.max(0, u.maxHp - u.hp)) * (w[0] + (1 - f) * w[1] + u.micros.D5 * w[2]); }   // 傷が深いほど・環境を読む性格ほど泉を目指す
+      return 0;
+    }
+    const gimK = (u, p, k) => (GM ? gimCost(u, p, k) : 0);
+    const TIDE_LINE = ["潮が引き、干潟が姿を現す。", "潮が満ちはじめる——足元に水が寄せてくる。", "潮が満ちきった。干潟は膝まで水の中。"];
+    function gimStart(out) {                                                          // ターンの始め：潮の高さ・泉の様子
+      if (GM.kind === "tide") { const lv = tideAt(turn); if (lv !== gim.tide) out.push({ text: `── ${lv === 1 && gim.tide === 2 ? "潮が引きはじめる。" : TIDE_LINE[lv]}`, cls: "cm" }); gim.tide = lv; }
+      if (GM.kind === "spring") { const sp = springAt(turn); if (sp !== gim.spring) { if (sp === "warn") out.push({ text: "── 泉が淡く光りはじめる。", cls: "cm" }); else if (sp === "surge") out.push({ text: "── 泉が湧き上がる！", cls: "cm" }); } gim.spring = sp; }
+    }
+    function wallNear(p, reach) { let best = null, bd = reach; for (const o of obstacles) { if (o.hp <= 0) continue; const qx = clamp(p.x, o.x, o.x + o.w), qy = clamp(p.y, o.y, o.y + o.h), d = Math.hypot(qx - p.x, qy - p.y); if (d < bd) { bd = d; best = o; } } return best; }
+    function crumbleWalls(evs, events, out) {                                         // 外れ弾は狙われた駒のそばの壁を削る（必殺の外れは大きく）・叩きつけも削る
+      for (const ev of evs) {
+        if (!ev.def || !(ev.shots > 0)) continue;
+        const rn = ev.ult ? ev.ultRn : (ev.attack === "RANGED" || ev.attack === "SNAP"); if (!rn) continue;
+        const miss = ev.ult ? (ev.whiff ? 2 : 0) : ev.shots - (ev.hits || 0); if (miss <= 0) continue;
+        const w = wallNear(ev.def, GM.reach); if (w) w.hp -= miss * ev.att.ranged.damage * GM.missK;
+      }
+      for (const u of ALL) { if (u._slam) { const w = u.alive ? wallNear(u, 1.6) : null; if (w) w.hp -= GM.slam; u._slam = false; } }
+      let fell = 0;
+      for (const o of obstacles) if (o.hp0 && o.hp <= 0 && !o.fell) {
+        o.fell = true; o.hp = 0; fell++;
+        zones.push({ x: o.x - 0.4, y: o.y - 0.4, w: o.w + 0.8, h: o.h + 0.8, t: "rubble" });   // 崩れた所は瓦礫（足が遅く、身を守れる）
+        events.push({ type: "collapse", x: o.x, y: o.y, w: o.w, h: o.h });
+      }
+      if (fell) { buildZoneB(); if (NAV) { buildNav(); navCache = new Map(); } out.push({ text: `── 撃ち込まれた壁が${fell > 1 ? "次々と" : ""}崩れ落ち、射線が開く。`, cls: "cm" }); }
+    }
+    function erupt(events, out) {                                                     // 予告した所が噴く：中にいる駒は焼かれ、跡はしばらく燃える
+      let dmg = 0, n = 0; const hit = [];
+      for (const v of gim.vents) {
+        if (v.at !== turn) continue;
+        events.push({ type: "erupt", x: v.x, y: v.y, r: v.r }); n++;
+        for (const u of ALL) { if (!u.alive || Math.hypot(u.x - v.x, u.y - v.y) > v.r) continue; u.hp = Math.max(0, u.hp - GM.dmg); addStatus(u, GM.burn); dmg += GM.dmg; u._erupted = turn; hit.push(u.name); events.push({ type: "hazard", dTeam: u.team, dIdx: u.idx, dmg: GM.dmg }); }
+        hazards.push({ x: cx(v.x - 3), y: cy(v.y - 3), w: 6, h: 6, turns: 2, dmg: 5 });
+      }
+      if (n) out.push({ text: `── 溶岩が${n > 1 ? `${n}か所で` : ""}噴き上がる！${hit.length ? `${hit.join("・")} が炎に巻かれる。` : "間一髪、誰も巻き込まれない。"}`, cls: "cm" });
+      gim.vents = gim.vents.filter((v) => v.at !== turn);
+      return dmg;
+    }
+    function scheduleVents(out) {                                                     // 次のターンに噴く所を予告する（駒の近くほど選ばれやすい）
+      const t1 = turn + 1; if (t1 < GM.first || (t1 - GM.first) % GM.every !== 0) return;
+      const live = ALL.filter((u) => u.alive), pool = GM.vents.map((p) => ({ p, w: 1 + live.filter((u) => Math.hypot(u.x - p.x, u.y - p.y) < 16).length * 2.5 }));
+      for (let n = 0; n < GM.n && pool.length; n++) {
+        let tot = 0; for (const q of pool) tot += q.w; let r = grng.next() * tot, k = 0;
+        for (; k < pool.length - 1; k++) { r -= pool[k].w; if (r <= 0) break; }
+        const q = pool.splice(k, 1)[0]; gim.vents.push({ x: q.p.x, y: q.p.y, r: GM.r, at: t1 });
+      }
+      out.push({ text: "── 足元の岩が赤く光りはじめる——噴き上がる前触れだ。", cls: "cm" });
+    }
+    function springHeal(events, out) {                                                // 湧いている泉の中の駒は傷が癒える
+      const healed = [];
+      for (const u of ALL) { if (!u.alive || !inSpring(u)) continue; const h = Math.min(GM.heal, u.maxHp - u.hp); if (h <= 0) continue; u.hp += h; healed.push(u.name); events.push({ type: "heal", dTeam: u.team, dIdx: u.idx, amount: Math.round(h) }); }
+      if (healed.length) out.push({ text: `　　＊泉の水が ${healed.join("・")} の傷を癒やす。`, cls: "dim" });
+    }
     const terrainDmg = (p) => terrainAt(p).dmg || 0;
-    const losClear = (a, b) => !obstacles.some((r) => r.hp > 0 && segIntersectsRect(a, b, r));
+    const losClear = (a, b) => !segHitsObstacle(a, b);
     function hazardAt(p) { let d = 0; for (const h of hazards) if (h.turns > 0 && ptInRect(p, h)) d += h.dmg; return d; }
     function nearestObstacle(p) { let best = null, bd = Infinity; for (const r of obstacles) { if (r.hp <= 0) continue; const ox = r.x + r.w / 2, oy = r.y + r.h / 2, d = Math.hypot(ox - p.x, oy - p.y); if (d < bd) { bd = d; best = { x: ox, y: oy }; } } return best; }
     const cornered = (u) => Math.min(u.x, field.w - u.x, u.y, field.h - u.y) < 7;
@@ -659,7 +750,7 @@ window.SCS = window.SCS || {};
         const threat = threatAt(u, np);
         const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22; // 近接寄りは回り道の距離で（§16）
         const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
-        const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5;
+        const sep = sepPenalty(u, np), hz = hazardAt(np) + terrainDmg(np) * 1.5 + gimK(u, np, 0);
         const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * c.guardScale : 0; // 割り込み位置に近いほど良い（実距離）
         const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0; // 撤退時＝味方へ寄る再集結
         const formTerm = formSlotPos ? (FORM2 ? -dist(np, formSlotPos) * formW : -(dist(np, formSlotPos) / maxDist) * 22 * formW) : 0; // 隊形スロットへ寄る（v2 は距離そのもので効かせる）
@@ -679,7 +770,7 @@ window.SCS = window.SCS || {};
           const dp = { x: u.x, y: u.y }, d2d = dist(dp, fp), los2d = losClear(dp, fp);
           const incoming = threatAt(u, dp);                                                       // 実際の被ダメ見込み
           const counterEV = (0.12 + u.micros.D1 * 0.4 + u.micros.D6 * 0.25 + u.micros.B3 * 0.2) * (d2d <= u.melee.reach ? u.melee.damage : u.ranged.damage * 0.8) * 0.4;
-          const vD = -incoming * (1 - evd) * wDef + counterEV - sepPenalty(u, dp) - (hazardAt(dp) + terrainDmg(dp) * 1.5) * 1.2 - (1 - u.stamina) * 3;
+          const vD = -incoming * (1 - evd) * wDef + counterEV - sepPenalty(u, dp) - (hazardAt(dp) + terrainDmg(dp) * 1.5 + gimK(u, dp, 0)) * 1.2 - (1 - u.stamina) * 3;
           if (vD > best.v + 3) best = { v: vD, move: "HOLD", attack: "DODGE", newPos: dp, d2: d2d, los2: los2d }; // 攻撃よりはっきり得な時だけ見切る＝稀
         }
       }
@@ -689,7 +780,7 @@ window.SCS = window.SCS || {};
         if (d2g <= u.melee.reach + 3) {
           const want = 0.6 + u.micros.A2 * 0.3 + u.micros.A6 * 0.3 + u.micros.D4 * 0.2;            // 崩しを好む性格（攻め/非情/狡猾）
           const offG = grabDamage(u) * (0.5 + clamp((tgt.tank || 0) * 1.1, 0, 1.1));               // 受け不能＝盾ほど刺さる
-          const vG = offG * wAtk * want - threatAt(u, gp) * wDef - sepPenalty(u, gp) - (hazardAt(gp) + terrainDmg(gp) * 1.5) * 1.2;
+          const vG = offG * wAtk * want - threatAt(u, gp) * wDef - sepPenalty(u, gp) - (hazardAt(gp) + terrainDmg(gp) * 1.5 + gimK(u, gp, 0)) * 1.2;
           if (vG > best.v) best = { v: vG, move: "ADVANCE", attack: "GRAB", newPos: gp, d2: d2g, los2: true };
         }
       }
@@ -910,8 +1001,8 @@ window.SCS = window.SCS || {};
         let s1 = stay ? { x: u.x, y: u.y } : pushOutObstacle(pts[0].x, pts[0].y);              // 今ターンの一歩＝道の最初の1ターン分（候補ごとに道探しをやり直さない）
         if (!stay && stClose > st) { const q = pathPoints(F, u, p, stClose, 1)[0]; if (dist(q, fp) < dist(u, fp)) s1 = pushOutObstacle(q.x, q.y); }   // 目標へ詰める一歩だけ突撃の速さ
         if (!stay && dist(s1, u) < 1) s1 = { x: u.x, y: u.y };                                  // ごく小さな動きは動かないのと同じ（命中が落ちるだけ）
-        let v = U(s1, !stay) + (stay ? 0.2 : 0), g = 1;
-        for (let t = 2; t <= H; t++) { g *= V3C.gamma; const q = pts[t - 1] || p, arrived = dist(q, p) < 0.5; v += g * U(arrived ? p : q, !arrived); }
+        let v = U(s1, !stay) + (stay ? 0.2 : 0) - gimK(u, s1, 0) * 1.2, g = 1;
+        for (let t = 2; t <= H; t++) { g *= V3C.gamma; const q = pts[t - 1] || p, arrived = dist(q, p) < 0.5, qq = arrived ? p : q; v += g * (U(qq, !arrived) - gimK(u, qq, t - 1) * 1.2); }   // 戦場のギミックは何ターン先かで見る
         if (u._plan && u._plan.tgt === tgt && u._plan.turn === turn - 1 && dist(p, u._plan) < 3) v += (1.5 + m.B4 * 4) * V3C.stick;   // 前のターンに決めた目的地はしばらく保つ（規律で長く）
         if (noiseW) v += ((hsh(turn, u.idx * 31 + (u.team === "P" ? 0 : 7), Math.round(p.x), Math.round(p.y), 17) % 1000) / 1000 - 0.5) * noiseW; // 予測不能：決定論の揺らぎ
         if (!best || v > best.v) best = { v, p, s1 };
@@ -932,7 +1023,7 @@ window.SCS = window.SCS || {};
       else if (moved && thrHere > 3 && thrNew < thrHere * 0.6) why = "cover";
       else if (!moved && los2) { let others = 0; for (const e of knownEnemies(u)) if (e !== tgt && dist(e, u) <= e.ranged.effRange + e.ranged.falloff && losClear(e, u)) others++; if (!others && knownEnemies(u).length > 1) why = "peek"; }
       if (!why && !moved && wP > 0) { const tq = predictPos3(tgt, 1); if (dist(tq, u) < dist(tgt, u) - 3) why = "wait"; }
-      const dec = { v: U(np, moved), move, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2, plan: u._plan ? { x: u._plan.x, y: u._plan.y } : null, why3: why };
+      const dec = { v: U(np, moved) - gimK(u, np, 0) * 1.2, move, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2, plan: u._plan ? { x: u._plan.x, y: u._plan.y } : null, why3: why };
       return finishDecide(u, tgt, c, dec);
     }
 
@@ -1013,7 +1104,7 @@ window.SCS = window.SCS || {};
       return ev; // NONE / 届かず
     }
 
-    function knockback(att, tgt) { const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1, kb = att.melee.knockback || 4; const q = pushOutObstacle(cx(tgt.x + (dx / len) * kb), cy(tgt.y + (dy / len) * kb)); tgt.x = q.x; tgt.y = q.y; }
+    function knockback(att, tgt) { const dx = tgt.x - att.x, dy = tgt.y - att.y, len = Math.hypot(dx, dy) || 1, kb = att.melee.knockback || 4; const ix = cx(tgt.x + (dx / len) * kb), iy = cy(tgt.y + (dy / len) * kb), q = pushOutObstacle(ix, iy); if (GM && GM.kind === "crumble" && Math.hypot(q.x - ix, q.y - iy) > 0.5) tgt._slam = true; tgt.x = q.x; tgt.y = q.y; }
 
     // 動的ラベル：この体の今ターンの役割行動を1語で（HUD/レーダーが表示・数値非公開のまま挙動を可読化）
     function dynLabel(u, ev, dec) {
@@ -1043,6 +1134,7 @@ window.SCS = window.SCS || {};
       if (over) return { turn, lines: [], events: [], over, result };
       turn++; if (NAV) navCache = new Map();
       const lines = [], events = [], envLines = [];
+      if (GM) gimStart(envLines);
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive });
       for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; }
       // 0) 索敵
@@ -1148,6 +1240,7 @@ window.SCS = window.SCS || {};
         for (const s of a.status) { const ty = addStatus(tgt, s); if (ty === "burn") igniteFire(tgt.x, tgt.y); }
         if (a.kbFrom) knockback(a.kbFrom, tgt);
       }
+      if (GM && GM.kind === "crumble") crumbleWalls(evs, events, envLines);
       // 6.5) 回避カウンター：見切った体が生存していて、自分を殴って当てた敵を読み勝てば反撃の一閃（生存判定後＝相手も生存していれば）
       for (const u of ALL) {
         if (u.hp <= 0) continue; const d = decs.get(u); if (!d || d.attack !== "DODGE") continue;
@@ -1166,10 +1259,12 @@ window.SCS = window.SCS || {};
       for (const u of ALL) { if (!u.alive) continue; const tk = tickStatuses(u); if (tk.dmg) { u.hp = Math.max(0, u.hp - tk.dmg); envDmg += tk.dmg; envLines.push({ text: `　　＊${u.name} ${tk.types.map((t) => D.STATUS_JP[t]).join("・")}で −${tk.dmg}（残${Math.max(0, Math.round(u.hp))}/${u.maxHp}）`, cls: u.team === "P" ? "plr" : "cpu" }); } }
       for (const h of hazards) { if (h.turns <= 0) continue; h.turns--; for (const u of ALL) { if (u.alive && ptInRect(u, h)) { u.hp = Math.max(0, u.hp - h.dmg); envDmg += h.dmg; } } }
       for (const u of ALL) { if (!u.alive) continue; const lv = terrainDmg(u); if (lv) { u.hp = Math.max(0, u.hp - lv); envDmg += lv; } }
+      if (GM && GM.kind === "erupt") envDmg += erupt(events, envLines);
       for (let i = hazards.length - 1; i >= 0; i--) if (hazards[i].turns <= 0) hazards.splice(i, 1);
       // 7) 死亡判定・撃破帰属
       for (const u of ALL) { if (u.alive && u.hp <= 0) { u.alive = false; u.st.downTurn = turn; deadThisTurn.push(u); } }
       for (const u of deadThisTurn) { let best = null; for (const ev of evs) if (ev.def === u && (ev.dmg || 0) > 0) { if (!best || ev.dmg > best.dmg) best = ev; } if (best) { best._killed = u; best.att.st.kills++; } }
+      if (GM && GM.kind === "spring" && gim.spring === "surge") springHeal(events, envLines);
       // 7.5) 終わりの再索敵（最終位置で一致させる）
       updateDetection();
       // 8) リソース更新
@@ -1443,7 +1538,7 @@ window.SCS = window.SCS || {};
           : `── ${lead}${npc(ev.att)} が ${npc(ev._killed)}${verb}！`;
         lines.push({ text: txt, cls: "cm" });
       }
-      for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)}、力尽きて崩れ落ちる。`, cls: "cm" });
+      for (const u of deadThisTurn) if (!evs.some((ev) => ev._killed === u)) lines.push({ text: `── ${npc(u)}、${u._erupted === turn ? "噴き上がる溶岩に呑まれ、倒れる" : "力尽きて崩れ落ちる"}。`, cls: "cm" });
       // 必殺（撃破に紐づかなかったもの）
       for (const ev of evs) if (ev.ult && !ev._killed) lines.push({ text: `── 気迫炸裂！${npc(ev.att)} の必殺・${ev.ultName}${ev.whiff ? "——惜しくも空を切る！" : `が ${npc(ev.def)} を捉える −${ev.dmg}！`}`, cls: "cm" });
       // 瀕死ドラマ（このターンで瀕死域に踏み込んだ体・1件）
@@ -1479,6 +1574,7 @@ window.SCS = window.SCS || {};
         } }
 
       // 9) 勝敗
+      if (GM && GM.kind === "erupt") scheduleVents(lines);
       result = finishCheck();
       if (result) { over = true; for (const fl of finishNarration(result)) lines.push(fl); }
       return { turn, lines, events, over, result, kos: deadThisTurn.length }; // kos＝表示用の緩急（KOターンは自動再生を長めに止める）。乱数非消費
@@ -1577,6 +1673,7 @@ window.SCS = window.SCS || {};
       get teams() { return { P, C }; }, get arena() { return { name: arena.name, flavor: arena.flavor }; },
       get modifier() { return mod.key === "none" ? null : { name: mod.name, flavor: mod.flavor }; },
       field, obstacles, maxDist, losClear, terrain: arena.terrain, baseTerrainKey: arena.base, get hazards() { return hazards; },
+      get gimmick() { return GM ? { kind: GM.kind, tide: gim.tide, tideNext: tideAt(turn + 1), spring: gim.spring, springNext: springAt(turn + 1), vents: gim.vents.map((v) => ({ x: v.x, y: v.y, r: v.r, at: v.at })) } : null; },   // 画面が描くギミックの状態
       teamHpFrac, aliveCount,
       spotted: (u) => known[u.team === "P" ? "C" : "P"].has(u), // その体が敵に発見されているか（レーダーのゴースト表示用）。視界扇は u.sightR/u.sightHalf/faceX/faceY
     };

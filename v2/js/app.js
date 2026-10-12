@@ -60,7 +60,7 @@
     demoClock += dt; demo.tick(demoClock, dt, 1);
     if (demo.battle.over) { if (!demoEnd) demoEnd = demoClock; else if (demoClock - demoEnd > 3000) newDemo(); }
     const o = cvTitle, c = o.ctx; Bd.view(c, o.s, W, H, demo.cam.x, demo.cam.y, demo.cam.z);
-    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, mod: demo.mod, arena: demo.arena, pal: demo.pal });
+    Bd.drawBoard(c, { clock: demoClock, views: demo.views, fx: demo.fx, focus: null, whyOn: false, obstacles: demo.battle.obstacles, hazards: demo.battle.hazards, gimmick: demo.battle.gimmick, mod: demo.mod, arena: demo.arena, pal: demo.pal });
   }
 
   // ===== 部隊 =====
@@ -389,7 +389,7 @@
     if (ended && !paused && clock - endAt > 2600) showResult();
     const o = cvWatch, c = o.ctx; c.setTransform(o.s, 0, 0, o.s, 0, 0); c.fillStyle = "#050b14"; c.fillRect(0, 0, FW, FH);   // 地図の外（端に寄った時の余白）は暗い色
     Bd.view(c, o.s, FW, FH, run.cam.x, run.cam.y, run.cam.z);
-    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal, bleed: true });
+    Bd.drawBoard(c, { clock, views: run.views, fx: run.fx, pops: run.pops, focus: run.focus, whyOn: bubOn, obstacles: run.battle.obstacles, hazards: run.battle.hazards, gimmick: run.battle.gimmick, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal, bleed: true });
     updHud();
     c.setTransform(o.s, 0, 0, o.s, 0, 0);
     const vg = c.createRadialGradient(FW / 2, FH / 2, FH * 0.42, FW / 2, FH / 2, FH * 1.05); vg.addColorStop(0, "rgba(4,8,16,0)"); vg.addColorStop(1, "rgba(4,8,16,.45)"); c.fillStyle = vg; c.fillRect(0, 0, FW, FH);
@@ -470,9 +470,9 @@
   let replays = [], resClock = 0;
   function drawCards() {
     replays.forEach((r, i) => {
-      const o = cardCvs[i]; if (!o) return; r.rp.tick(resClock); const vs = r.rp.views, sub = vs.find((v) => v.id === r.h.id);
+      const o = cardCvs[i]; if (!o) return; r.rp.tick(resClock); const vs = r.rp.views, sub = vs.find((v) => v.id === r.h.id), fd = r.rp.field();
       Bd.view(o.ctx, o.s, 564, 317, r.cx, r.cy, r.z);
-      Bd.drawBoard(o.ctx, { clock: resClock, views: vs, fx: r.rp.fx, pops: r.rp.pops, focus: null, highlight: sub && sub.alive ? sub : null, whyOn: true, obstacles: run.snaps[r.h.t].obstacles, hazards: run.snaps[r.h.t].hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
+      Bd.drawBoard(o.ctx, { clock: resClock, views: vs, fx: r.rp.fx, pops: r.rp.pops, focus: null, highlight: sub && sub.alive ? sub : null, whyOn: true, obstacles: fd.obstacles, hazards: fd.hazards, gimmick: fd.gimmick, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     });
   }
   function frameResult(dt) { resClock += dt; drawCards(); }
@@ -501,7 +501,7 @@
     const cx = clamp((x0 + x1) / 2, 639 / z, W - 639 / z), cy = clamp((y0 + y1) / 2, 369 / z, H - 369 / z);
     const o = cvWhy; o.ctx.setTransform(o.s, 0, 0, o.s, 0, 0); o.ctx.fillStyle = "#050b14"; o.ctx.fillRect(0, 0, 1278, 738);
     Bd.view(o.ctx, o.s, 1278, 738, cx, cy, z);
-    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
+    Bd.drawBoard(o.ctx, { clock: 1000, views: vs, fx: [], focus: null, highlight: sub, arrows, aim: false, whyOn: true, obstacles: snap.obstacles, hazards: snap.hazards, gimmick: snap.gimmick, still: true, mod: sortieCfg.mod, arena: sortieCfg.arena, pal: sortieCfg.pal });
     const TAG = { cause: "きっかけ", act: "した事", result: "その結果" };
     $("whySide").innerHTML = `<div class="ws-head">${tkHtml(sub.team, sub.emb, "", sortieCfg.pal[sub.team])}<div><div class="ws-name">${esc(sub.name)}</div><div class="ws-cap">${esc(why.cap)}</div></div></div>`
       + `<div class="ws-chain">` + steps.map((st) => `<div class="ws-step"><b class="ws-n">${st.n}</b><div><small>${TAG[st.kind] || ""}</small><p>${esc(st.text)}</p></div></div>`).join(`<i class="ws-arrow"></i>`) + `</div>`;

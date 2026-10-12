@@ -38,12 +38,119 @@ window.SCS2 = window.SCS2 || {};
       ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = `rgba(255,120,30,${0.05 + 0.05 * Math.sin(st.clock / 520 + i * 1.7)})`;
       ctx.fillRect(z.x * PX, z.y * PX, z.w * PX, z.h * PX); ctx.globalCompositeOperation = "source-over";
     });
-    for (const ob of st.obstacles || []) if (ob.hp <= 0) { ctx.fillStyle = "rgba(28,22,16,.5)"; ctx.fillRect(ob.x * PX, ob.y * PX, ob.w * PX, ob.h * PX); } // 崩れた遮蔽
+    drawGimmick(ctx, st);                                                                       // 戦場のギミック（崩れた壁・潮・泉・噴く前触れ）
     for (const hz of st.hazards || []) {                                                         // 燃える地面（火炎放射器の延焼）
       if (!(hz.turns > 0)) continue;
       const cx = (hz.x + hz.w / 2) * PX, cy = (hz.y + hz.h / 2) * PX, r = Math.max(hz.w, hz.h) * PX * 0.6;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(255,170,60,${0.55 + 0.15 * Math.sin(st.clock / 90 + cx)})`); g.addColorStop(1, "rgba(255,60,0,0)");
       ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = g; circ(ctx, cx, cy, r); ctx.fill(); ctx.globalCompositeOperation = "source-over";
+    }
+  }
+  // ===== 戦場のギミック（[[v2ゲーム設計]] v2.more）：見えている予告と状態だけを描く =====
+  const RUB = {}, TMASK = {}, SMOOTH = new WeakMap();
+  let tideBuf = null;
+  function rubblePat(ctx, st) {                                                                // 崩れた壁の跡＝同じ地図の瓦礫の山を切り出して敷く
+    const src = st.arena.map; if (RUB[src] !== undefined) return RUB[src];
+    const m = img(src); if (!m) return null; const R0 = st.arena.gimmick.rubble; if (!R0) return (RUB[src] = null);
+    const k = m.naturalWidth / st.arena.w, c = document.createElement("canvas"); c.width = Math.round(R0.w * PX); c.height = Math.round(R0.h * PX);
+    c.getContext("2d").drawImage(m, R0.x * k, R0.y * k, R0.w * k, R0.h * k, 0, 0, c.width, c.height);
+    return (RUB[src] = ctx.createPattern(c, "repeat"));
+  }
+  function tideMask(A) {                                                                       // 潮で水に浸かる所（干潟・潮だまり）から、小島と岩を抜いた形（ぼかし）
+    if (TMASK[A.key]) return TMASK[A.key];
+    const c = document.createElement("canvas"), k = 480 / A.w; c.width = 480; c.height = 270; const x = c.getContext("2d");
+    x.filter = "blur(3px)"; x.fillStyle = "#fff";
+    for (const z of A.terrain) if (z.t === "tidal" || z.t === "tidepool") x.fillRect(z.x * k, z.y * k, z.w * k, z.h * k);
+    x.globalCompositeOperation = "destination-out";
+    for (const z of A.terrain) if (z.t === "plains") x.fillRect(z.x * k, z.y * k, z.w * k, z.h * k);
+    for (const o of A.obstacles) x.fillRect(o.x * k, o.y * k, o.w * k, o.h * k);
+    return (TMASK[A.key] = c);
+  }
+  function smoothTo(ctx, key, target, clock) {                                                 // 観戦中は潮の高さをゆっくり変える（止め絵ではそのまま）
+    let s = SMOOTH.get(ctx); if (!s || s.key !== key) { s = { key, v: target, t: clock }; SMOOTH.set(ctx, s); }
+    const dt = clamp((clock - s.t) / 1000, 0, 0.5); s.t = clock; s.v += (target - s.v) * clamp(dt * 1.6, 0, 1); return s.v;
+  }
+  function drawGimmick(ctx, st) {
+    const A = st.arena, G = A.gimmick, g = st.gimmick, t = st.clock;
+    if (G && G.kind === "crumble") {
+      const pat = rubblePat(ctx, st);
+      for (const ob of st.obstacles || []) {
+        if (!ob.hp0) continue;
+        const x = ob.x * PX, y = ob.y * PX, w = ob.w * PX, h = ob.h * PX;
+        if (ob.hp <= 0) {                                                                       // 崩れた：瓦礫の山
+          ctx.save(); ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 12; ctx.fillStyle = pat || "rgba(110,98,84,.95)";
+          ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - 7, y - 7, w + 14, h + 14, 9) : ctx.rect(x - 7, y - 7, w + 14, h + 14); ctx.fill(); ctx.restore();
+        } else if (ob.hp < ob.hp0 * 0.6) {                                                      // 削れた：ひび
+          const a = clamp(1 - ob.hp / (ob.hp0 * 0.6), 0, 1) * 0.85; ctx.save(); ctx.strokeStyle = `rgba(20,14,8,${a})`; ctx.lineWidth = 2.2;
+          const n = 2 + Math.round(a * 4), long = w > h;
+          for (let i = 0; i < n; i++) { const f = (i + 0.5) / n, sx = long ? x + w * f : x + w * 0.5, sy = long ? y + h * 0.5 : y + h * f, j = ((i * 53 + ob.x * 7) % 9) - 4;
+            ctx.beginPath(); ctx.moveTo(sx - (long ? 6 : w * 0.45), sy - (long ? h * 0.45 : 6)); ctx.lineTo(sx + j, sy + j * 0.6); ctx.lineTo(sx + (long ? 7 : w * 0.4), sy + (long ? h * 0.45 : 7)); ctx.stroke(); }
+          ctx.restore();
+        }
+      }
+    }
+    if (!G || !g) return;
+    if (G.kind === "tide") {
+      const lv = st.still ? g.tide / 2 : smoothTo(ctx, A.key, g.tide / 2, t); if (lv < 0.01) return;
+      const m = tideMask(A); if (!tideBuf) { tideBuf = document.createElement("canvas"); tideBuf.width = 480; tideBuf.height = 270; }
+      const x = tideBuf.getContext("2d"); x.globalCompositeOperation = "source-over"; x.clearRect(0, 0, 480, 270);
+      x.fillStyle = `rgba(36,128,150,${0.42 + 0.4 * lv})`; x.fillRect(0, 0, 480, 270);
+      x.strokeStyle = `rgba(215,248,255,${0.10 + 0.16 * lv})`; x.lineWidth = 1;
+      for (let i = 0; i < 20; i++) { const y0 = ((i * 15 + t * 0.003) % 290) - 10; x.beginPath(); for (let q = 0; q <= 480; q += 12) { const yy = y0 + Math.sin(q * 0.045 + t * 0.0011 + i * 1.7) * 2.2; if (q) x.lineTo(q, yy); else x.moveTo(q, yy); } x.stroke(); }
+      x.globalCompositeOperation = "destination-in"; x.drawImage(m, 0, 0);
+      ctx.save(); ctx.globalAlpha = clamp(lv * 1.15, 0, 0.92); ctx.drawImage(tideBuf, 0, 0, W, H); ctx.restore();
+    } else if (G.kind === "spring" && (g.spring === "warn" || g.spring === "surge")) {
+      const cx = G.x * PX, cy = G.y * PX, r = G.r * PX, pulse = 0.5 + 0.5 * Math.sin(t / 260), surge = g.spring === "surge";
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.2), a = surge ? 0.42 + 0.18 * pulse : 0.14 + 0.16 * pulse;
+      gr.addColorStop(0, `rgba(150,255,235,${a})`); gr.addColorStop(0.7, `rgba(80,220,255,${a * 0.6})`); gr.addColorStop(1, "rgba(60,200,255,0)");
+      ctx.fillStyle = gr; circ(ctx, cx, cy, r * 1.2); ctx.fill();
+      if (surge) {
+        for (let i = 0; i < 3; i++) { const q = ((t / 1400 + i / 3) % 1); ctx.strokeStyle = `rgba(190,255,245,${0.5 * (1 - q)})`; ctx.lineWidth = 4; circ(ctx, cx, cy, r * (0.2 + q * 0.95)); ctx.stroke(); }
+        for (let i = 0; i < 28; i++) { const a2 = i * 2.39996, rr = r * (0.15 + ((i * 37) % 80) / 100), q = ((t / 1600 + i * 0.137) % 1), px = cx + Math.cos(a2) * rr, py = cy + Math.sin(a2) * rr * 0.9 - q * 70;
+          ctx.fillStyle = `rgba(220,255,250,${0.9 * (1 - q)})`; circ(ctx, px, py, 3.2 * (1 - q * 0.5)); ctx.fill(); }
+      }
+      ctx.restore();
+    } else if (G.kind === "erupt") {
+      for (const v of g.vents || []) {                                                         // 噴く前触れ：暗く沈んだ円に、脈打つ明るい輪とひび（溶岩の明るい地図でも見える）
+        const cx = v.x * PX, cy = v.y * PX, r = v.r * PX, pulse = 0.5 + 0.5 * Math.sin(t / 150);
+        ctx.save();
+        ctx.fillStyle = `rgba(30,6,0,${0.30 + 0.12 * pulse})`; circ(ctx, cx, cy, r); ctx.fill();
+        ctx.globalCompositeOperation = "lighter";
+        const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.8); gr.addColorStop(0, `rgba(255,170,60,${0.45 + 0.35 * pulse})`); gr.addColorStop(1, "rgba(255,60,0,0)");
+        ctx.fillStyle = gr; circ(ctx, cx, cy, r * 0.8); ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+        ctx.shadowColor = "rgba(255,120,30,1)"; ctx.shadowBlur = 22;
+        ctx.strokeStyle = `rgba(255,${200 + 40 * pulse},${90 + 60 * pulse},${0.75 + 0.25 * pulse})`; ctx.lineWidth = 8; ctx.setLineDash([26, 14]); ctx.lineDashOffset = -t / 30; circ(ctx, cx, cy, r); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle = `rgba(255,226,140,${0.65 + 0.35 * pulse})`; ctx.lineWidth = 4;
+        for (let i = 0; i < 7; i++) { const a = i * 0.9 + v.x, r1 = r * (0.55 + ((i * 29) % 30) / 100); ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r * 0.08, cy + Math.sin(a) * r * 0.08); ctx.lineTo(cx + Math.cos(a + 0.25) * r1 * 0.5, cy + Math.sin(a + 0.25) * r1 * 0.5); ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); ctx.stroke(); }
+        ctx.restore();
+      }
+    }
+  }
+  // ギミックの出来事（噴火・壁の崩れ・泉の回復・噴火に巻き込まれた）を演出と文字に（観戦・見どころの再生の両方が使う）
+  function gimFx(events, clock, viewOf, fx, pops) {
+    for (const e of events) {
+      if (e.type === "erupt") fx.push({ t0: clock + 40, kind: "erupt", gx: e.x, gy: e.y, gr: e.r, dur: 1150 });
+      else if (e.type === "collapse") fx.push({ t0: clock + 180, kind: "dust", gx: e.x + e.w / 2, gy: e.y + e.h / 2, gw: e.w, gh: e.h, dur: 1400 });
+      else if (e.type === "hazard") { const v = viewOf(e.dTeam + e.dIdx); if (v) pops.push({ v, t0: clock + 360, kind: "burn", text: "-" + Math.round(e.dmg) }); }
+      else if (e.type === "heal") { const v = viewOf(e.dTeam + e.dIdx); if (v) pops.push({ v, t0: clock + 300, kind: "heal", text: "+" + e.amount }); }
+    }
+  }
+  function drawGimFx(ctx, f, p) {
+    if (f.kind === "erupt") {
+      const cx = f.gx * PX, cy = f.gy * PX, r = f.gr * PX, al = 1 - p;
+      ctx.globalCompositeOperation = "lighter";
+      const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * (0.6 + p * 0.8)); gr.addColorStop(0, `rgba(255,240,180,${al})`); gr.addColorStop(0.4, `rgba(255,140,30,${0.9 * al})`); gr.addColorStop(1, "rgba(255,40,0,0)");
+      ctx.fillStyle = gr; circ(ctx, cx, cy, r * (0.6 + p * 0.8)); ctx.fill();
+      ctx.fillStyle = `rgba(255,190,80,${al})`;
+      for (let k = 0; k < 22; k++) { const a = k * 0.2856 + (k % 3) * 0.4, d = r * (0.2 + p * (0.9 + (k % 5) * 0.12)), h = -Math.sin(p * Math.PI) * r * 0.5 * ((k % 4) / 3); circ(ctx, cx + Math.cos(a) * d, cy + Math.sin(a) * d + h, 6 * al + 2); ctx.fill(); }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = `rgba(60,40,30,${0.5 * al})`; ctx.lineWidth = 10 * al + 2; circ(ctx, cx, cy, r * (0.9 + p * 0.5)); ctx.stroke();
+    } else if (f.kind === "dust") {
+      const cx = f.gx * PX, cy = f.gy * PX, w = f.gw * PX, h = f.gh * PX, al = (1 - p) * 0.8;
+      for (let k = 0; k < 14; k++) { const fx2 = ((k * 41) % 100) / 100 - 0.5, fy2 = ((k * 67) % 100) / 100 - 0.5, rr = (18 + (k % 4) * 9) * (0.6 + p * 1.4);
+        ctx.fillStyle = `rgba(186,168,140,${al * (0.5 + (k % 3) * 0.2)})`; circ(ctx, cx + fx2 * (w + 30) * (1 + p * 0.5), cy + fy2 * (h + 30) * (1 + p * 0.5) - p * 26, rr); ctx.fill(); }
     }
   }
   // ===== 天気（[[v2ゲーム設計]] v2.fx.spec）：濃霧＝流れる濃い霧。灼熱は戦場には描かず、枠が赤く光る（v2.fx.heat2・画面の CSS）=====
@@ -128,7 +235,7 @@ window.SCS2 = window.SCS2 || {};
       ctx.globalAlpha = a; ctx.font = `${big ? 900 : 800} ${big ? 46 : p.kind === "miss" ? 26 : 34}px "Noto Sans JP", sans-serif`;
       const hw = ctx.measureText(p.text).width / 2 + 14, tx = Math.max(hw, Math.min(W - hw, x)), ty = Math.max(30, y);   // 戦場の端の駒でも文字が切れないように
       ctx.lineWidth = big ? 8 : 6; ctx.strokeStyle = "rgba(6,10,18,.9)"; ctx.strokeText(p.text, tx, ty);
-      ctx.fillStyle = big ? "#ffd84a" : p.kind === "miss" ? "#c9d4e2" : "#ffffff"; ctx.fillText(p.text, tx, ty);
+      ctx.fillStyle = big ? "#ffd84a" : p.kind === "miss" ? "#c9d4e2" : p.kind === "heal" ? "#7dffb4" : p.kind === "burn" ? "#ffae5a" : "#ffffff"; ctx.fillText(p.text, tx, ty);
     }
     ctx.restore();
   }
@@ -229,6 +336,7 @@ window.SCS2 = window.SCS2 || {};
     const fx = st.fx || []; ctx.save(); ctx.lineCap = "round";
     for (let i = fx.length - 1; i >= 0; i--) {
       const f = fx[i], p = (st.clock - f.t0) / f.dur; if (p < 0) continue; if (p > 1) { fx.splice(i, 1); continue; }
+      if (f.gx != null) { drawGimFx(ctx, f, p); ctx.globalCompositeOperation = "source-over"; continue; }   // ギミックの演出（駒に結びつかない）
       const P = f.team === "P", ax = f.va.x * PX, ay = f.va.y * PX, bx = f.vb.x * PX, by = f.vb.y * PX, d = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / d, uy = (by - ay) / d;
       const col = palT(P).fx;
       ctx.globalCompositeOperation = "lighter";
@@ -368,5 +476,5 @@ window.SCS2 = window.SCS2 || {};
   // world px → canvas：中心 (cx,cy)・拡大 z（canvas の css 幅 cw・高さ ch・解像度 s）
   function view(ctx, s, cw, ch, cx, cy, z) { ctx.setTransform(s * z, 0, 0, s * z, s * (cw / 2 - cx * z), s * (ch / 2 - cy * z)); }
 
-  SCS2.board = { W, H, R, img, emb, token, ICON_OF, drawBoard, drawMini, camGoal, camStep, view, circ };   // 外から使うものだけ
+  SCS2.board = { W, H, R, img, emb, token, ICON_OF, gimFx, drawBoard, drawMini, camGoal, camStep, view, circ };   // 外から使うものだけ
 })();

@@ -38,7 +38,7 @@ window.SCS2 = window.SCS2 || {};
         const wa = a.v.u.alive ? 1 : 0.2, wb = b.v.u.alive ? 1 : 0.2, s = wa + wb, push = minD - d, ux = dx / d, uy = dy / d;
         a.x -= ux * push * wa / s; a.y -= uy * push * wa / s; b.x += ux * push * wb / s; b.y += uy * push * wb / s;
       }
-      const solid = cfg.arena.terrain.filter((z) => (SCS.DATA.TERRAIN[z.t] || {}).block).concat(cfg.arena.obstacles), inside = (x, y) => solid.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
+      const solid = cfg.arena.terrain.filter((z) => (SCS.DATA.TERRAIN[z.t] || {}).block).concat(battle.obstacles.filter((o) => o.hp > 0)), inside = (x, y) => solid.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
       const pushOut = (x, y) => { for (let it = 0; it < 3; it++) { const r = solid.find((q) => x > q.x && x < q.x + q.w && y > q.y && y < q.y + q.h); if (!r) break;
           const c = [[x - r.x, r.x - 0.1, y], [r.x + r.w - x, r.x + r.w + 0.1, y], [y - r.y, x, r.y - 0.1], [r.y + r.h - y, x, r.y + r.h + 0.1]].filter((k) => k[1] >= 3 && k[1] <= FW - 3 && k[2] >= 3 && k[2] <= FH - 3).sort((a, b) => a[0] - b[0]);
           if (!c.length) break; x = c[0][1]; y = c[0][2]; } return { x, y }; };
@@ -50,12 +50,13 @@ window.SCS2 = window.SCS2 || {};
     }
     function snapshot(res, died) {
       snaps.push({ turn: battle.turn, units: views.map((v) => ({ id: v.id, team: v.team, name: v.name, emb: v.emb, x: v.tx, y: v.ty, ang: v.ang1, alive: v.u.alive, hp: v.u.hp, maxHp: v.maxHp, label: v.u.label, tgt: v.u.alive && v.u.target ? byU.get(v.u.target).id : null, stamina: v.u.stamina, hidden: v.u.alive && !battle.spotted(v.u) })),
-        events: res ? res.events || [] : [], lines: res ? res.lines || [] : [], died: died || [], obstacles: battle.obstacles.map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h, hp: o.hp })), hazards: battle.hazards.map((h) => ({ ...h })) });
+        events: res ? res.events || [] : [], lines: res ? res.lines || [] : [], died: died || [], obstacles: battle.obstacles.map((o) => ({ x: o.x, y: o.y, w: o.w, h: o.h, hp: o.hp, hp0: o.hp0 })), hazards: battle.hazards.map((h) => ({ ...h })), gimmick: battle.gimmick });
     }
     separate(true); views.forEach(sync); snapshot(null, []);
 
     function nearest(p, notTeam) { let b = null, bd = 1e9; for (const v of views) { if (v.team === notTeam) continue; const d = Math.hypot(v.u.x - p.x, v.u.y - p.y); if (d < bd) { bd = d; b = v; } } return b; }
     function pushFx(events, clock) {
+      SCS2.board.gimFx(events, clock, (id) => views.find((v) => v.id === id), fx, pops);   // 戦場のギミック（噴火・壁の崩れ・泉の回復）
       let k = 0;
       for (const e of events) {
         if (!e.from || !e.to) continue;

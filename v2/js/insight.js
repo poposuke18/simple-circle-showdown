@@ -76,6 +76,7 @@ window.SCS2 = window.SCS2 || {};
     function beginSeg(clock) {                                                              // k→k+1 の始まり：演出・ラベル・HP・撃破
       const nx = snaps[k + 1]; let n = 0;
       for (const v of vs.values()) { v.fx0 = v.x; v.fy0 = v.y; v.ang0 = v.ang; }
+      SCS2.board.gimFx(nx.events, clock + 120, (id) => vs.get(id), fx, pops);                 // 戦場のギミック（噴火・壁の崩れ・泉の回復）
       for (const e of nx.events) {
         if (!e.from || !e.to) continue;
         const va = vs.get(attOf(e)), vb = vs.get(defOf(e, nx)); if (!va || !vb) continue;
@@ -110,7 +111,9 @@ window.SCS2 = window.SCS2 || {};
       }
       if (clock - segStart >= dur) { k++; segStart = clock; }
     }
-    return { tick, get views() { return [...vs.values()]; }, fx, pops };
+    // 今見せている区間の戦場：壁は区間の後（崩れた跡）、潮・泉は区間のターン、噴く前触れは区間の前のもの
+    function field() { const a = snaps[k], b = snaps[Math.min(k < to ? k + 1 : k, snaps.length - 1)]; return { obstacles: b.obstacles, hazards: b.hazards, gimmick: b.gimmick && a.gimmick ? Object.assign({}, b.gimmick, { vents: a.gimmick.vents }) : b.gimmick }; }
+    return { tick, get views() { return [...vs.values()]; }, fx, pops, field };
   }
 
   // ===== ③ なぜ？の因果の鎖 =====
