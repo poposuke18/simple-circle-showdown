@@ -27,7 +27,7 @@ window.SCS2 = window.SCS2 || {};
   function drawBleed(ctx, st) {
     const src = st.arena.map; let c = BLEED[src];
     if (!c) { const m = img(src); if (!m) return; c = document.createElement("canvas"); c.width = Math.round((W + 2 * BL) / 4); c.height = Math.round((H + 2 * BL) / 4);
-      const x = c.getContext("2d"); x.filter = "blur(5px) brightness(.42) saturate(.75)"; x.drawImage(m, -6, -6, c.width + 12, c.height + 12); BLEED[src] = c; }
+      const x = c.getContext("2d"); x.filter = `blur(5px) brightness(${st.arena.bleed || 0.42}) saturate(.75)`; x.drawImage(m, -6, -6, c.width + 12, c.height + 12); BLEED[src] = c; }   // 縁の明るい地図は暗くしすぎない（暗い帯が枠に見える）
     ctx.drawImage(c, -BL, -BL, W + 2 * BL, H + 2 * BL);
   }
   function drawMap(ctx, st) {
@@ -434,7 +434,7 @@ window.SCS2 = window.SCS2 || {};
     usePX(st.arena); usePal(st.pal);
     if (st.bleed) drawBleed(ctx, st);
     drawMap(ctx, st);
-    if (st.bleed) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 24; ctx.strokeStyle = "rgba(4,10,18,.9)"; ctx.lineWidth = 6; ctx.strokeRect(-3, -3, W + 6, H + 6); ctx.restore(); }   // 地図の縁
+    if (st.bleed) { ctx.save(); ctx.shadowColor = "rgba(0,0,0,.8)"; ctx.shadowBlur = 24; ctx.strokeStyle = `rgba(4,10,18,${st.arena.bleed ? 0.45 : 0.9})`; ctx.lineWidth = 6; ctx.strokeRect(-3, -3, W + 6, H + 6); ctx.restore(); }   // 地図の縁
     drawFormation(ctx, st);
     if (st.aim !== false) drawAim(ctx, st);
     drawTrails(ctx, st);

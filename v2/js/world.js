@@ -121,7 +121,7 @@ window.SCS2 = window.SCS2 || {};
     ],
     start: { p: { x: 26, y: 34 }, c: { x: 102, y: 34 } },                    // 中央の道の上。両軍の間を地図の幅の6割に（端から始めると観戦のカメラが地図の外まで引く・2026-10-12 実測）
     gimmick: { kind: "crumble", hpk: 8, hpMin: 18, hpMax: 150, missK: 2, reach: 6, slam: 20, rubble: { x: 6.5, y: 67.7, w: 8.5, h: 3.5 } },   // 壁の固さ＝8×√面積（18〜150）。狙われた駒から6以内の壁が、外れ弾×武器の威力×2・叩きつけ20で削れる（1戦に約5枚崩れる・2026-10-12 実測）
-    map: "assets/map_city.jpg", mini: "assets/map_city_mini.jpg",
+    map: "assets/map_city.jpg", mini: "assets/map_city_mini.jpg", bleed: 0.65,   // bleed＝地図の外の明るさ（縁が明るい絵なので、縁との段差を旧戦場と同じくらいに）
   };
   // 潮の干潟（144×81）：左右の乾いた島と、満ち引きする干潟。中央に難破船の小島（ギミック tide）
   const TIDE = {
@@ -161,7 +161,7 @@ window.SCS2 = window.SCS2 || {};
     ],
     start: { p: { x: 35, y: 40 }, c: { x: 109, y: 40 } },                    // 左右の乾いた島の際から（同上）
     gimmick: { kind: "tide", cycle: [0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 1], cost: { tidal: [0, 1.5, 3.5], tidepool: [0.8, 3.5, 3.5] } },   // 12ターンで一巡（6引き・1満ちかけ・4満ち・1引きかけ）。cost＝水に浸かる所にいる損（AI が避ける強さ）
-    map: "assets/map_tide.jpg", mini: "assets/map_tide_mini.jpg",
+    map: "assets/map_tide.jpg", mini: "assets/map_tide_mini.jpg", bleed: 0.7,
   };
   // 泉の聖域（128×72）：塀に囲まれた神殿の中庭。中央の泉が周期的に湧き、中にいる駒の傷が癒える（ギミック spring）
   const SPRING = {
@@ -184,7 +184,7 @@ window.SCS2 = window.SCS2 || {};
     ],
     start: { p: { x: 32, y: 35 }, c: { x: 96, y: 35 } },                     // 中庭の植え込みの内側から（同上）
     gimmick: { kind: "spring", x: 64, y: 33.8, r: 10.3, first: 6, period: 7, surge: 2, heal: 8 },   // 6ターン目に光り、7・8ターン目に湧く（以後7ターンごと）。湧いている間、泉の中の駒は毎ターン8回復
-    map: "assets/map_spring.jpg", mini: "assets/map_spring_mini.jpg",
+    map: "assets/map_spring.jpg", mini: "assets/map_spring_mini.jpg", bleed: 0.58,
   };
   const ARENAS = [PLAZA, LAVA, FOREST, CITY, TIDE, SPRING];
   ARENAS.forEach((A) => { if (!D.ARENAS.some((a) => a.key === A.key)) D.ARENAS.push(A); });
