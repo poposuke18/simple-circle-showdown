@@ -31,11 +31,12 @@ window.SCS2 = window.SCS2 || {};
     return rounds;
   }
   // ===== 連戦の状態（v2.s4.cond）=====
-  const condFresh = () => { const cond = {}; for (const k of TEAMS) cond[k] = { trust: 0.6, lead: null, log: [], units: [0, 1, 2].map(() => ({ fat: 0, mor: 0 })) }; return cond; };
+  const condFresh = () => { const cond = {}; for (const k of TEAMS) cond[k] = { trust: 0.6, lead: null, log: [], streak: 0, units: [0, 1, 2].map(() => ({ fat: 0, mor: 0, ko: 0 })) }; return cond; };
   const condOk = (c) => !!c && TEAMS.every((k) => c[k] && Number.isFinite(c[k].trust) && Array.isArray(c[k].units) && c[k].units.length === 3 && c[k].units.every((u) => u && Number.isFinite(u.fat) && Number.isFinite(u.mor)));
   const ensureCond = (L) => { if (!condOk(L.cond)) L.cond = condFresh(); return L.cond; };   // 古い保存には無い
   // 隊長＝性格から（v2.s4.cmd.lead2）：規律・誇り・忍耐・自信。同点は並びの先。シーズン中の交代（c.lead）があればそれ
-  const mvOf = (choices) => choices.map((c) => SCS.derive.buildUnit("x", c).mv);
+  const builtOf = (choices) => choices.map((c) => SCS.derive.buildUnit("x", c));
+  const mvOf = (choices) => builtOf(choices).map((u) => u.mv);
   const leaderScore = (mv) => 0.35 * mv[4] + 0.25 * mv[6] + 0.2 * mv[3] + 0.2 * mv[8];
   function leaderOf(choices, c) {
     if (c && Number.isInteger(c.lead) && c.lead >= 0 && c.lead < choices.length) return c.lead;
@@ -45,10 +46,12 @@ window.SCS2 = window.SCS2 || {};
   }
   // 相性（v2.s4.cmd.fit）：隊員ごとに、隊長との性格の組み合わせで −1〜+1。隊長自身は 0
   function fitOf(choices, lead) {
-    const mvs = mvOf(choices), L = mvs[lead], ls = leaderScore(L);
+    const us = builtOf(choices), mvs = us.map((u) => u.mv), L = mvs[lead], ls = leaderScore(L);
     return mvs.map((m, i) => {
       if (i === lead) return 0;
-      let f = 0.2 + 0.35 * m[5] + 0.3 * m[4];                                                 // 順応性・規律＝従う側の素質
+      const mi = us[i].micros;
+      let f = 0.28 + 0.35 * m[5] + 0.3 * m[4] + 0.2 * (mi.D2 - 0.5) + 0.15 * (mi.B4 - 0.5);      // 順応性・規律＝従う側の素質。小カテゴリ D2 戦術切替・B4 隊形に従う（v2.s4.micro）
+      if (mi.C4 > 0.7) f -= 0.2;                                                               // 状況を強気に見る駒は自分の見立てを優先する
       if (m[8] > 0.4) { f -= 0.25; if (leaderScore(m) > ls) f -= 0.2; }                       // 過信＝自分が指揮すべきだと思う
       if (Math.abs(m[6]) >= 0.4 && Math.abs(L[6]) >= 0.4 && Math.sign(m[6]) !== Math.sign(L[6])) f -= 0.35;  // 誇りのぶつかり（騎士道 vs 手段選ばず）
       if (Math.abs(m[0] - L[0]) >= 1.0) f -= 0.25;                                             // 闘争心のずれ（猪突 vs 専守）
@@ -62,8 +65,12 @@ window.SCS2 = window.SCS2 || {};
   // 試合の後に更新（v2.s4.cond.fat / mor / lead）。units＝エンジンの駒（u.st・micros・coop・mv を読む）、res＝その部隊から見て w/l/d
   function settle(L, key, units, res, turns, leadIdx) {
     const c = ensureCond(L)[key], leader = units[leadIdx] || null, down = units.filter((u) => !u.alive).length;
+    const ev = [], trust0 = c.trust;                                                          // 出来事（v2.s4.story）：優先順に並べて1節に最大2つ
+    c.streak = res === "w" ? Math.max(1, (c.streak || 0) + 1) : res === "l" ? Math.min(-1, (c.streak || 0) - 1) : 0;
     units.forEach((u, i) => {
       const cu = c.units[i]; if (!cu) return;
+      const mor0 = cu.mor;
+      cu.ko = u.alive ? 0 : (cu.ko || 0) + 1;
       const C5 = u.micros.C5, coop = u.coop, lone = coop < 0.35;
       let d = res === "w" ? 0.25 : res === "l" ? -0.25 : 0; if (lone && d < 0) d *= 0.5;
       d += u.st.kills * 0.12 * (lone ? 1.5 : 1) + u.st.flanks * 0.04;
@@ -75,6 +82,13 @@ window.SCS2 = window.SCS2 || {};
       cu.mor = clamp(cu.mor * 0.6 + d, -1, 1);
       const hpf = u.alive ? clamp(u.hp / u.maxHp, 0, 1) : 0, gain = 0.15 * (1 - hpf) + (u.alive ? 0 : 0.2) + 0.1 * Math.min(1, u.st.winded / Math.max(1, turns));   // 倒れると0.35（一度で「疲れが残る」）
       cu.fat = clamp(cu.fat * (0.45 - 0.12 * Math.max(0, u.mv[3])) + gain, 0, 1);                 // 節の間に回復（忍耐が強いほど）
+      const dm = cu.mor - mor0;                                                                  // 士気の急変（性格で出方が違う）
+      if (dm >= 0.3 && lone && u.st.kills > 0) ev.push({ p: 4, kind: "mor", text: `${u.name}、手柄に酔う（${u.st.kills}体撃破）` });
+      else if (dm <= -0.3 && !u.alive) ev.push({ p: 4, kind: "mor", text: `${u.name}、倒されて腐る` });
+      else if (dm <= -0.3 && coop > 0.6 && down - (u.alive ? 0 : 1) > 0) ev.push({ p: 4, kind: "mor", text: `${u.name}、仲間を失って沈む` });
+      if (res === "l" && (u.fit || 0) < -0.3 && leader && u !== leader) ev.push({ p: 5, kind: "feud", text: `${u.name}、隊長 ${leader.name} への不満が募る` });
+      if (cu.ko >= 2) ev.push({ p: 6, kind: "fat", text: `${u.name}、${cu.ko}試合続けて倒れ、疲労が抜けない` });
+      if ((u.st.defy || 0) >= 2) ev.push({ p: 7, kind: "defy", text: `${u.name}、${u.st.defy}度も号令に背いた` });
     });
     let t = res === "w" ? 0.12 : res === "l" ? -0.12 : 0;
     const avgFit = units.reduce((a, u) => a + (u.fit || 0), 0) / Math.max(1, units.length - 1);
@@ -85,9 +99,16 @@ window.SCS2 = window.SCS2 || {};
     if (c.trust < 0.25 && leader && !(Number.isInteger(c.swapRound) && L.round - c.swapRound < 2)) {   // 交代は2節あける
       let best = -1, bv = -Infinity;
       units.forEach((u, i) => { if (i === leadIdx) return; const v = leaderScore(u.mv) + (u.mv[8] > 0.4 ? 0.3 : 0); if (v > bv) { bv = v; best = i; } });
-      if (best >= 0) { c.lead = best; c.trust = 0.5; c.swapRound = L.round; if (!c.log) c.log = []; c.log.push({ round: L.round, text: `隊長交代：${leader.name} → ${units[best].name}` }); if (c.log.length > 3) c.log.shift(); }
+      if (best >= 0) { c.lead = best; c.trust = 0.5; c.swapRound = L.round; ev.push({ p: 1, kind: "swap", text: `隊長交代：${leader.name} → ${units[best].name}（${units[best].mv[8] > 0.4 ? "指揮を奪った" : "推された"}）` }); }
     }
+    if (leader && trustWord(trust0) !== trustWord(c.trust) && !ev.some((e) => e.kind === "swap")) ev.push({ p: 2, kind: "trust", text: `隊長 ${leader.name} への信頼が${c.trust > trust0 ? "厚くなる" : c.trust < 0.45 ? "薄れる" : "揺らぐ"}` });
+    if (c.streak >= 3) ev.push({ p: 3, kind: "streak", text: `${c.streak}連勝、部隊が勢いづく` }); else if (c.streak <= -3) ev.push({ p: 3, kind: "streak", text: `${-c.streak}連敗、空気が重い` });
+    if (res === "w" && leader && leader.alive && leader.st.kills > 0 && units.every((u) => u.st.kills <= leader.st.kills)) ev.push({ p: 8, kind: "lead", text: `隊長 ${leader.name} が先頭に立って勝利` });
+    if (!c.log) c.log = [];
+    for (const e of ev.sort((a, b) => a.p - b.p).slice(0, 2)) c.log.push({ round: L.round, kind: e.kind, text: e.text });
+    while (c.log.length > 20) c.log.shift();
   }
+  const storyOf = (L, key, n) => { const c = ensureCond(L)[key]; return (c.log || []).slice(-n); };
   // 画面用の言葉（v2.s4.cond.ui）
   const fatWord = (f) => (f < 0.15 ? "万全" : f < 0.35 ? "少し疲れ" : f < 0.55 ? "疲れが残る" : "消耗が激しい");
   const morWord = (m) => (m > 0.4 ? "高い" : m > 0.1 ? "やや高い" : m > -0.1 ? "普通" : m > -0.4 ? "やや低い" : "低い");
@@ -142,5 +163,5 @@ window.SCS2 = window.SCS2 || {};
     if (L.round >= TEAMS.length - 1) return null;
     const m = schedule(L.season)[L.round].find((p) => p.includes("you")); return { home: m[0], away: m[1], foe: rivalOf(m[0] === "you" ? m[1] : m[0]) };
   }
-  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, fatWord, morWord, trustWord, fitWord };
+  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, storyOf, fatWord, morWord, trustWord, fitWord };
 })();

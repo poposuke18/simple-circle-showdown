@@ -152,6 +152,21 @@ button { font-family: inherit; color: inherit; }
 .hl-sub { margin-top: 6px; font-size: 20px; text-align: center; color: var(--dim); }
 .rs-empty { grid-column: 1 / -1; display: grid; place-items: center; font-size: 28px; color: var(--dim); }
 .rs-strip { left: 40px; right: 620px; bottom: 36px; height: 150px; display: flex; align-items: center; gap: 30px; padding: 0 36px; }
+/* この試合のあと（リーグ・v2.s4.story） */
+.rs-after { left: 40px; right: 40px; top: 612px; height: 240px; padding: 14px 26px; display: none; grid-template-columns: 1fr 1fr; column-gap: 30px; }
+.rs-after.show { display: grid; }
+.rs-after h3 { grid-column: 1 / -1; margin: 0 0 6px; font-size: 19px; color: #8fd0ff; font-weight: 700; letter-spacing: 2px; }
+.ra-u { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; height: 56px; font-size: 18px; }
+.ra-u .tk.tk-xs { width: 42px; height: 42px; border-width: 4px; }
+.ra-u b { font-family: "Russo One", sans-serif; font-weight: 400; font-size: 19px; }
+.ra-u small { display: block; font-size: 16px; color: #cfe0f5; font-weight: 700; }
+.ra-u small i { font-style: normal; color: #ffd866; }
+.ra-ev { font-size: 19px; line-height: 1.6; color: #eef4ff; }
+.ra-ev p { margin: 0 0 4px; padding-left: 16px; position: relative; } .ra-ev p::before { content: "◆"; position: absolute; left: 0; color: #ffd866; font-size: 13px; top: 2px; }
+.ra-ev .none { color: var(--dim); }
+.lg-story { margin-top: 6px; font-size: 17px; line-height: 1.55; }
+.lg-story p { margin: 0; padding-left: 14px; position: relative; } .lg-story p::before { content: "◆"; position: absolute; left: 0; color: #ffd866; font-size: 11px; top: 3px; }
+.lg-story small { color: var(--dim); font-weight: 700; margin-right: 6px; }
 .rs-u { display: flex; align-items: center; gap: 14px; }
 .rs-u .tk { width: 92px; height: 92px; }
 .rs-u div { font-family: "Russo One", sans-serif; font-size: 22px; } .rs-u small { display: block; font-family: "Noto Sans JP", sans-serif; font-size: 18px; color: var(--dim); }

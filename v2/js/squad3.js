@@ -413,7 +413,7 @@ window.SCS = window.SCS || {};
     for (const tm of ["P", "C"]) { const c = COND && COND[tm], arr = tm === "P" ? P : C; if (c && Number.isInteger(c.lead) && arr[c.lead]) LEAD[tm] = { u: arr[c.lead], trust: clamp(c.trust == null ? 0.6 : c.trust, 0, 1), fell: false }; }
     for (const tm of ["P", "C"]) if (LEAD[tm]) Object.assign(LEAD[tm], { order: null, ignored: new Set(), defied: new Set() });
     // 従う度（v2.s4.cmd.obey）：相性と信頼。短気な駒は撃たれている最中は号令が耳に入らない。cond が無ければ 0
-    const obey = (u) => { const L = LEAD[u.team]; if (!L || !L.u.alive || L.u === u) return 0; if (u.mv[2] < -0.3 && (u.supp || 0) >= 0.3) return 0; return clamp(0.5 + 0.5 * u.fit + 0.4 * (L.trust - 0.6), 0, 1); };
+    const obey = (u) => { const L = LEAD[u.team]; if (!L || !L.u.alive || L.u === u) return 0; const m = u.micros; if (m.C5 < 0.35 && (u.supp || 0) >= 0.3) return 0; return clamp(0.5 + 0.5 * u.fit + 0.4 * (L.trust - 0.6) + 0.2 * (m.B4 - 0.5) + 0.15 * (m.D2 - 0.5), 0, 1); };   // v2.s4.micro
     const orderOf = (u) => { const L = LEAD[u.team]; return L && L.u.alive && L.u !== u ? L.order : null; };
     const guardOrder = (u) => { const od = orderOf(u); return !!od && od.kind === "guard" && obey(u) >= 0.5; };
     // 隊形を保つ力への足し引き：信頼（v2.s4.cond.cmd）・「固まれ」の号令・低い士気（規律が強いと崩れない）。cond が無ければ 0
@@ -421,12 +421,12 @@ window.SCS = window.SCS || {};
     // 号令（v2.s4.cmd.style）：隊長の性格と今の構えから、ターンごとに1つ。優先：退け＞守れ＞集中＞突っ込め＞固まれ。変わった時だけ記録の文
     function decideOrder(tm, envLines) {
       const L = LEAD[tm]; if (!L || !CMD) return; const lead = L.u; if (!lead.alive) { L.order = null; return; }
-      const mv = lead.mv, allies = alliesOf(lead).filter((a) => a.alive && a !== lead); let od = null;
-      if (lead.engage === "retreat" && (mv[2] > 0.2 || lead.hp / lead.maxHp < 0.4)) od = { kind: "fallback" };
+      const mv = lead.mv, lm = lead.micros, allies = alliesOf(lead).filter((a) => a.alive && a !== lead); let od = null;   // 性格＝小カテゴリで（v2.s4.micro）
+      if (lead.engage === "retreat" && (lm.C5 > 0.6 || lead.hp / lead.maxHp < 0.4)) od = { kind: "fallback" };
       else if (mv[6] >= 0.4) { for (const a of allies) { if (!isBackline(a)) continue; const foe = nearestKnownEnemy(a); if (foe && dist(foe, a) < imminentBand(foe)) { od = { kind: "guard", tgt: foe, ward: a }; break; } } }
-      if (!od && lead.target && mv[4] > 0.2 && allies.some((a) => a.target !== lead.target && knownEnemies(a).includes(lead.target))) od = { kind: "focus", tgt: lead.target };
-      if (!od && lead.engage === "commit" && mv[0] > 0.3) od = { kind: "charge", tgt: lead.target };
-      if (!od && (mv[0] < -0.3 || mv[4] > 0.3) && lead.engage !== "commit") od = { kind: "hold" };
+      if (!od && lead.target && lm.B4 > 0.6 && allies.some((a) => a.target !== lead.target && knownEnemies(a).includes(lead.target))) od = { kind: "focus", tgt: lead.target };
+      if (!od && lead.engage === "commit" && (mv[0] > 0.3 || lm.A2 > 0.65)) od = { kind: "charge", tgt: lead.target };
+      if (!od && (mv[0] < -0.3 || lm.B4 > 0.7) && lead.engage !== "commit") od = { kind: "hold" };
       const keyOf = (o) => (o ? o.kind + (o.kind === "focus" ? ":" + o.tgt.idx : o.kind === "guard" ? ":" + o.ward.idx : "") : "");
       const same = keyOf(od) === keyOf(L.order);                                            // 同じ号令（突っ込めは的が変わっても同じ）
       if (!same && L.order && od && od.kind !== "fallback" && turn - (L.orderT || 0) < 3) return;   // 号令は3ターンは保つ（『退け』だけは即）
@@ -441,7 +441,7 @@ window.SCS = window.SCS || {};
       const L = LEAD[tm]; if (!L || !L.order || !L.u.alive) return;
       for (const u of alliesOf(L.u)) {
         if (!u.alive || u === L.u) continue; const o = obey(u);
-        if (o < 0.35 && !L.ignored.has(u)) { L.ignored.add(u); u._defy = true;
+        if (o < 0.35 && !L.ignored.has(u)) { L.ignored.add(u); u._defy = true; u.st.defy = (u.st.defy || 0) + 1;
           if (L.order.kind === "fallback" && u.fit < -0.3 && u.mv[0] > 0.3) envLines.push({ text: `── ${u.name} は『退け』の号令に背を向け、前へ出る。`, cls: "cm" });
           else envLines.push({ text: `── ${u.name} は ${L.u.name} の号令に耳を貸さず、我が道を行く。`, cls: "cm" }); }
       }
@@ -945,7 +945,7 @@ window.SCS = window.SCS || {};
       if (COND) { commit += u.mor * 0.3; retreat -= u.mor * 0.3; }                              // 連戦の士気（v2.s4.cond.mor）
       { const od = orderOf(u); if (od) { const o = obey(u);                                   // 号令（v2.s4.cmd.obey）：突っ込め＝攻める・退け＝退く。反発する猪突は『退け』に逆らう
         if (od.kind === "charge") commit += 0.35 * o;
-        if (od.kind === "fallback") { retreat += 0.4 * o; commit -= 0.3 * o; if (o < 0.35 && u.fit < -0.3 && u.mv[0] > 0.3) commit += 0.2; } } }
+        if (od.kind === "fallback") { retreat += 0.4 * o; commit -= 0.3 * o; if (o < 0.35 && u.fit < -0.3 && (u.mv[0] > 0.3 || m.A2 > 0.65)) commit += 0.2; } } }
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");

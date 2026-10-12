@@ -306,6 +306,10 @@
         <span class="lb">体力</span><i class="bar2"><b style="width:${Math.round((1 - u.fat) * 100)}%"></b></i><span class="wd">${Lg.fatWord(u.fat)}</span>
         <span class="lb">士気</span><i class="bar2 m"><b style="width:${Math.round((u.mor + 1) / 2 * 100)}%"></b></i><span class="wd">${Lg.morWord(u.mor)}</span></div>`).join("") + `</div>`;
   }
+  function lgStory(L, k, n, title) {                                                        // 部隊の出来事（v2.s4.story）
+    const ev = Lg.storyOf(L, k, n); if (!ev.length) return "";
+    return `<div class="lg-h2">${title}</div><div class="lg-story">${ev.map((e) => `<p><small>第${e.round + 1}節</small>${esc(e.text)}</p>`).join("")}</div>`;
+  }
   function enterLeague() {
     const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L);
     $("lgSeason").textContent = `シーズン ${L.season}`;
@@ -315,7 +319,7 @@
     const lastHtml = last ? `<div class="lg-h2">第${L.log.length}節の結果</div>` + last.map((m) => `<div class="lg-m ${m.a === "you" || m.b === "you" ? "me" : ""}"><span class="${mark(m, "a") === "勝" ? "win" : ""}">${esc(lgName(m.a))}</span><i class="r r-${{ 勝: "w", 負: "l", 分: "d" }[mark(m, "a")]}">${mark(m, "a")}</i><i class="r r-${{ 勝: "w", 負: "l", 分: "d" }[mark(m, "b")]}">${mark(m, "b")}</i><span class="${mark(m, "b") === "勝" ? "win" : ""}">${esc(lgName(m.b))}</span></div>`).join("") : "";
     if (done) {
       const rank = order.indexOf("you") + 1;
-      $("lgSide").innerHTML = `<div class="lg-final"><small>最終順位</small><b>${rank}<span>位</span></b><div class="lg-champ">優勝　${esc(lgName(order[0]))}</div></div>` + lastHtml;
+      $("lgSide").innerHTML = `<div class="lg-final"><small>最終順位</small><b>${rank}<span>位</span></b><div class="lg-champ">優勝　${esc(lgName(order[0]))}</div></div>` + lgStory(L, "you", 20, "シーズンの物語") + lastHtml;
       $("lgGo").textContent = "新しいシーズン";
     } else {
       const nm = Lg.nextMatch(L), foe = nm.foe, ar = Wd.arenaFor(foe), others = Lg.schedule(L.season)[L.round].filter((p) => !p.includes("you"));
@@ -323,6 +327,7 @@
         <div class="lg-next" style="--rc:${foe.pal.rimA}"><div class="lg-vs"><span>${esc(foe.name)}</span><span class="tks">${lgToks(foe.key)}</span></div>
           <div class="lg-where"><img src="${ar.mini}" alt=""><div>${esc(ar.name)}</div></div></div>
         <div class="lg-h2">部隊の状態</div>${lgCond(L, "you")}${lgCond(L, foe.key)}
+        ${lgStory(L, "you", 6, "部隊の出来事")}${lgStory(L, foe.key, 2, `${esc(foe.name)}の近況`)}
         <div class="lg-h2">ほかの試合</div>${others.map(([a, b]) => `<div class="lg-m"><span>${esc(lgName(a))}</span><i class="vs">VS</i><span>${esc(lgName(b))}</span></div>`).join("")}` + lastHtml;
       $("lgGo").textContent = "試合へ";
     }
@@ -433,14 +438,18 @@
     if (ended) { if (skip) showResult(); return; }
     ended = true; endAt = clock; result = outcome();
     if (!sortieCfg.spec) St.record(sortieCfg.rival.key, result);
-    if (sortieCfg.league) { SCS2.league.finishRound(lgData(), result, run.battle, sortieCfg.mine.choices); St.save(); }   // ended で一度だけ。同じ節のほかの試合と、連戦の状態もここで決まる
+    if (sortieCfg.league) {                                                                   // ended で一度だけ。同じ節のほかの試合と、連戦の状態もここで決まる
+      const L = lgData(), before = JSON.parse(JSON.stringify(Lg.ensureCond(L).you)), round = L.round;
+      SCS2.league.finishRound(L, result, run.battle, sortieCfg.mine.choices); St.save();
+      lgAfter = { before, after: JSON.parse(JSON.stringify(L.cond.you)), events: (L.cond.you.log || []).filter((e) => e.round === round) };
+    }
     $("wEndMain").textContent = bannerOf(result); $("wEnd").classList.add("show");
     updWatch();
     if (skip) showResult();
   }
 
   // ===== 結果とハイライト =====
-  let hls = [];
+  let hls = [], lgAfter = null;
   const cardCvs = [];
   function snapViews(snap) {
     const vs = snap.units.map((u) => ({ ...u, icon: u.alive ? Bd.ICON_OF[u.label] || "dots" : null, iconT: -1e9, hitT: -1e9, koT: 0, trail: [] }));
@@ -463,6 +472,10 @@
         const k = { かばう: [4.2, "盾が割り込んだ"], 盾: [3.0, "火力を引き受けた"], 必殺: [3.6, "必殺"], 背後: [3.4, "背後を取った"], 側面: [2.7, "側面を突いた"] }[u.label];
         if (k) out.push({ t, id: u.id, other: u.tgt, score: k[0] + mine, cap: `${name(u)}、${k[1]}`, sub: "" });
         else if ((u.label === "立て直し" || u.label === "退避") && low) out.push({ t, id: u.id, score: 2.4 + mine, cap: `${name(u)} が退いた`, sub: "深手を負って" });
+        const m = u.mind;                                                                     // 指揮の場面（v2.s4.story.hl）：号令に従った・背いて倒れた
+        if (m && m.order === "fallback" && m.obey >= 0.35 && (u.label === "立て直し" || u.label === "退避")) out.push({ t, id: u.id, score: 2.8 + mine, cap: `${name(u)}、号令で退いた`, sub: "『退け』に従って" });
+        if (m && m.order === "guard" && m.obey >= 0.5 && u.label === "かばう") out.push({ t, id: u.id, other: u.tgt, score: 4.0 + mine, cap: `${name(u)}、号令で盾になった`, sub: "『守れ』に従って" });
+        if (m && m.order && m.obey < 0.35) { const dead = [t + 1, t + 2].some((k) => snaps[k] && snaps[k].died.includes(u.id)); if (dead) out.push({ t, id: u.id, score: 3.3 + mine, cap: `${name(u)}、号令に背いて倒れた`, sub: "我が道を行った末に" }); }
       }
     }
     const last = snaps[snaps.length - 1];
@@ -480,6 +493,12 @@
     if (sortieCfg.spec) { $("rsBanner").style.cssText = r === "d" ? "" : `--rc:${sortieCfg.pal[r === "w" ? "P" : "C"].rimA}`; $("rsVerdict").textContent = `${run.battle.turn} ターン・${sortieCfg.rivalA.name} VS ${sortieCfg.rival.name}`; }
     else { $("rsBanner").style.cssText = ""; $("rsVerdict").textContent = `${an.plr.verdict}　（${run.battle.turn} ターン・VS ${sortieCfg.rival.name}）`; }
     hls = findHighlights(run.snaps);
+    if (sortieCfg.league && lgAfter) {                                                        // この試合のあと（v2.s4.story）：体力と士気の変化と、この節の出来事
+      const sq = St.data.squad, chg = (w0, w1) => (w0 === w1 ? w1 : `${w0}→<i>${w1}</i>`);
+      $("rsAfter").innerHTML = `<h3>この試合のあと</h3><div>` + sq.map((f, i) => { const b = lgAfter.before.units[i], a = lgAfter.after.units[i]; return `<div class="ra-u">${tkHtml("P", f.emb, "tk-xs", Wd.YOU)}<div><b>${esc(f.name)}</b><small>体力 ${chg(Lg.fatWord(b.fat), Lg.fatWord(a.fat))}　士気 ${chg(Lg.morWord(b.mor), Lg.morWord(a.mor))}</small></div></div>`; }).join("")
+        + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${Lg.trustWord(lgAfter.before.trust) !== Lg.trustWord(lgAfter.after.trust) ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}まま</p>`}</div>`;
+      $("rsAfter").classList.add("show");
+    } else { $("rsAfter").classList.remove("show"); lgAfter = null; }
     $("rsCards").style.gridTemplateColumns = `repeat(${Math.max(1, hls.length)}, 600px)`;
     $("rsCards").innerHTML = hls.length ? hls.map((h, i) => `<div class="hl ${h.surprise ? "sp" : ""}" data-i="${i}"><div class="hl-cv"><canvas></canvas><span class="hl-rp">REPLAY</span></div><div class="hl-cap">${esc(h.cap)}</div><div class="hl-sub">${esc(h.sub ? h.sub + "・" : "")}ターン ${run.snaps[h.t].turn}</div></div>`).join("")
       : `<div class="rs-empty">見どころのない静かな戦いだった。</div>`;
