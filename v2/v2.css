@@ -239,7 +239,8 @@ button { font-family: inherit; color: inherit; }
 .mc-sec p { margin: 3px 0 0; font-size: 20px; line-height: 1.45; color: #eef4ff; }
 .mc-sec p b { color: #fff; }
 .mc-cands { margin-top: 5px; display: flex; flex-direction: column; gap: 4px; }
-.mc-c { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; font-size: 18px; color: #c9d8ea; }
+.mc-c { display: grid; grid-template-columns: 196px 1fr; align-items: center; gap: 10px; font-size: 18px; color: #c9d8ea; }
+.mc-c span small { display: inline; margin-left: 6px; font-size: 14px; color: var(--dim); font-weight: 700; }
 .mc-c.on { color: #fff; font-weight: 700; }
 .mc-c i { display: block; height: 12px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
 .mc-c i b { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #3f8fe0, #8fd0ff); opacity: .55; }

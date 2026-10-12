@@ -442,6 +442,7 @@ window.SCS = window.SCS || {};
     const cenLive = (t) => { let x = 0, y = 0, n = 0; for (const u of t) if (u.alive) { x += u.x; y += u.y; n++; } return n ? { x: x / n, y: y / n } : null; }; // 生存敵の重心＝本能(嗅覚)で向かう先
     const homeOf = { P: cen(C), C: cen(P) };          // 各チームの「敵の居た方向」＝索敵の漠然とした向き先（開幕位置）
     const known = { P: new Map(), C: new Map() };     // team → Map(敵 → {lastSeen, x, y})。即時共有＋鮮度減衰
+    const everSeen = { P: false, C: false };          // 考えの札用：一度でも敵を見たか
     const DETECT_DECAY = 3;                            // 全員が見失ってこのターン超でロスト＝再索敵
     if (fogless) for (const u of ALL) known[u.team === "P" ? "C" : "P"].set(u, { lastSeen: 0, x: u.x, y: u.y }); // 霧なし：開幕から各体を敵チームの発見済みに登録（索敵描写も発生しない）
     function refreshFogless() { for (const tm of ["P", "C"]) { const km = known[tm]; for (const u of (tm === "P" ? C : P)) { if (u.alive) km.set(u, { lastSeen: turn, x: u.x, y: u.y }); else km.delete(u); } } }
@@ -464,7 +465,7 @@ window.SCS = window.SCS || {};
       if (fogless) { refreshFogless(); return; }                                          // 霧なし：常に全敵発見済み（位置だけ更新）
       // 探知した瞬間に「誰が見つけたか（最寄りの発見者）」を記録＝描写で常に発見者を名指しできる（移動後の再判定では取りこぼす）
       for (const u of ALL) { if (!u.alive) continue; const km = known[u.team]; for (const e of enemiesOf(u)) { if (e.alive && detects(u, e)) { const prev = km.get(e), d = dist(u, e); if (!prev || prev.lastSeen !== turn || d < (prev._bd || Infinity)) km.set(e, { lastSeen: turn, x: e.x, y: e.y, by: u, _bd: d }); } } }
-      for (const tm of ["P", "C"]) { const km = known[tm]; for (const [e, info] of km) if (!e.alive || turn - info.lastSeen > DETECT_DECAY) km.delete(e); }
+      for (const tm of ["P", "C"]) { const km = known[tm]; if (km.size) everSeen[tm] = true; for (const [e, info] of km) if (!e.alive || turn - info.lastSeen > DETECT_DECAY) km.delete(e); }
     }
     const knownEnemies = (u) => enemiesOf(u).filter((e) => e.alive && known[u.team].has(e)); // AIが反応してよい敵＝発見済み
     function nearestKnownEnemy(u) { let best = null, bd = Infinity; for (const e of knownEnemies(u)) { const d = dist(u, e); if (d < bd) { bd = d; best = e; } } return best; }
@@ -502,7 +503,7 @@ window.SCS = window.SCS || {};
       if (!live.length) { u._focusCount = 0; u.peeling = false; return null; } // 未発見＝索敵へ（decideでhome方向へ前進）
       const iAmSupport = sup(u);
       const myWard = (isFrontline(u) && u.coop > 0.45) ? findWard(u) : null; // 守る後衛がいれば迎撃対象に。★協調性が高い前衛だけがかばう（一匹狼は味方を守らない）
-      let best = null, bv = -Infinity, bestPeel = false, bestParts = null;
+      let best = null, bv = -Infinity, bestPeel = false, bestParts = null, second = null, sv = -Infinity;
       for (const e of live) {
         const d = dist(u, e), fl = flankOf(u, e);
         const parts = { near: -d / maxDist * 1.0 }; let v = parts.near;                   // 考えの札（v2.s4.think）用：項目ごとの寄与                                   // 近いほど良い
@@ -537,10 +538,10 @@ window.SCS = window.SCS || {};
         if (iAmSupport) { for (const a of alliesOf(u)) { if (a.alive && a !== u && isBackline(a) && dist(e, a) <= imminentBand(e)) { peel = true; break; } } }
         if (peel) v += (parts.peel = 0.6 + u.micros.D1 * 0.4);
         if (u.target === e && e.alive) v += (parts.stick = 0.4 + u.micros.B4 * 0.3); // ヒステリシス（規律）＝狙いを定めた的を無駄に変えない
-        if (v > bv) { bv = v; best = e; bestPeel = peel; bestParts = parts; }
+        if (v > bv) { second = best; sv = bv; bv = v; best = e; bestPeel = peel; bestParts = parts; } else if (v > sv) { second = e; sv = v; }
       }
       u.peeling = bestPeel; // ラベル用（_focusCount は step でターゲット確定後に一括集計＝リングと同基準）
-      u._aim = best ? { e: best, parts: bestParts, n: live.length } : null;
+      u._aim = best ? { e: best, parts: bestParts, n: live.length, alt: second ? { e: second, gap: bv - sv } : null } : null;
       return best;
     }
 
@@ -990,7 +991,9 @@ window.SCS = window.SCS || {};
     }
     function mindSearch(u, d0) {
       let age = -1; for (const info of known[u.team].values()) age = Math.max(age, turn - info.lastSeen);
-      return Object.assign(mindBase(u), { search: true, dir: d0.searchDir ? { x: d0.searchDir.x, y: d0.searchDir.y } : null, age, move: d0.move, atk: d0.attack });
+      let dir = null; if (d0.searchDir) { const dx = (d0.searchDir.x - u.x) * (u.team === "P" ? 1 : -1), dy = d0.searchDir.y - u.y, far = Math.hypot(dx, dy) >= 6; dir = !far ? "here" : Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? "fwd" : "back") : (dy > 0 ? "down" : "up"); }
+      const ever = everSeen[u.team], hold = FORM2 && holdOf(u) > 0.45 && !!formSlot2(u);
+      return Object.assign(mindBase(u), { search: true, dir, age: age >= 0 ? age : ever ? 99 : -1, hold, move: d0.move, atk: d0.attack });
     }
     function decide3(u) {
       const tgt = u.target;
@@ -1009,12 +1012,12 @@ window.SCS = window.SCS || {};
       // 援護射撃：目標へ寄っていく味方がいる時、目標を撃てる場所に「与えられる制圧」の分だけ値を足す（協調性で強く）
       const exploit = SUP ? alliesOf(u).filter((a) => a !== u && a.alive && a.target === tgt && (a.winDist < 30 || a.engage === "commit") && dist(a, tgt) < 45).length : 0;
       const pinV = exploit && u.ammo > 0 ? Math.min(2, exploit) * u.ranged.fireRate * supShot(u.ranged) * (1 - tgt.micros.C5 * SUP.c5) * SUP.pinK * (0.3 + u.coop) : 0;
-      const memo = new Map(), memoT = new Map();
+      const memo = new Map(), memoT = new Map(), memoA = new Map();
       const U = (pos, moving) => {
         const key = cellOf(pos) * 2 + (moving ? 1 : 0); if (memo.has(key)) return memo.get(key);
         const d2 = dist(pos, fp), los2 = losClear(pos, fp), atk = chooseAttack(u, tgt, pos, d2, los2);
         const ua = utilAt3(u, tgt, c, pos, d2, los2, atk, moving, V3C.pred ? wP : 0), thr = ua.threat;   // 脅威は動いた後の敵の位置も見込む（段2）
-        memoT.set(key, thr);
+        memoT.set(key, thr); memoA.set(key, atk.attack);
         let v = ua.v;
         if (pinV && los2 && atk.attack === "RANGED") v += pinV;
         v -= thr * c.wDef * (coverW - 1 + kite * 0.6);                                       // 隠れたがる性格ほど射線に身を晒すのを嫌う
@@ -1039,9 +1042,9 @@ window.SCS = window.SCS || {};
         if (!best || v > best.v) best = { v, p, s1 };
         {                                                                                     // 候補の種類（記録の文の why3 と同じ見方）：その場／背後へ回る／側面へ回る／物陰へ／詰める／下がる／横へ
           let kd = "stay";
-          if (!stay) { const farP = dist(u, p) > st * 1.2, ftP = flankVs3(p, tgt, f), t0 = memoT.get(cellOf(u) * 2), t1 = memoT.get(cellOf(s1) * 2 + 1), dd = dist(p, fp) - dist(u, fp);
-            kd = farP && ftP === 2 ? "rear" : farP && ftP === 1 ? "side" : t0 != null && t1 != null && t0 > 3 && t1 < t0 * 0.6 ? "cover" : dd < -2 ? "adv" : dd > 2 ? "back" : "lat"; }
-          if (!kinds[kd] || v > kinds[kd].v) kinds[kd] = { v, p };
+          if (!stay) { const farP = dist(u, p) > st * 1.2, ftP = flankVs3(p, tgt, f), t0 = memoT.get(cellOf(u) * 2), t1 = memoT.get(cellOf(s1) * 2 + 1), dd = dist(s1, fp) - dist(u, fp);
+            kd = farP && ftP === 2 ? "rear" : farP && ftP === 1 ? "side" : t0 != null && t1 != null && t0 > 3 && t1 < t0 * 0.6 ? "cover" : dd < -1.5 ? "adv" : dd > 1.5 ? "back" : "lat"; }
+          if (!kinds[kd] || v > kinds[kd].v) kinds[kd] = { v, p, atk: memoA.get(cellOf(s1) * 2 + (stay ? 0 : 1)) || "NONE" };
         }
       }
       if (!best) return decide(u);                                                          // 念のため（その場を必ず残すので通常は来ない）
@@ -1063,8 +1066,10 @@ window.SCS = window.SCS || {};
       const dec = { v: U(np, moved) - gimK(u, np, 0) * 1.2, move, attack: atk.attack, ultKind: atk.ultKind, newPos: np, d2, los2, plan: u._plan ? { x: u._plan.x, y: u._plan.y } : null, why3: why };
       const out = finishDecide(u, tgt, c, dec);
       // 考えの札（[[v2ゲーム設計]] v2.s4.think）：何を狙い・どう構え・どこへ動こうとして・何と迷ったか。乱数は使わない
-      const cands = Object.entries(kinds).map(([k, o]) => ({ k, v: o.v, on: o.p === best.p })).sort((a, b) => b.v - a.v).slice(0, 3);
-      out.mind = Object.assign(mindBase(u), { tgt: tgt.team + tgt.idx, aim: u._aim && u._aim.e === tgt ? u._aim.parts : null, kind: (cands.find((x) => x.on) || cands[0]).k, cands, why3: why, move, atk: out.attack, grab: out.attack === "GRAB", dodge: out.attack === "DODGE", los: los2, d: d2 });
+      const cands = Object.entries(kinds).map(([k, o]) => ({ k, v: o.v, atk: o.atk, on: o.p === best.p })).sort((a, b) => b.v - a.v).slice(0, 3);
+      const tq = predictPos3(tgt, 1), pred = dist(tq, u) - dist(tgt, u);                   // 相手の次の動きの読み（段2 と同じ見積もり）：寄ってくる／離れる／動かない
+      const plan = u._plan ? Math.ceil(dist(u, u._plan) / Math.max(1, st)) : 0;           // 目的地まであと何ターンか
+      out.mind = Object.assign(mindBase(u), { tgt: tgt.team + tgt.idx, tgtSeen: (known[u.team].get(tgt) || {}).lastSeen === turn, alt: u._aim && u._aim.e === tgt && u._aim.alt ? { id: u._aim.alt.e.team + u._aim.alt.e.idx, gap: u._aim.alt.gap } : null, pred, plan, aim: u._aim && u._aim.e === tgt ? u._aim.parts : null, kind: (cands.find((x) => x.on) || cands[0]).k, cands, why3: why, move, atk: out.attack, grab: out.attack === "GRAB", dodge: out.attack === "DODGE", los: los2, d: d2 });
       return out;
     }
 
