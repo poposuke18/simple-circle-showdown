@@ -496,7 +496,7 @@
     if (sortieCfg.league && lgAfter) {                                                        // この試合のあと（v2.s4.story）：体力と士気の変化と、この節の出来事
       const sq = St.data.squad, chg = (w0, w1) => (w0 === w1 ? w1 : `${w0}→<i>${w1}</i>`);
       $("rsAfter").innerHTML = `<h3>この試合のあと</h3><div>` + sq.map((f, i) => { const b = lgAfter.before.units[i], a = lgAfter.after.units[i]; return `<div class="ra-u">${tkHtml("P", f.emb, "tk-xs", Wd.YOU)}<div><b>${esc(f.name)}</b><small>体力 ${chg(Lg.fatWord(b.fat), Lg.fatWord(a.fat))}　士気 ${chg(Lg.morWord(b.mor), Lg.morWord(a.mor))}</small></div></div>`; }).join("")
-        + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${Lg.trustWord(lgAfter.before.trust) !== Lg.trustWord(lgAfter.after.trust) ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}まま</p>`}</div>`;
+        + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${lgAfter.events.some((e) => e.kind === "swap" || e.kind === "trust") ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}まま</p>`}</div>`;
       $("rsAfter").classList.add("show");
     } else { $("rsAfter").classList.remove("show"); lgAfter = null; }
     $("rsCards").style.gridTemplateColumns = `repeat(${Math.max(1, hls.length)}, 600px)`;
