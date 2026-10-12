@@ -317,7 +317,7 @@
     return `<div class="lg-h2">${title}</div><div class="lg-story">${ev.map((e) => `<p><small>第${e.round + 1}節</small>${esc(e.text)}</p>`).join("")}</div>`;
   }
   function enterLeague() {
-    const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L); placeSel = -1;
+    const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L); placeSel = -1; $("lgSide").scrollTop = 0;   // 戻って来た時に上から（v2.s4.qa.lg.scroll）
     $("lgSeason").textContent = `シーズン ${L.season}`;
     $("lgTable").innerHTML = `<div class="lg-row h"><span>順位</span><span>部隊</span><b>試合</b><b>勝</b><b>分</b><b>敗</b><b>勝点</b></div>`
       + order.map((k, i) => { const t = L.table[k]; return `<div class="lg-row ${k === "you" ? "me" : ""}"><span class="rk">${i + 1}</span><span class="nm"><i class="tks">${lgToks(k)}</i>${esc(lgName(k))}</span><b>${t.p}</b><b>${t.w}</b><b>${t.d}</b><b>${t.l}</b><b class="pt">${t.pts}</b></div>`; }).join("");
