@@ -216,6 +216,13 @@ window.SCS2 = window.SCS2 || {};
       }
       ctx.restore();
     }
+    if (v.supp >= 0.3) {                                                                      // 釘付け：足元に着弾の土煙が跳ねる（制圧が強いほど濃い）
+      ctx.save(); const a0 = clamp((v.supp - 0.3) / 0.3, 0, 1);
+      for (let k = 0; k < 8; k++) { const q = st.clock / 430 + k * 0.27 + (v.idx || 0) * 0.17, ph = q % 1, ang = k * 0.8 + Math.floor(q) * 2.3, rr = R * (1.2 + 0.5 * ((k * 7) % 5) / 5), px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr * 0.85;
+        ctx.fillStyle = `rgba(92,74,52,${(1 - ph) * (0.45 + 0.3 * a0)})`; circ(ctx, px, py, 3 + ph * 4); ctx.fill();                     // 着弾の跡
+        ctx.fillStyle = `rgba(232,220,196,${(1 - ph) * (0.5 + 0.35 * a0)})`; circ(ctx, px, py - ph * 18, 4 + ph * 11); ctx.fill(); }   // 跳ね上がる土煙
+      ctx.restore();
+    }
     if (v.stamina != null && v.stamina < 0.4) {
       ctx.save(); const n = v.stamina < 0.2 ? 3 : 2;
       for (let k = 0; k < n; k++) { const p = ((st.clock / 1100 + k / n) % 1), px = x - R * 0.5 + k * R * 0.5 + Math.sin(p * 6 + k) * 6, py = y - R * 0.9 - p * R * 1.3;
@@ -372,7 +379,7 @@ window.SCS2 = window.SCS2 || {};
 
   // ===== 吹き出し（行動ラベル→アイコン。理由の中身は書かない＝見えるのは何をしようとしているかだけ）=====
   const ICON_OF = { 射撃: "aim", 集中: "aim", 斬: "swords", 背後: "swords", 側面: "swords", 剝がし: "swords", かばう: "shield", 盾: "shield", 遮蔽: "shield",
-    立て直し: "run", 退避: "run", 必殺: "bang", 攻勢: "bang", 詰め: "bang", 装填: "reload", 温存: "dots", 索敵: "dots", 様子見: "dots", 待機: "dots" };
+    立て直し: "run", 退避: "run", 釘付け: "pin", 必殺: "bang", 攻勢: "bang", 詰め: "bang", 装填: "reload", 温存: "dots", 索敵: "dots", 様子見: "dots", 待機: "dots" };
   function icon(c, kind, x, y, s, col) {
     c.save(); c.translate(x, y); c.strokeStyle = c.fillStyle = col || "#1b2029"; c.lineWidth = s * 0.2; c.lineCap = c.lineJoin = "round";
     if (kind === "aim") { circ(c, 0, 0, s * 0.6); c.stroke(); c.beginPath(); c.moveTo(0, -s); c.lineTo(0, -s * 0.3); c.moveTo(0, s * 0.3); c.lineTo(0, s); c.moveTo(-s, 0); c.lineTo(-s * 0.3, 0); c.moveTo(s * 0.3, 0); c.lineTo(s, 0); c.stroke(); circ(c, 0, 0, s * 0.13); c.fill(); }
@@ -380,6 +387,7 @@ window.SCS2 = window.SCS2 || {};
     else if (kind === "shield") { c.beginPath(); c.moveTo(0, -s * 0.9); c.lineTo(s * 0.75, -s * 0.58); c.lineTo(s * 0.64, s * 0.2); c.quadraticCurveTo(s * 0.35, s * 0.72, 0, s * 0.92); c.quadraticCurveTo(-s * 0.35, s * 0.72, -s * 0.64, s * 0.2); c.lineTo(-s * 0.75, -s * 0.58); c.closePath(); c.fill(); }
     else if (kind === "run") { circ(c, s * 0.3, -s * 0.66, s * 0.19); c.fill(); c.beginPath(); c.moveTo(s * 0.15, -s * 0.38); c.lineTo(-s * 0.1, s * 0.15); c.moveTo(-s * 0.55, -s * 0.2); c.lineTo(s * 0.05, -s * 0.32); c.lineTo(s * 0.5, -s * 0.02); c.moveTo(-s * 0.1, s * 0.15); c.lineTo(-s * 0.6, s * 0.55); c.moveTo(-s * 0.1, s * 0.15); c.lineTo(s * 0.25, s * 0.45); c.lineTo(s * 0.12, s * 0.9); c.stroke(); }
     else if (kind === "bang") { c.beginPath(); c.moveTo(-s * 0.16, -s * 0.85); c.lineTo(s * 0.16, -s * 0.85); c.lineTo(s * 0.08, s * 0.28); c.lineTo(-s * 0.08, s * 0.28); c.closePath(); c.fill(); circ(c, 0, s * 0.66, s * 0.17); c.fill(); }
+    else if (kind === "pin") { c.beginPath(); for (const yy of [-0.7, -0.32]) { c.moveTo(-s * 0.85, s * yy); c.lineTo(s * 0.85, s * yy); } c.stroke(); c.beginPath(); c.arc(0, s * 0.72, s * 0.5, Math.PI, 0); c.closePath(); c.fill(); }   // 釘付け：弾の筋の下で頭を下げる
     else if (kind === "reload") { c.beginPath(); c.arc(0, 0, s * 0.62, -0.3, Math.PI * 1.45); c.stroke(); c.beginPath(); c.moveTo(s * 0.62, -s * 0.62); c.lineTo(s * 0.66, -s * 0.05); c.lineTo(s * 0.1, -s * 0.2); c.closePath(); c.fill(); }
     else { for (const dx of [-0.52, 0, 0.52]) { circ(c, s * dx, 0, s * 0.15); c.fill(); } }
     c.restore();

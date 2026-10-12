@@ -90,7 +90,7 @@ window.SCS2 = window.SCS2 || {};
         const v = vs.get(u.id); if (!v) continue;
         if (u.hp < v.hp) v.hitT = clock + 300;
         if (!u.alive && v.alive) v.koT = clock + 450;
-        v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.stamina = u.stamina; v.hidden = false;
+        v.alive = u.alive; v.hp = u.hp; v.label = u.label; v.stamina = u.stamina; v.supp = u.supp || 0; v.hidden = false;
         const ic = iconOf(u); if (ic !== v.icon) { v.icon = ic; v.iconT = clock; }
         v.tgt = u.tgt ? vs.get(u.tgt) || null : null;
       }
