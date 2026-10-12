@@ -467,7 +467,11 @@ window.SCS2 = window.SCS2 || {};
     const M = (opt && opt.margin) || 0;
     const padX = (opt && opt.padX) || (own ? 170 : 230), padY = (opt && opt.padY) || (own ? 300 : 470), zMax = (opt && opt.zMax) || 1.32;
     const zMin = own ? Math.min(vw / (W + 2 * M), vh / (H + 2 * M)) : Math.max(vw / W, vh / H);   // 両端に分かれた時は、地図の幅いっぱいまで引ける
-    const z = clamp(Math.min(vw / (x1 - x0 + 2 * padX), vh / (y1 - y0 + padY)), zMin, Math.max(zMin, zMax));
+    let z = clamp(Math.min(vw / (x1 - x0 + 2 * padX), vh / (y1 - y0 + padY)), zMin, Math.max(zMin, zMax));
+    if (own) {                                                                                    // 余白を駒の際まで詰めれば全員が映る間は、地図が枠を埋める倍率より引かない（地図の外を見せない）
+      const zFill = Math.max(vw / W, vh / H), zNeed = Math.min(vw / (x1 - x0 + 2 * (R + 30)), vh / (y1 - y0 + 2 * R + 105));
+      if (z < zFill) z = Math.max(z, Math.min(zFill, zNeed));
+    }
     let x = (x0 + x1) / 2, y = (y0 + y1) / 2 + ((opt && opt.dy) || 30);
     if (own) {                                                                                    // 狙う位置は、端の駒が切れる分しか地図の外へ出さない
       const hw = vw / 2 / z, hh = vh / 2 / z, eg = R + 30, mL = Math.max(0, eg - x0), mR = Math.max(0, x1 - (W - eg)), mT = Math.max(0, R + 75 - y0), mB = Math.max(0, y1 - (H - eg));

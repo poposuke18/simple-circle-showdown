@@ -119,7 +119,7 @@ window.SCS2 = window.SCS2 || {};
       t(113.5, 13, 7, 7, "rubble"), t(103.5, 25.5, 4, 5, "rubble"), t(27.5, 51, 6.5, 5.5, "rubble"), t(6, 62, 10, 9, "rubble"), t(48, 54, 6, 8, "rubble"), t(88, 40, 5, 6, "rubble"),
       t(99.5, 58.5, 11, 8, "rubble"), t(110.5, 59, 9.5, 7, "rubble"),   // 崩れた家の瓦礫の山（足が遅い・身を守れる）
     ],
-    start: { p: { x: 16, y: 34 }, c: { x: 112, y: 34 } },                    // 端から始めると壁越しの睨み合いが長い（でたらめな性格どうしの時間切れ 8.0%→3.3%・2026-10-12 実測）
+    start: { p: { x: 26, y: 34 }, c: { x: 102, y: 34 } },                    // 中央の道の上。両軍の間を地図の幅の6割に（端から始めると観戦のカメラが地図の外まで引く・2026-10-12 実測）
     gimmick: { kind: "crumble", hpk: 8, hpMin: 18, hpMax: 150, missK: 2, reach: 6, slam: 20, rubble: { x: 6.5, y: 67.7, w: 8.5, h: 3.5 } },   // 壁の固さ＝8×√面積（18〜150）。狙われた駒から6以内の壁が、外れ弾×武器の威力×2・叩きつけ20で削れる（1戦に約5枚崩れる・2026-10-12 実測）
     map: "assets/map_city.jpg", mini: "assets/map_city_mini.jpg",
   };
@@ -159,7 +159,7 @@ window.SCS2 = window.SCS2 || {};
       t(25, 60, 97, 3, "tidal"), t(22, 63, 102.5, 3, "tidal"), t(18, 66, 109, 3, "tidal"), t(12.5, 69, 116.5, 3, "tidal"),
       t(8, 72, 123, 3, "tidal"), t(3.5, 75, 128.5, 3, "tidal"), t(0, 78, 133, 3, "tidal"),   // 干潟（潮で 干潟→浅瀬→満ち潮）
     ],
-    start: { p: { x: 20, y: 40 }, c: { x: 124, y: 40 } },                    // 左右の乾いた島の上から
+    start: { p: { x: 35, y: 40 }, c: { x: 109, y: 40 } },                    // 左右の乾いた島の際から（同上）
     gimmick: { kind: "tide", cycle: [0, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 1], cost: { tidal: [0, 1.5, 3.5], tidepool: [0.8, 3.5, 3.5] } },   // 12ターンで一巡（6引き・1満ちかけ・4満ち・1引きかけ）。cost＝水に浸かる所にいる損（AI が避ける強さ）
     map: "assets/map_tide.jpg", mini: "assets/map_tide_mini.jpg",
   };
@@ -182,7 +182,7 @@ window.SCS2 = window.SCS2 || {};
     terrain: [
       t(0, 0, 8, 15.5, "thicket"), t(0, 46, 8.5, 26, "thicket"), t(120, 0, 8, 16, "thicket"), t(119.5, 46, 8.5, 26, "thicket"),   // 塀の外の木立（通れない）
     ],
-    start: { p: { x: 6, y: 35 }, c: { x: 122, y: 35 } },
+    start: { p: { x: 32, y: 35 }, c: { x: 96, y: 35 } },                     // 中庭の植え込みの内側から（同上）
     gimmick: { kind: "spring", x: 64, y: 33.8, r: 10.3, first: 6, period: 7, surge: 2, heal: 8 },   // 6ターン目に光り、7・8ターン目に湧く（以後7ターンごと）。湧いている間、泉の中の駒は毎ターン8回復
     map: "assets/map_spring.jpg", mini: "assets/map_spring_mini.jpg",
   };
