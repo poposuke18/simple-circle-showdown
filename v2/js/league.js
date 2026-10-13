@@ -139,7 +139,7 @@ window.SCS2 = window.SCS2 || {};
     const A = rivalOf(ka), B = rivalOf(kb), home = A, arena = W.arenaFor(home);
     const opts = { formation: 0.6, brain: { P: "v3", C: "v3" } };
     if (L) opts.cond = { P: condFor(L, ka, A.squad), C: condFor(L, kb, B.squad) };
-    const Pl = SCS2.plan; opts.plan = { P: Pl.planFor(A.squad, L ? opts.cond.P.lead : leaderOf(A.squad, null), null), C: Pl.planFor(B.squad, L ? opts.cond.C.lead : leaderOf(B.squad, null), null) };   // 相手の作戦＝隊長の性格から（v2.s6.rival）
+    const Pl = SCS2.plan; opts.plan = { P: Pl.planFor(A.squad, L ? opts.cond.P.lead : leaderOf(A.squad, null), "rival"), C: Pl.planFor(B.squad, L ? opts.cond.C.lead : leaderOf(B.squad, null), "rival") };   // 相手の作戦＝隊長の性格から（v2.s6.rival・v2.s6.b.rival）
     const b = SCS.makeSquadBattle3(A.squad.map((c) => c.slice()), B.squad.map((c) => c.slice()), seed, arena.name, W.modOf(arena), A.form, B.form, A.names.slice(), B.names.slice(), opts);
     let n = 0; while (!b.over && n++ < 200) b.step();
     const r = b.result || {}, res = r.type === "draw" || !b.over ? "d" : r.winner === "PLR" ? "a" : "b";

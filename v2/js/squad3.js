@@ -414,17 +414,26 @@ window.SCS = window.SCS || {};
     const LEAD = { P: null, C: null };
     for (const tm of ["P", "C"]) { const c = COND && COND[tm], pl = PLAN && PLAN[tm], arr = tm === "P" ? P : C;   // 隊長＝cond の隊長（シーズン中の交代）、無ければ作戦の隊長（v2.s6.lead）
       const li = c && Number.isInteger(c.lead) ? c.lead : pl && Number.isInteger(pl.lead) ? pl.lead : null;
-      if (li != null && arr[li]) LEAD[tm] = { u: arr[li], trust: clamp(c && c.trust != null ? c.trust : 0.6, 0, 1), fell: false, style: pl && pl.style ? pl.style : "cmd", policy: pl && pl.policy ? pl.policy : null, say: pl ? pl.say : "", word: pl ? pl.word : "", will: pl && Array.isArray(pl.will) ? pl.will : null }; }
+      if (li != null && arr[li]) LEAD[tm] = { u: arr[li], trust: clamp(c && c.trust != null ? c.trust : 0.6, 0, 1), fell: false, style: pl && pl.style ? pl.style : "cmd", policy: pl && pl.policy ? pl.policy : null, say: pl ? pl.say : "", word: pl ? pl.word : "",
+        aim: (pl && pl.aim) || "auto", range: (pl && pl.range) || "auto", back: (pl && pl.back) || "auto", link: (pl && pl.link) || "none", roles: pl && Array.isArray(pl.roles) ? pl.roles : ["auto", "auto", "auto"],
+        will: pl && pl.will ? (Array.isArray(pl.will) ? { policy: pl.will } : pl.will) : null }; }                      // will＝指示ごとの3体の気乗り（v2.s6.b.will）
     for (const tm of ["P", "C"]) if (LEAD[tm]) Object.assign(LEAD[tm], { order: null, ignored: new Set(), defied: new Set() });
     // 従う度（v2.s4.cmd.obey）：相性と信頼。短気な駒は撃たれている最中は号令が耳に入らない。cond が無ければ 0
     const obey = (u) => { const L = LEAD[u.team]; if (!L || !L.u.alive || L.u === u) return 0; const m = u.micros; if (m.C5 < 0.35 && (u.supp || 0) >= 0.3) return 0; return clamp(0.5 + 0.5 * u.fit + 0.4 * (L.trust - 0.6) + 0.2 * (m.B4 - 0.5) + 0.15 * (m.D2 - 0.5), 0, 1); };   // v2.s4.micro
     // 作戦（v2.s6）：気乗り＝隊員と方針の相性（作戦が無ければ 1）。号令の効き方＝従う度×(0.5+0.5×気乗り)、『見てから決める』は5ターン目から+0.1。空気＝方針が号令なしで隊員の判断に薄く寄る分
     const policyOf = (u) => { const L = LEAD[u.team]; return L && L.policy && L.u.alive && L.u !== u ? L.policy : null; };
     const styleOfTm = (tm) => (LEAD[tm] ? LEAD[tm].style : "cmd");
-    const willOf = (u) => { const L = LEAD[u.team]; return L && L.will && L.will[u.idx] != null ? clamp(L.will[u.idx], 0, 1) : 1; };
+    const willDim = (u, dim) => { const L = LEAD[u.team]; const w = L && L.will && L.will[dim]; return w && w[u.idx] != null ? clamp(w[u.idx], 0, 1) : 1; };
+    const willOf = (u) => willDim(u, "policy");
     const obeyO = (u) => { const L = LEAD[u.team]; let o = obey(u); if (L && L.style === "read" && turn > 4) o = Math.min(1, o + 0.1); return o * (0.5 + 0.5 * willOf(u)); };
     const air = (u) => (policyOf(u) ? (styleOfTm(u.team) === "free" ? 0.6 : 0.5) * willOf(u) * (0.4 + 0.6 * obey(u)) : 0);
-    const wardThr = (u) => 0.45 - (policyOf(u) === "guard" ? 0.15 * willOf(u) : 0);           // 『後ろを守る』＝前衛がかばう協調性の条件を気乗りで緩める
+    // 試合前の指示の効く強さ k（v2.s6.b.k）：気乗り×(0.5+0.5×聞く度)×(隊長が生きていれば1・倒れたら0.6)。気乗り0.3未満＝聞き流す（0）。隊長自身は max(0.5, 気乗り)。指示が「任せる」なら 0
+    const heed = (u) => { const L = LEAD[u.team]; if (!L) return 0; const m = u.micros; return clamp(0.5 + 0.5 * u.fit + 0.4 * (L.trust - 0.6) + 0.2 * (m.B4 - 0.5) + 0.15 * (m.D2 - 0.5), 0, 1); };
+    const instrOf = (u, dim) => { const L = LEAD[u.team]; if (!L) return null; const v = dim === "roles" ? L.roles[u.idx] : L[dim]; return v && v !== "auto" && v !== "none" ? v : null; };
+    const kOf = (u, dim) => { const L = LEAD[u.team]; if (!L || !instrOf(u, dim)) return 0; const w = willDim(u, dim); if (L.u === u) return Math.max(0.5, w); if (w < 0.3) return 0; return w * (0.7 + 0.3 * heed(u)) * (L.u.alive ? 1 : 0.6); };
+    const kIs = (u, dim, k) => (instrOf(u, dim) === k ? kOf(u, dim) : 0);                   // その指示が k なら強さ、違えば 0
+    const roleOf = (u) => instrOf(u, "roles");
+    const wardThr = (u) => Math.min(0.45 - (policyOf(u) === "guard" ? 0.15 * willOf(u) : 0), 0.45 - 0.45 * kIs(u, "link", "cover"));   // 『後ろを守る』『かばい合い』＝前衛がかばう協調性の条件を緩める
     const orderOf = (u) => { const L = LEAD[u.team]; return L && L.u.alive && L.u !== u ? L.order : null; };
     const guardOrder = (u) => { const od = orderOf(u); return !!od && od.kind === "guard" && obeyO(u) >= 0.5; };
     // 隊形を保つ力への足し引き：信頼（v2.s4.cond.cmd）・「固まれ」の号令・低い士気（規律が強いと崩れない）・作戦（v2.s6）。cond も作戦も無ければ 0
@@ -467,9 +476,10 @@ window.SCS = window.SCS || {};
       const L = LEAD[tm]; if (!L || !L.order || !L.u.alive || L.silent) return;
       for (const u of alliesOf(L.u)) {
         if (!u.alive || u === L.u) continue; const o = obey(u), w = willOf(u);
-        if ((o < 0.35 || w < 0.3) && !L.ignored.has(u)) { L.ignored.add(u); u._defy = true; u.st.defy = (u.st.defy || 0) + 1;
+        if ((o < 0.35 || w < 0.3) && !L.ignored.has(u)) { L.ignored.add(u); u._defy = true;
+          if (w < 0.3 && o >= 0.35) continue;                                                  // 方針に気が乗らない駒＝聞き流す（1ターン目の文で言っている・defy は1ターン目に数えた）
+          u.st.defy = (u.st.defy || 0) + 1;
           if (L.order.kind === "fallback" && u.fit < -0.3 && u.mv[0] > 0.3) envLines.push({ text: `── ${u.name} は『退け』の号令に背を向け、前へ出る。`, cls: "cm" });
-          else if (o >= 0.35) envLines.push({ text: `── ${u.name} は『${L.word}』の方針に気が乗らない。`, cls: "cm" });
           else envLines.push({ text: `── ${u.name} は ${L.u.name} の号令に耳を貸さず、我が道を行く。`, cls: "cm" }); }
       }
     }
@@ -546,14 +556,17 @@ window.SCS = window.SCS || {};
     // 守るべき後衛味方＋それを差し迫って脅かす敵（かばう用）。最も近接された1組を返す
     function findWard(u) {
       let best = null, bd = Infinity;
+      const kCov = kIs(u, "link", "cover"), hurt = kCov >= 0.5 || kIs(u, "link", "relay") >= 0.5 || kIs(u, "roles", "rear") >= 0.5;   // かばい合い・交代・殿＝退いている／手負いの味方もかばう対象（v2.s6.b.eff）
+      const band = 1 + 0.5 * kCov + 0.5 * kIs(u, "roles", "shield");                          // かばい合い・盾＝もっと早くから割り込む
       for (const a of alliesOf(u)) {
-        if (!a.alive || a === u || !isBackline(a)) continue;
+        if (!a.alive || a === u || !(isBackline(a) || (hurt && (a.engage === "retreat" || a.hp / a.maxHp < 0.45)))) continue;
         const foe = nearestKnownEnemy(a); if (!foe) continue; // 発見済みの敵だけ＝未発見の脅威にはかばえない
         const d = dist(foe, a);
-        if (d < bd && d < imminentBand(foe)) { bd = d; best = { ward: a, foe }; }
+        if (d < bd && d < imminentBand(foe) * band) { bd = d; best = { ward: a, foe }; }
       }
       return best;
     }
+    const guardRole = (u) => kIs(u, "roles", "shield") >= 0.5 || kIs(u, "link", "relay") >= 0.5 || kIs(u, "roles", "rear") >= 0.5 || kIs(u, "link", "cover") >= 0.5;   // 前衛でなくても割り込む役目（盾・交代・殿・かばい合い）
     const teamHpFrac = (team) => { const t = team === "P" ? P : C; let h = 0, m = 0; for (const u of t) { h += Math.max(0, u.hp); m += u.maxHp; } return m ? h / m : 0; };
     const aliveCount = (team) => (team === "P" ? P : C).filter((u) => u.alive).length;
 
@@ -563,20 +576,23 @@ window.SCS = window.SCS || {};
       const live = knownEnemies(u);                  // ★発見済みの敵だけを狙える（未発見＝そもそも反応しない）
       if (!live.length) { u._focusCount = 0; u.peeling = false; return null; } // 未発見＝索敵へ（decideでhome方向へ前進）
       const iAmSupport = sup(u);
-      const myWard = (isFrontline(u) && (u.coop > wardThr(u) || guardOrder(u))) ? findWard(u) : null; // 守る後衛がいれば迎撃対象に。★協調性が高い前衛だけがかばう（一匹狼は味方を守らない）。「守れ」の号令に従う駒・『後ろを守る』の方針（v2.s6）も
+      const myWard = ((isFrontline(u) && (u.coop > wardThr(u) || guardOrder(u))) || guardRole(u)) ? findWard(u) : null; // 守る後衛がいれば迎撃対象に。★協調性が高い前衛だけがかばう（一匹狼は味方を守らない）。「守れ」の号令に従う駒・『後ろを守る』の方針・盾の役目（v2.s6）も
+      const kAim = kOf(u, "aim"), aimK = instrOf(u, "aim"), kRov = kIs(u, "roles", "rover"), kPin = kIs(u, "link", "pincer"), kFoc = kIs(u, "link", "focus");   // 試合前の指示（v2.s6.b.eff）
+      let aimMinD = Infinity, aimMinHp = 1; if (kAim) for (const e of live) { aimMinD = Math.min(aimMinD, dist(u, e)); aimMinHp = Math.min(aimMinHp, e.hp / e.maxHp); }
       let best = null, bv = -Infinity, bestPeel = false, bestParts = null, second = null, sv = -Infinity;
       for (const e of live) {
         const d = dist(u, e), fl = flankOf(u, e);
         const parts = { near: -d / maxDist * 1.0 }; let v = parts.near;                   // 考えの札（v2.s4.think）用：項目ごとの寄与                                   // 近いほど良い
         v += (parts.low = (1 - e.hp / e.maxHp) * (0.55 + u.micros.A6 * 0.9));       // 仕留め（非情ほど低HP優先）
         v += (parts.los = losClear(u, e) ? 0.3 : -0.25);                            // 撃てるか
-        v += (parts.flank = fl.tier === "rear" ? 0.55 : fl.tier === "side" ? 0.22 : 0); // 側背面の取りやすさ
+        v += (parts.flank = (fl.tier === "rear" ? 0.55 : fl.tier === "side" ? 0.22 : 0) * (1 + 3 * kRov + 2 * kPin)); // 側背面の取りやすさ（遊撃・挟み撃ちで強く）
+        if (kAim) v += (parts.aim = 4.0 * kAim * (aimK === "near" ? clamp(1 - (d - aimMinD) / 40, 0, 1) : aimK === "low" ? clamp(1 - (e.hp / e.maxHp - aimMinHp) / 0.3, 0, 1) : aimK === "shooter" ? (isBackline(e) ? 1 : 0) : aimK === "tanklast" ? -clamp((e.tank || 0) - 0.2, 0, 1) / 0.8 : 0));   // 狙いの指示（v2.s6.b.eff）：一番近い／一番手負い／射手／固い敵は後回し＝既存の項に勝つ強さ
         // ★脅威優先：敵の出力(DPS見込み)が高い＝危険な敵キャリーを先に落とす（相手読みD1で評価）
         const eThreat = expEx0(e, u, d, true);
         v += (parts.threat = clamp(eThreat / 32, 0, 1) * (0.3 + u.micros.D1 * 0.35));
         // ★集中砲火：味方が既に狙う敵に束ねる（規律B4/順応D2で連携↑）＝キルオーダー収束
         const focus = alliesOf(u).filter((a) => a.alive && a !== u && a.target === e).length;
-        v += (parts.focus = Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop)); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）
+        v += (parts.focus = Math.min(focus, 2) * (0.2 + u.micros.B4 * 0.28 + u.micros.D2 * 0.22) * (0.45 + 0.55 * u.coop) + (kFoc && (focus > 0 || (LEAD[u.team] && LEAD[u.team].u.target === e)) ? 4.0 * kFoc : 0)); // 集中砲火＝協調性が低い一匹狼は味方の狙いに合わせない（我流）。連携『集中砲火』＝味方か隊長が狙う的に強く束ねる
         // ★連携アシスト（高coop＝味方思い）：味方が直前に崩した敵（_opened＝側背/投げ/大打）を逃さず突く＝集中の質↑。一匹狼はこれを重視しない。
         { const L = LEAD[u.team]; if (L && L.u !== u && L.u.alive && L.u.target === e) v += (parts.lead = 0.35 * L.trust * (0.4 + 0.6 * u.coop) * (L.style === "front" ? 1.6 : 1) * (L.policy === "focus" ? 1 + willOf(u) : 1)); }   // 隊長と同じ的を狙う（v2.s4.cond.cmd・背中で引っ張る／一体ずつ v2.s6）
         { const od = orderOf(u); if (od && ((od.kind === "charge" && od.tgt === e) || (od.kind === "focus" && od.tgt === e))) v += (parts.cmd = (od.kind === "focus" ? (policyOf(u) === "focus" ? 0.9 : 0.7) : 0.5) * obeyO(u)); }   // 号令の的（v2.s4.cmd.obey）
@@ -587,7 +603,7 @@ window.SCS = window.SCS || {};
         //   A3近接傾倒で釣られやすく・D1相手読みで釣られにくい（脅威eThreatが主・tankは従）。脆い体はtankが低く吸引も弱い＝早死にしない
         v += (parts.tank = clamp((e.tank || 0) - 0.2, 0, 1.0) * (1.5 + u.micros.A3 * 0.4 - u.micros.D1 * 0.3)); // 床0.2＝タンク度の低い脆い体は吸引が立たない
         // ★各個撃破：味方から孤立した敵ほど狙う（囲んで飲みやすい・剝がされにくい）。順応D2/規律B4の連携で強まる
-        v += (parts.iso = clamp(isolationOf(e) / 35, 0, 1) * (0.7 + u.micros.D2 * 0.5 + u.micros.B4 * 0.3));
+        v += (parts.iso = clamp(isolationOf(e) / 35, 0, 1) * (0.7 + u.micros.D2 * 0.5 + u.micros.B4 * 0.3) * (1 + kRov));
         // ★釣り出し耐性：その敵を追うと【他の】敵の脅威下に晒される＝罠なら見送る（標的自身は除外して二重計上を防ぐ）
         const chaseThreat = threatAt(u, { x: e.x, y: e.y }, e);
         v -= (parts.trap = clamp(chaseThreat / 55, 0, 1) * (0.2 + u.micros.D1 * 0.3 + (1 - u.micros.C2) * 0.3));
@@ -801,10 +817,23 @@ window.SCS = window.SCS || {};
       //   遠距離＋高HPの防御スタック(亀)が近接・攻撃型を一方的に溶かす偏りの是正。squad内の移動のみ（武器/HP/1v1は不変）。
       const myReach = Math.max(u.ranged.effRange, u.melee.reach), tgtReach = Math.max(tgt.ranged.effRange, tgt.melee.reach);
       u._closing = u.engage === "commit" && tgtReach > myReach + 12 && dist(u, fp) > u.melee.reach;
-      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）。★協調性が高い体だけ（一匹狼はかばわない）
-      const ward = (isFrontline(u) && (u.coop > wardThr(u) || guardOrder(u))) ? findWard(u) : null;
+      // 試合前の指示（v2.s6.b.eff）：間合いと役目で好む間合いを動かす。rangeK＝間合いの項の倍率、kiteK＝近接の敵から離れる欲の倍率、flankK＝側背面の項の倍率、rearK＝殿（味方より前に出ない）
+      const kClose = kIs(u, "range", "close"), kKeep = kIs(u, "range", "keep"), kFar = kIs(u, "range", "far"), kVan = kIs(u, "roles", "van"), kArc = kIs(u, "roles", "archer"), kRear = kIs(u, "roles", "rear"), kRov = kIs(u, "roles", "rover"), kPin = kIs(u, "link", "pincer");
+      const hasMelee = u.melee.reach > 0 && u.winDist < 45;
+      { const kc = Math.max(kClose, kVan); if (kc) { const near = hasMelee ? Math.max(4, u.melee.reach + 2) : 14; pref = pref + (near - pref) * kc; }   // 詰めろ・先鋒＝射手も近づいて撃つ
+        const kf = Math.max(kFar, kArc); if (kf) { const farP = Math.max(pref, u.ranged.effRange * 0.9, 40); pref = pref + (farP - pref) * kf; }   // 離れて撃て・射手＝近接の駒も離れる
+        if (kRear) pref = Math.min(maxDist, pref + 10 * kRear); }
+      const rangeK = 1 + kKeep, kiteK = 1 + kKeep + kFar + 1.5 * kArc, flankK = 3 * kRov + 2.5 * kPin, rearK = kRear;
+      const closeK = Math.max(kClose, kVan), farK = Math.max(kFar, kArc), keepK = kKeep;   // 間合いの指示の重し（utilAt3）：好む間合いより遠い／近い／ずれた分を 0.6×k／単位で減点＝武器の損得に勝つ
+      let rearG = null, rearDir = null, vanG = null, vanDir = null, vanK = kVan;            // 殿・先鋒：味方（自分以外）の重心と、そこから敵の方向
+      if (rearK || vanK) { const al = alliesOf(u).filter((a) => a.alive && a !== u); if (al.length) { const g = cen(al); const dx = fp.x - g.x, dy = fp.y - g.y, l = Math.hypot(dx, dy) || 1, dir = { x: dx / l, y: dy / l }; if (rearK) { rearG = g; rearDir = dir; } if (vanK) { vanG = g; vanDir = dir; } } }
+      // 遊撃・挟み撃ち：両軍の重心を結ぶ軸から横へ大きく外れ、敵の重心より向こうへ回る位置に値を付ける（的の向きに頼らない＝見て分かる回り込み）
+      let wideK = Math.max(kRov, (LEAD[u.team] && LEAD[u.team].u !== u ? kPin : 0)), wideG = null, wideE = null, wideDir = null;
+      if (wideK) { const ks = []; for (const [e] of known[u.team]) if (e.alive) ks.push(e); const al = alliesOf(u).filter((a) => a.alive); if (ks.length && al.length) { wideG = cen(al); wideE = cen(ks); const dx = wideE.x - wideG.x, dy = wideE.y - wideG.y, l = Math.hypot(dx, dy) || 1; wideDir = { x: dx / l, y: dy / l }; } else wideK = 0; }
+      // かばう：前衛は脅威下の後衛味方と敵の間に割り込む（誇りC6/中央志向B6で強く・差し迫った1組に限定）。★協調性が高い体だけ（一匹狼はかばわない）。盾の役目・交代・殿は前衛でなくても
+      const ward = ((isFrontline(u) && (u.coop > wardThr(u) || guardOrder(u))) || guardRole(u)) ? findWard(u) : null;
       const interpose = ward ? { x: (ward.ward.x + ward.foe.x) / 2, y: (ward.ward.y + ward.foe.y) / 2 } : null;
-      const guardScale = ward ? 0.6 + u.micros.B6 * 0.45 + u.micros.C6 * 0.45 : 0; // 実距離ベース＝offenseと同オーダーで実際に割り込む
+      const guardScale = ward ? (0.6 + u.micros.B6 * 0.45 + u.micros.C6 * 0.45) * (1 + 1.5 * kIs(u, "roles", "shield") + 1.0 * kIs(u, "link", "cover")) : 0; // 実距離ベース＝offenseと同オーダーで実際に割り込む。盾・かばい合いで強く
       const holdInterDist = interpose ? Math.hypot(u.x - interpose.x, u.y - interpose.y) : 0;
       // 隊形（緩いベースパターン）：作戦スロットへ弱く寄る。遂行力=規律B4+忍耐(mv3)+協調coop。自targetが交戦圏に近いほど戦闘優先で隊形を捨てる。
       let formSlotPos = null, formW = 0;
@@ -818,7 +847,7 @@ window.SCS = window.SCS || {};
           formW = holdAbility * (1 - urgency) * 0.10;                                            // ★ごく小さい＝接近フェーズに見える緩い癖。戦闘判断が常に上回る＝支配しない・罠にしない
         }
       }
-      return { fp, pref, wAtk, wDef, regroupTo, ward, interpose, guardScale, holdInterDist, formSlotPos, formW };
+      return { fp, pref, wAtk, wDef, regroupTo, ward, interpose, guardScale, holdInterDist, formSlotPos, formW, rangeK, kiteK, flankK, rearK, rearG, rearDir, vanK, vanG, vanDir, closeK, farK, keepK, wideK, wideG, wideE, wideDir };
     }
     // ある位置 np に立った時の見込み（1ターン分）。moving＝そのターン動いている（移動射撃は当たりにくい）
     function utilAt(u, tgt, c, np, d2, los2, atk, moving) {
@@ -945,13 +974,18 @@ window.SCS = window.SCS || {};
       if (V3C.ptgt && wP > 0) { const tq = predictPos3(tgt, 1), dq = dist(np, tq); offense = offense * (1 - wP) + expEx(u, tgt, np, tq, dq, losClear(np, tq)) * wP; }   // 先回り：目標が動いた先を撃つ
       if (moving && los2 && atk.attack === "RANGED") offense *= u.ranged.moveAccuracy;
       const threat = threat3(u, np, wP);
-      const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22 * V3C.range;
-      const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0);
+      const rangeFit = -(Math.abs((NAV && pref < 20 ? pathDist(np, fp) : d2) - pref) / maxDist) * 22 * V3C.range * (c.rangeK || 1);   // 『保て』で間合いの項が強い（v2.s6.b.eff）
+      const fl = flankOf(np, tgt), flankTerm = (fl.tier === "rear" ? 9 : fl.tier === "side" ? 3.5 : 0) + (c.flankK ? (fl.tier === "rear" ? 8 : fl.tier === "side" ? 3 : 0) * c.flankK : 0);   // 遊撃・挟み撃ち＝側背面に立つ値を足す（v2.s6.b.eff）
       const sep = sepPenalty(u, np) * V3C.sep, hz = hazardAt(np) + terrainDmg(np) * 1.5;
       const interceptTerm = interpose ? -Math.hypot(np.x - interpose.x, np.y - interpose.y) * c.guardScale : 0;
       const regroupTerm = regroupTo ? -Math.hypot(np.x - regroupTo.x, np.y - regroupTo.y) * 0.12 : 0;
       const formTerm = formSlotPos ? (FORM2 ? -dist(np, formSlotPos) * formW : -(dist(np, formSlotPos) / maxDist) * 22 * formW) : 0;
-      return { v: offense * c.wAtk - threat * c.wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm, threat };
+      const rearTerm = c.rearG ? -Math.min(30, Math.max(0, (np.x - c.rearG.x) * c.rearDir.x + (np.y - c.rearG.y) * c.rearDir.y)) * 2.0 * c.rearK : 0;   // 殿：味方の重心より敵側に出た分だけ減点
+      let wideTerm = 0;                                                                   // 遊撃・挟み撃ち：軸から横へ（最大30）・敵の重心の向こうへ（最大20）
+      if (c.wideK) { const rx = np.x - c.wideG.x, ry = np.y - c.wideG.y, lat = Math.abs(rx * -c.wideDir.y + ry * c.wideDir.x), beyond = (np.x - c.wideE.x) * c.wideDir.x + (np.y - c.wideE.y) * c.wideDir.y; wideTerm = c.wideK * (0.6 * Math.min(30, lat) + 0.6 * Math.min(20, Math.max(0, beyond))); }
+      const vanTerm = c.vanG ? Math.min(20, Math.max(-20, (np.x - c.vanG.x) * c.vanDir.x + (np.y - c.vanG.y) * c.vanDir.y)) * 0.5 * c.vanK : 0;   // 先鋒：味方の重心より敵側に出るほど加点
+      const instrTerm = c.closeK || c.farK || c.keepK ? -1.5 * Math.min(25, Math.max(0, d2 - pref)) * (c.closeK || 0) - 1.5 * Math.min(25, Math.max(0, pref - d2)) * (c.farK || 0) - 1.5 * Math.min(25, Math.abs(d2 - pref)) * (c.keepK || 0) : 0;   // 詰めろ／離れて撃て／保て（v2.s6.b.eff）
+      return { v: offense * c.wAtk - threat * c.wDef + rangeFit + flankTerm - sep - hz * 1.2 + interceptTerm + regroupTerm + formTerm + rearTerm + vanTerm + wideTerm + instrTerm, threat };
     }
 
     // ===== 段3：交戦判断（v3）＝その場の撃ち合いの勝ち負けを見積もる（[[AI思考エンジン設計]]）=====
@@ -977,6 +1011,13 @@ window.SCS = window.SCS || {};
         if (pol === "atk") commit += 0.15 * a; else if (pol === "def") { retreat += 0.1 * a; commit -= 0.1 * a; } else if (pol === "probe" && turn <= 4) commit -= 0.2 * a;
         if (L.style === "front" && L.u.engage === "commit") commit += 0.15 * obey(u);           // 背中で引っ張る＝隊長が攻めれば隊員も攻める
         if (L.style === "free" && u.coop < 0.35) commit += 0.1; } }                              // 好きにやらせる＝一匹狼は水を得る
+      if (LEAD[u.team]) {                                                                          // 試合前の指示（v2.s6.b.eff）：間合い・退き時・役目・連携
+        commit += 0.15 * kIs(u, "range", "close") + 0.25 * kIs(u, "roles", "van") - 0.1 * kIs(u, "roles", "shield");
+        { const kn = kIs(u, "back", "never"), kd = kIs(u, "back", "deep"), ke = kIs(u, "back", "early");
+          retreat -= 1.0 * kn; commit += 0.3 * kn; if (hpFrac < 0.4) retreat += 1.0 * kd; else retreat -= 0.5 * kd; if (hpFrac < 0.65) retreat += 0.8 * ke; if (ratio < 0.9) retreat += 0.4 * ke; }   // 深手なら退け＝深手になるまでは退かない
+        { const ka = kIs(u, "roles", "archer"); if (ka && foes.some((e) => (e.winDist || 99) < 30 && dist(u, e) < 24)) retreat += 0.1 * ka; }
+        { const kr = kIs(u, "link", "relay"); if (kr) { if (hpFrac < 0.45) retreat += 0.5 * kr; else if (hpFrac > 0.6 && alliesOf(u).some((a) => a.alive && a !== u && dist(u, a) < 30 && (a.engage === "retreat" || a.hp / a.maxHp < 0.45))) commit += 0.25 * kr; } }   // 交代：手負いは退き、元気な駒が前へ
+      }
       if (u.engage === "commit") commit += stick; else if (u.engage === "retreat") retreat += stick;
       if (restless(u) && (u.idleTurns || 0) >= 5) commit += (u.idleTurns - 4) * 0.3;
       u.engage = (retreat > 0.33 && retreat > commit) ? "retreat" : (commit > 0.35 ? "commit" : "poke");
@@ -1056,7 +1097,7 @@ window.SCS = window.SCS || {};
     }
     function mindBase(u) {
       const seen = [], sensed = []; for (const [e, info] of known[u.team]) if (e.alive) (info.lastSeen === turn ? seen : sensed).push(e.team + e.idx);
-      return { eng: u.engage, engI: u._eng || null, sta: u.stamina, mom: u.momentum, res: u.resolve, supp: u.supp || 0, flinch: u.flinch > 0, hpf: clamp(u.hp / u.maxHp, 0, 1), ammo: u.ammo, reload: u.reloadLeft > 0, seen, sensed, hunted: 0, fat: u.fat || 0, mor: u.mor || 0, lead: LEAD[u.team] ? (LEAD[u.team].u === u ? "self" : LEAD[u.team].u.alive ? "alive" : "fell") : null, order: (() => { const od = orderOf(u); return od ? od.kind : (LEAD[u.team] && LEAD[u.team].u === u && LEAD[u.team].order ? "give:" + LEAD[u.team].order.kind : null); })(), obey: obey(u), fit: u.fit || 0, pol: LEAD[u.team] ? LEAD[u.team].policy : null, unwilling: !!policyOf(u) && willOf(u) < 0.3 };
+      return { eng: u.engage, engI: u._eng || null, sta: u.stamina, mom: u.momentum, res: u.resolve, supp: u.supp || 0, flinch: u.flinch > 0, hpf: clamp(u.hp / u.maxHp, 0, 1), ammo: u.ammo, reload: u.reloadLeft > 0, seen, sensed, hunted: 0, fat: u.fat || 0, mor: u.mor || 0, lead: LEAD[u.team] ? (LEAD[u.team].u === u ? "self" : LEAD[u.team].u.alive ? "alive" : "fell") : null, order: (() => { const od = orderOf(u); return od ? od.kind : (LEAD[u.team] && LEAD[u.team].u === u && LEAD[u.team].order ? "give:" + LEAD[u.team].order.kind : null); })(), obey: obey(u), fit: u.fit || 0, pol: LEAD[u.team] ? LEAD[u.team].policy : null, unwilling: !!policyOf(u) && willOf(u) < 0.3, role: roleOf(u), unwill: u._unwill || null, aimK: LEAD[u.team] ? LEAD[u.team].aim : null };
     }
     function mindSearch(u, d0) {
       let age = -1; for (const info of known[u.team].values()) age = Math.max(age, turn - info.lastSeen);
@@ -1074,9 +1115,9 @@ window.SCS = window.SCS || {};
       // 性格の重み（挙動24・非公開）：遮蔽物利用B1＝隠れと覗き撃ち／狡猾D4・相手読みD1＝回り込みの欲／カイトB2＝近接の敵から間合いを保つ／予測不能D3＝読まれにくい揺らぎ
       const wP = clamp((0.35 + m.D1 * 0.55) * V3C.predw, 0, 0.95);                          // 予測を信じる度合い（相手読み）
       const shooter = V3C.shoot ? clamp((u.winDist - 18) / 30, 0, 1) : 1;                     // 射手ほど遮蔽を使う（近接は寄って殴るのが仕事）
-      const coverW = 1 + m.B1 * 0.7 * V3C.cover * shooter, peekW = m.B1 * 5 * V3C.peek * shooter, flankW = (0.7 + m.D4 * 0.9 + m.D1 * 0.4) * V3C.flank * (SUP && tgt.supp ? 1 + SUP.flankK * tgt.supp : 1), noiseW = m.D3 * 2.5 * V3C.noise;
+      const coverW = 1 + m.B1 * 0.7 * V3C.cover * shooter, peekW = m.B1 * 5 * V3C.peek * shooter, flankW = (0.7 + m.D4 * 0.9 + m.D1 * 0.4) * V3C.flank * (SUP && tgt.supp ? 1 + SUP.flankK * tgt.supp : 1) * (1 + 2 * (c.flankK || 0)), noiseW = m.D3 * 2.5 * V3C.noise;   // 遊撃・挟み撃ちで回り込みの欲が強い（v2.s6.b.eff）
       const meleeFoes = knownEnemies(u).filter((e) => e.melee.reach + stepLen(e, e) * 1.2 >= dist(u, e) && (e.winDist || 99) < 30);
-      const kite = u.ranged.effRange > u.melee.reach + 15 && meleeFoes.length ? m.B2 * V3C.kite : 0;
+      const kite = u.ranged.effRange > u.melee.reach + 15 && meleeFoes.length ? m.B2 * V3C.kite * (c.kiteK || 1) : 0;   // 保て・離れて撃て・射手で近接の敵から離れる欲が強い
       const meleeNext = kite ? meleeFoes.map((e) => predictPos3(e, 1)) : [];                // 近接の敵が次にいそうな所
       // 援護射撃：目標へ寄っていく味方がいる時、目標を撃てる場所に「与えられる制圧」の分だけ値を足す（協調性で強く）
       const exploit = SUP ? alliesOf(u).filter((a) => a !== u && a.alive && a.target === tgt && (a.winDist < 30 || a.engage === "commit") && dist(a, tgt) < 45).length : 0;
@@ -1253,7 +1294,16 @@ window.SCS = window.SCS || {};
       if (GM) gimStart(envLines);
       const pre = new Map(); for (const u of ALL) pre.set(u, { x: u.x, y: u.y, hp: u.hp, alive: u.alive });
       for (const u of ALL) { u._counter = null; u._surged = false; u._shaken = false; u._lost = false; u._defy = false; }
-      if (turn === 1 && PLAN) for (const tm of ["P", "C"]) { const L = LEAD[tm]; if (L && L.policy && L.say) envLines.push({ text: `── 隊長 ${L.u.name} の作戦——『${L.say}』`, cls: "cm" }); }   // 作戦の一言（v2.s6.ui）
+      if (turn === 1 && PLAN) for (const tm of ["P", "C"]) { const L = LEAD[tm]; if (!L || !L.policy || !L.say) continue;   // 作戦の一言（v2.s6.ui・v2.s6.b.ui）：方針の台詞＋任せる以外の指示、役目、気が乗らない駒
+        const AW = { near: "狙いは近い敵から", low: "狙いは手負いから", shooter: "狙いは射手から", tanklast: "固い敵は後回し" }, RW = { close: "間合いは詰める", keep: "間合いは保つ", far: "離れて撃つ" }, BW = { never: "退かない", deep: "深手なら退く", early: "早めに退く" }, LW = { focus: "連携は集中砲火", pincer: "連携は挟み撃ち", relay: "連携は交代", cover: "連携はかばい合い" }, ROW = { van: "先鋒", shield: "盾", archer: "射手", rover: "遊撃", rear: "殿" };
+        const extra = [AW[L.aim], RW[L.range], BW[L.back], LW[L.link]].filter(Boolean);
+        envLines.push({ text: `── 隊長 ${L.u.name} の作戦——『${L.say}』${extra.length ? "。" + extra.join("。") + "。" : ""}`, cls: "cm" });
+        const arr = tm === "P" ? P : C, roles = arr.filter((u) => ROW[L.roles[u.idx]]).map((u) => `${u.name} は${ROW[L.roles[u.idx]]}`);
+        if (roles.length) envLines.push({ text: `── 役目：${roles.join("、")}。`, cls: "cm" });
+        for (const u of arr) { if (u === L.u) continue; const dis = [];                      // 気が乗らない指示（聞き流す）：1ターン目に一度だけ・st.defy に数える
+          for (const dim of ["policy", "aim", "range", "back", "link", "roles"]) { const k = instrOf(u, dim); if (k && willDim(u, dim) < 0.3) dis.push(dim === "policy" ? L.word : dim === "aim" ? { near: "近い敵から", low: "手負いから", shooter: "射手から", tanklast: "固い敵は後回し" }[k] : dim === "range" ? { close: "詰めろ", keep: "保て", far: "離れて撃て" }[k] : dim === "back" ? { never: "退くな", deep: "深手なら退け", early: "早めに退け" }[k] : dim === "link" ? { focus: "集中砲火", pincer: "挟み撃ち", relay: "交代", cover: "かばい合い" }[k] : ROW[k]); }
+          if (dis.length) { u.st.defy = (u.st.defy || 0) + 1; u._unwill = dis; envLines.push({ text: `── ${u.name} は${dis.map((w) => `『${w}』`).join("")}に気が乗らない。`, cls: "cm" }); } }
+      }
       if (turn === 1 && COND) for (const arr of [P, C]) {                                     // 連戦の状態を1ターン目に一言（部隊ごとに一番目立つ駒だけ・v2.s4.cond.ui）
         let pick = null, pv = 0; for (const u of arr) { const v = Math.max(u.fat - 0.45, Math.abs(u.mor) - 0.4); if (v > pv) { pv = v; pick = u; } }
         if (pick) envLines.push({ text: pick.fat - 0.45 >= Math.abs(pick.mor) - 0.4 ? `── ${pick.name} は前の試合の疲れが残っている。` : pick.mor > 0 ? `── ${pick.name} は連戦の勢いに乗っている。` : `── ${pick.name} は前の試合を引きずっている。`, cls: "cm" });

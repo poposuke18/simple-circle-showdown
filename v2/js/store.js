@@ -18,7 +18,7 @@ window.SCS2 = window.SCS2 || {};
   let data = fresh();
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (s && typeof s === "object") data = { squad: validSquad(s.squad) ? s.squad : data.squad, form: W.FORMS.includes(s.form) ? s.form : "散開", records: cleanRecords(s.records), order: validOrder(s.order) ? s.order : null, plan: typeof s.plan === "string" ? s.plan : null, league: s.league || null, lineage: s.lineage || null };
+    if (s && typeof s === "object") data = { squad: validSquad(s.squad) ? s.squad : data.squad, form: W.FORMS.includes(s.form) ? s.form : "散開", records: cleanRecords(s.records), order: validOrder(s.order) ? s.order : null, plan: typeof s.plan === "string" || (s.plan && typeof s.plan === "object") ? s.plan : null, league: s.league || null, lineage: s.lineage || null };
   } catch (e) { /* 保存なし・読めない */ }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { /* 保存できない環境 */ } }
   function record(rivalKey, res) { const r = data.records[rivalKey] || (data.records[rivalKey] = { w: 0, l: 0, d: 0 }); r[res]++; save(); }

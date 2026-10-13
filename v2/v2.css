@@ -116,7 +116,7 @@ button { font-family: inherit; color: inherit; }
 .rv-tokens { margin-top: 16px; display: flex; gap: 22px; }
 .rv-tokens .tk { width: 92px; height: 92px; border-width: 10px; }
 .rv-scout { margin-top: 12px; font-size: 21px; line-height: 1.6; color: #cfdcef; }
-.pr-row { margin-top: 14px; display: grid; grid-template-columns: 110px 1fr; align-items: center; }
+.pr-row { margin-top: 10px; display: grid; grid-template-columns: 110px 1fr; align-items: center; }
 .pr-lbl { font-size: 26px; font-weight: 900; color: #9fdcff; }
 .chips { display: flex; flex-wrap: wrap; gap: 12px; }
 .chip { height: 54px; padding: 0 22px; border-radius: 27px; border: 1.5px solid rgba(140, 190, 255, .45); background: rgba(12, 26, 44, .8); font-size: 22px; font-weight: 700; display: inline-flex; align-items: center; cursor: pointer; }
@@ -219,13 +219,9 @@ button { font-family: inherit; color: inherit; }
 .acard img { display: block; width: 100%; height: 90px; object-fit: cover; filter: saturate(.9) brightness(.85); transition: filter .14s; }
 .acard span { display: block; text-align: center; font-size: 21px; font-weight: 700; padding: 7px 0 8px; }
 .pr-arena .acards { grid-template-columns: repeat(6, 1fr); gap: 10px; }   /* 出撃準備は6枚を1列（作戦の行を入れる分・v2.s6.ui） */
-.pr-arena .acard img { height: 60px; }
+.pr-arena .acard img { height: 52px; }
 .pr-arena .acard span { font-size: 15px; padding: 4px 0 5px; white-space: nowrap; }
-.pr-plan, .pr-form { margin-top: 10px; }
-.pr-form .chip { height: 48px; }
-.pr-detail .rv-tokens .tk { width: 76px; height: 76px; border-width: 8px; }
-.pr-detail .rv-tokens { margin-top: 10px; gap: 18px; }
-.pr-detail .rv-scout { margin-top: 8px; font-size: 20px; line-height: 1.5; }
+
 .acard:hover { transform: translateY(-2px); border-color: #8fe6ff; }
 .acard.on { border-color: #8fe6ff; box-shadow: 0 0 20px rgba(95,210,255,.55); }
 .acard.on img { filter: none; }
@@ -238,18 +234,30 @@ button { font-family: inherit; color: inherit; }
 .fic-wedge { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); }
 .fic-circle { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); }
 
-/* 作戦（v2.s6.ui）：隊長・指揮の型・方針のチップ（選べない物は薄い）・隊長の台詞・隊員の気乗り */
-.pr-plan { align-items: start; } .pr-plan .pr-lbl { padding-top: 8px; }
-.plan { display: grid; gap: 6px; }
-.pl-lead { display: flex; align-items: center; gap: 12px; font-size: 22px; }
-.pl-lead b { font-size: 24px; font-weight: 900; } .pl-lead small { color: #9fdcff; font-weight: 700; font-size: 20px; }
-.pchips .chip { height: 40px; padding: 0 15px; font-size: 18px; }
+/* 作戦（v2.s6.ui・v2.s6.b.ui）：左＝方針／狙い／間合い／退き時／連携、右＝隊長と型・隊形・並び・役目、下＝隊長の台詞と隊員の気乗り */
+.pr-plan { display: block; } .pr-plan .pr-lbl { font-size: 20px; margin-bottom: 4px; }
+.plan { display: grid; grid-template-columns: 1fr 392px; gap: 6px 16px; align-items: start; }
+.pl-left, .pl-right { display: grid; gap: 7px; align-content: start; }
+.pl-row { display: grid; grid-template-columns: 50px 1fr; align-items: center; gap: 6px; }
+.pl-row > small, .pl-roles > small { font-size: 16px; color: #9fdcff; font-weight: 700; }
+.pchips { gap: 5px; } .pchips .chip { height: 30px; padding: 0 10px; font-size: 15px; border-radius: 15px; }
 .chip.off { opacity: .3; cursor: default; }
-.pl-say { font-size: 20px; color: #ffe9b0; font-style: italic; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
-.pl-will { display: inline-flex; gap: 14px; font-size: 17px; color: #cfdcef; font-style: normal; }
-.pl-will span { white-space: nowrap; } .pl-will i { font-style: normal; font-weight: 700; margin-left: 6px; }
+.pl-lead { display: flex; align-items: center; gap: 10px; font-size: 18px; }
+.pl-lead b { font-size: 21px; font-weight: 900; } .pl-lead small { color: #9fdcff; font-weight: 700; font-size: 16px; }
+.plan .fchips { grid-template-columns: 1fr 1fr; gap: 6px; } .plan .fchips .chip { height: 30px; padding: 0 12px; font-size: 15px; }
+.plan .place { height: 130px; margin-left: 0; }
+.pl-roles { display: grid; gap: 3px; } .pl-role { display: grid; grid-template-columns: 26px 70px 1fr; align-items: center; gap: 5px; }
+.pl-role > span { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-role .tk { width: 26px; height: 26px; border-width: 3px; }
+.pl-role .pchips { gap: 4px; flex-wrap: nowrap; } .pl-role .pchips .chip { height: 23px; padding: 0 7px; font-size: 13px; border-radius: 12px; }
+.pl-say { grid-column: 1 / -1; margin-top: 2px; font-size: 18px; color: #ffe9b0; font-style: italic; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.pl-will { display: inline-flex; gap: 14px; font-size: 16px; color: #cfdcef; font-style: normal; flex-wrap: wrap; }
+.pl-will span { white-space: nowrap; } .pl-will i { font-style: normal; font-weight: 700; margin-left: 6px; } .pl-will em { font-style: normal; color: var(--dim); font-size: 14px; }
 .pl-will i.w0 { color: #ff9a9a; } .pl-will i.w1 { color: #e8d8a0; } .pl-will i.w2 { color: #9fe0b0; }
-.lg-side .plan { margin-bottom: 12px; }
+.lg-side .plan { grid-template-columns: 1fr; margin-bottom: 12px; }
+.rv-mid { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.pr-detail .rv-tokens { margin-top: 0; gap: 10px; flex: none; } .pr-detail .rv-tokens .tk { width: 56px; height: 56px; border-width: 6px; }
+.pr-detail .rv-scout { margin-top: 0; font-size: 18px; line-height: 1.45; }
 
 /* 隊形と配置（敵は右）。駒を2つ順に押すと入れ替わる */
 .pr-form { grid-template-columns: 110px 300px 1fr; align-items: center; }
