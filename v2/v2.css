@@ -92,7 +92,15 @@ button { font-family: inherit; color: inherit; }
 @keyframes axflash { 0% { background: rgba(95, 210, 255, .28); } 100% { background: transparent; } }
 
 /* ===== 出撃準備 ===== */
-.pr-list { left: 40px; top: 120px; width: 860px; height: 800px; padding: 18px; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 182px; gap: 14px; overflow: hidden; }
+.pr-list { left: 40px; top: 120px; width: 860px; height: 800px; padding: 18px; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: auto; align-content: start; gap: 14px; overflow: hidden auto; scrollbar-width: thin; }
+.pr-list .rv { height: 182px; }
+.rv-mk, .sp-mk, .rec-mk { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 14px; padding: 8px 6px 0; color: #8fd0ff; }   /* 作り手の見出し（v2.s5.ui） */
+.rv-mk b, .sp-mk b, .rec-mk b { font-size: 21px; font-weight: 900; letter-spacing: 2px; }
+.rv-mk small, .sp-mk small, .rec-mk small { font-size: 16px; color: var(--dim); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-mk b::before, .sp-mk b::before, .rec-mk b::before { content: "作り手 "; font-size: 14px; color: var(--dim); letter-spacing: 1px; }
+.sp-mk { padding: 6px 4px 0; } .sp-mk b { font-size: 18px; } .sp-mk small { font-size: 14px; }
+.rec-mk { padding: 14px 0 2px; }
+.rv-maker { margin-top: 8px; font-size: 20px; color: #8fd0ff; font-weight: 700; }
 .rv { border: 1.5px solid rgba(140, 190, 255, .3); border-radius: 12px; padding: 14px 16px; background: rgba(12, 24, 40, .7); cursor: pointer; display: grid; grid-template-rows: auto auto 1fr; gap: 6px; transition: border-color .15s, box-shadow .15s; }
 .rv:hover { border-color: #ff8a8a; }
 .rv.on { border-color: #ff8a8a; box-shadow: 0 0 18px rgba(255, 90, 90, .45), inset 0 0 12px rgba(255, 90, 90, .15); }
@@ -195,7 +203,8 @@ button { font-family: inherit; color: inherit; }
 .why-turn { width: 170px; font-family: "Russo One", sans-serif; font-size: 26px; text-align: center; }
 
 /* ===== 記録 ===== */
-.rec-table { left: 300px; right: 300px; top: 150px; padding: 26px 40px; }
+.rec-table { left: 300px; right: 300px; top: 120px; height: 800px; padding: 26px 40px; overflow: hidden auto; scrollbar-width: thin; }
+.rec-row .n { display: flex; align-items: center; gap: 12px; } .rec-row .n .tks { display: flex; gap: 4px; }
 .rec-row { display: grid; grid-template-columns: 1fr 120px 120px 120px; align-items: center; height: 76px; border-bottom: 1px solid rgba(140,190,255,.14); font-size: 26px; }
 .rec-row:last-child { border-bottom: 0; }
 .rec-row.h { height: 50px; font-size: 20px; color: var(--dim); font-weight: 700; }
@@ -290,7 +299,8 @@ button { font-family: inherit; color: inherit; }
 .hu-hp { display: block; width: 92px; height: 8px; border-radius: 4px; background: rgba(0,0,0,.55); overflow: hidden; }
 .hu-hp b { display: block; height: 100%; width: 100%; border-radius: 4px; transition: width .25s; }
 /* 観戦の準備 */
-.sp-side { top: 120px; width: 520px; height: 800px; padding: 16px; display: grid; grid-auto-rows: 1fr; gap: 10px; }
+.sp-side { top: 120px; width: 520px; height: 800px; padding: 16px; display: grid; grid-auto-rows: auto; align-content: start; gap: 10px; overflow: hidden auto; scrollbar-width: thin; }
+.sp-rv { height: 64px; }
 .sp-a { left: 40px; }
 .sp-b { left: 680px; }
 .sp-vs { position: absolute; left: 560px; top: 470px; width: 120px; text-align: center; font-family: "Russo One", sans-serif; font-size: 44px; color: #f4f8ff; text-shadow: 0 3px 0 #2c3a52, 0 0 18px rgba(90,170,255,.4); }

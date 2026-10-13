@@ -190,7 +190,7 @@ window.SCS2 = window.SCS2 || {};
   ARENAS.forEach((A) => { if (!D.ARENAS.some((a) => a.key === A.key)) D.ARENAS.push(A); });
   // 相手の得意な戦場（元のゲームの戦場名から近いものへ）
   const ARENA_OF = { "溶岩洞窟": LAVA, "吊り橋": LAVA, "深い森": FOREST, "市街の廃墟": CITY, "開けた平原": TIDE, "中央遮蔽": SPRING };
-  const arenaFor = (r) => ARENA_OF[r.arena] || PLAZA;
+  const arenaFor = (r) => ARENA_OF[r.arena] || ARENAS.find((a) => a.key === r.arena) || PLAZA;   // 元のゲームの戦場名か、v2 の戦場 key（作り手の新しい部隊・v2.s5.squads）
 
   // ===== 紋章 =====
   const EMB_BASE = ["wolf", "flame", "shield", "frost", "skull", "leaf", "sun", "crown"];      // 相手の駒は性格からこの8種（assignEmblems）
@@ -235,16 +235,38 @@ window.SCS2 = window.SCS2 || {};
   };
   const COL_OF = { strays: "orange", redcrow: "red", mistshade: "purple", stonewall: "steel", pyre: "magenta", blackpine: "green", ringkeep: "gold", mirror: "silver" };
   const YOU = PAL.blue;
+  // 作り手の色相から部隊の色を作る（v2.s5.maker：作り手ごとの色相・部隊で明と深）。既存7部隊は上の色のまま
+  function hsl(h, s, l) {
+    const a = s * Math.min(l, 1 - l), f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    return [f(0), f(8), f(4)];
+  }
+  const hex = (c) => "#" + c.map((v) => v.toString(16).padStart(2, "0")).join("");
+  function palFrom(hue, sat, deep) {
+    const s = sat / 100, L = deep ? [0.5, 0.3, 0.14, 0.64, 0.48] : [0.62, 0.4, 0.19, 0.76, 0.58];
+    const main = hsl(hue, s, L[0]);
+    return { rgb: main.join(","), rimA: hex(main), rimB: hex(hsl(hue, s, L[1])), side: hex(hsl(hue, s, L[2])), fx: hsl(hue, s, L[3]).join(","), dot: hex(hsl(hue, s, L[4])) };
+  }
 
   // ===== 相手：元のゲームの分隊戦キャンペーンの部隊（外の現実）=====
   const resolve = (x) => (Array.isArray(x) ? x.slice() : (D.PRESETS[x] || D.PRESETS[Object.keys(D.PRESETS)[0]]).slice());
   function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-  const RIVALS = D.SQUAD_CAMPAIGN.map((c) => {
-    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, arena: null, pal: PAL[COL_OF[c.key] || "silver"] }; // 写し身＝出撃時にあなたの部隊を写す
+  // 作り手（v2/js/makers.js・v2.s5.maker）：元の7部隊は base:true（リーグの8部隊はこれ。昇降格は depth.2）、新しい17部隊は作り手の色相の深い色
+  const Mk = SCS2.makers;
+  function rivalOf(c, extra) {
+    if (c.mirror || !Array.isArray(c.squad)) return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", mirror: true, squad: null, emb: null, names: null, form: null, arena: null, pal: PAL[COL_OF[c.key] || "silver"], maker: null }; // 写し身＝出撃時にあなたの部隊を写す
     const squad = c.squad.map(resolve), emb = assignEmblems(squad), g = SCS.makeRNG(hashStr(c.key)), used = new Set();
     const names = emb.map((e) => { let n; do n = EMB_NAME[e] + "-" + (1 + g.int(9)); while (used.has(n)); used.add(n); return n; });
-    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", arena: c.arena, pal: PAL[COL_OF[c.key] || "red"] };
-  });
+    const maker = Mk.makerOf(c.key), own = maker && !Mk.MAKER_OF[c.key] && Mk.EXTRA.find((s) => s.maker === maker.key) === c;   // 作り手の最初の部隊（既存の部隊が無い作り手）は明るい色
+    const pal = COL_OF[c.key] ? PAL[COL_OF[c.key]] : palFrom(maker.hue, maker.sat || 88, !own);
+    return { key: c.key, name: c.name, flavor: c.flavor || "", scout: c.scout || "", squad, emb, names, form: c.form || "散開", arena: c.arena, pal, maker, base: !extra };
+  }
+  const RIVALS = (() => {
+    const base = D.SQUAD_CAMPAIGN.filter((c) => !c.mirror && Array.isArray(c.squad)).map((c) => rivalOf(c, false)), extra = Mk.EXTRA.map((c) => rivalOf(c, true)), out = [];
+    for (const m of Mk.MAKERS) for (const r of base.concat(extra)) if (r.maker === m) out.push(r);               // 作り手ごとに並べる（既存→新しい）
+    for (const r of base.concat(extra)) if (!out.includes(r)) out.push(r);
+    const mir = D.SQUAD_CAMPAIGN.find((c) => c.mirror || !Array.isArray(c.squad)); if (mir) out.push(rivalOf(mir, false));
+    return out;
+  })();
 
   // ===== 既定の部隊（初めて開いた時）=====
   const DEFAULT_SQUAD = [
@@ -253,5 +275,5 @@ window.SCS2 = window.SCS2 || {};
     { name: "FROST-4", emb: "frost", choices: D.PRESETS["鉄律の射手"].slice() },
   ];
 
-  SCS2.world = { PAL, YOU,  PLAZA, LAVA, FOREST, CITY, TIDE, SPRING, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, modOf, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
+  SCS2.world = { PAL, YOU, palFrom, PLAZA, LAVA, FOREST, CITY, TIDE, SPRING, ARENAS, arenaFor, EMB, EMB_BASE, EMB_NAME, assignEmblems, wordsOf, WEAPON_ICON, bodyOf, MODS, modOf, FORMS, RIVALS, DEFAULT_SQUAD, hashStr, clamp };
 })();

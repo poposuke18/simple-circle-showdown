@@ -178,18 +178,28 @@
   function recOf(k) { const r = St.data.records[k]; return r ? `${r.w}勝 ${r.l}敗${r.d ? ` ${r.d}分` : ""}` : "初対戦"; }
   function enterPrep() {
     placeSel = -1;
-    $("rvList").innerHTML = Wd.RIVALS.map((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
-      <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm", r.pal)).join("")}</div></div>`).join("");
+    $("rvList").innerHTML = rivalGroups((r, i) => `<div class="rv ${i === rivalI ? "on" : ""}" data-i="${i}"><div class="rv-t">${esc(r.name)}<small>${esc(recOf(r.key))}</small></div><div class="rv-f">${esc(r.flavor)}</div>
+      <div class="rv-tks">${foeOf(r).emb.map((e) => tkHtml("C", e, "tk-sm", r.pal)).join("")}</div></div>`, "rv-mk");
     selectRival(rivalI, true);
+    const on = $("rvList").querySelector(".rv.on"); if (on) on.scrollIntoView({ block: "nearest" });
     $("pForm").innerHTML = formChips();
     renderPlace();
   }
+  // 相手の一覧を作り手ごとにまとめる（v2.s5.ui）：見出し（作り手の名と流儀）→その部隊。写し身は最後
+  function rivalGroups(card, hdCls, list) {
+    const rs = list || Wd.RIVALS; let html = "", last;
+    rs.forEach((r) => { const i = Wd.RIVALS.indexOf(r), m = r.maker;
+      if (m !== last) { last = m; html += m ? `<div class="${hdCls}"><b>${esc(m.name)}</b><small>${esc(m.line)}</small></div>` : `<div class="${hdCls}"><b>写し身</b></div>`; }
+      html += card(r, i); });
+    return html;
+  }
+  const makerLine = (r) => (r.maker ? `作り手 ${esc(r.maker.name)}　──「${esc(r.maker.line)}」` : "");
   const FIC = { 散開: "loose", 戦列: "line", 楔: "wedge", 円陣: "circle" };
   const formChips = () => Wd.FORMS.map((f) => `<span class="chip wchip ${f === St.data.form ? "on" : ""}" data-f="${esc(f)}"><i class="fic fic-${FIC[f] || "loose"}"></i>${esc(f)}</span>`).join("");
   function selectRival(i, keepArena) {
     rivalI = i; const r = Wd.RIVALS[i];
     document.querySelectorAll("#rvList .rv").forEach((x) => x.classList.toggle("on", +x.dataset.i === i));
-    $("rvName").textContent = r.name; $("rvRec").textContent = recOf(r.key); $("rvFlavor").textContent = r.flavor; $("rvScout").textContent = r.scout;
+    $("rvName").textContent = r.name; $("rvRec").textContent = recOf(r.key); $("rvFlavor").textContent = r.flavor; $("rvScout").textContent = r.scout; $("rvMaker").innerHTML = makerLine(r);
     $("rvTokens").innerHTML = foeOf(r).emb.map((e) => tkHtml("C", e, "", r.pal)).join("");
     if (!keepArena || !pArena) pArena = r.mirror ? (pArena || Wd.PLAZA) : Wd.arenaFor(r);
     $("pArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === pArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
@@ -294,8 +304,9 @@
     renderSpec();
   }
   function renderSpec() {
-    const col = (side, sel, other) => SPEC.map((r, i) => `<div class="sp-rv ${i === sel ? "on" : ""} ${i === other ? "off" : ""}" data-s="${side}" data-i="${i}" style="--rc:${r.pal.rimA}"><b>${esc(r.name)}</b><span class="sp-tks">${r.emb.map((e) => tkHtml(side === "A" ? "P" : "C", e, "tk-xs", r.pal)).join("")}</span></div>`).join("");
+    const col = (side, sel, other) => rivalGroups((r) => { const i = SPEC.indexOf(r); return `<div class="sp-rv ${i === sel ? "on" : ""} ${i === other ? "off" : ""}" data-s="${side}" data-i="${i}" style="--rc:${r.pal.rimA}"><b>${esc(r.name)}</b><span class="sp-tks">${r.emb.map((e) => tkHtml(side === "A" ? "P" : "C", e, "tk-xs", r.pal)).join("")}</span></div>`; }, "sp-mk", SPEC);
     $("spA").innerHTML = col("A", specA, specB); $("spB").innerHTML = col("B", specB, specA);
+    for (const id of ["spA", "spB"]) { const on = $(id).querySelector(".sp-rv.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
     $("sArena").innerHTML = Wd.ARENAS.map((a, i) => `<div class="acard ${a === sArena ? "on" : ""}" data-a="${i}"><img src="${a.mini}" alt=""><span>${esc(a.name)}</span></div>`).join("");
   }
   for (const id of ["spA", "spB"]) $(id).addEventListener("click", (e) => { const c = e.target.closest(".sp-rv"); if (!c || c.classList.contains("off")) return; if (c.dataset.s === "A") specA = +c.dataset.i; else specB = +c.dataset.i; renderSpec(); });
@@ -590,8 +601,8 @@
 
   // ===== 記録 =====
   function enterRecords() {
-    $("recTable").innerHTML = `<div class="rec-row h"><span>相手</span><b>勝</b><b>敗</b><b>分</b></div>` + Wd.RIVALS.map((r) => { const x = St.data.records[r.key] || { w: 0, l: 0, d: 0 };
-      return `<div class="rec-row"><span class="n">${esc(r.name)}</span><b>${x.w}</b><b>${x.l}</b><b>${x.d}</b></div>`; }).join("");
+    $("recTable").innerHTML = `<div class="rec-row h"><span>相手</span><b>勝</b><b>敗</b><b>分</b></div>` + rivalGroups((r) => { const x = St.data.records[r.key] || { w: 0, l: 0, d: 0 };
+      return `<div class="rec-row"><span class="n"><i class="tks">${(r.mirror ? St.data.squad.map((f) => tkHtml("C", f.emb, "tk-xs", r.pal)) : r.emb.map((e) => tkHtml("C", e, "tk-xs", r.pal))).join("")}</i>${esc(r.name)}</span><b>${x.w}</b><b>${x.l}</b><b>${x.d}</b></div>`; }, "rec-mk");
   }
 
   // ===== ループ =====

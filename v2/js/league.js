@@ -7,7 +7,7 @@ window.SCS2 = window.SCS2 || {};
   "use strict";
   const W = SCS2.world;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const RIV = W.RIVALS.filter((r) => !r.mirror);
+  const RIV = W.RIVALS.filter((r) => !r.mirror && r.base);                                 // リーグは元の7部隊（作り手の新しい部隊は depth.2 の昇降格で入る・v2.s5.ui）
   const TEAMS = ["you"].concat(RIV.map((r) => r.key));
   const rivalOf = (k) => RIV.find((r) => r.key === k) || null;
 
