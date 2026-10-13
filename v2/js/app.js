@@ -274,8 +274,13 @@
   });
   $("wThink").addEventListener("click", (e) => { if (e.target.id === "wThinkX") { thinkOn = false; $("wThink").classList.remove("show"); } });
   const nameOfRun = (id) => { const v = run && run.views.find((x) => x.id === id); return v ? v.name : id; };
+  function thinkSide(v) {                                                                   // 札が注目の駒に重なるなら反対側へ（右端の駒を札で隠さない・v2.s4.think.open ①）
+    const el = $("wThink"), PX = pxOf(sortieCfg.arena), sx = 500 + (v.x * PX - run.cam.x) * run.cam.z + FW / 2, left = el.classList.contains("left");
+    if (!left && sx > 1456 - 60) el.classList.add("left"); else if (left && sx < 520 + 444 + 60) el.classList.remove("left");
+  }
   function updThink(v) {
     if (!thinkOn || !run) return;
+    thinkSide(v);
     const key = v.id + ":" + run.battle.turn + ":" + (v.alive ? 1 : 0); if (key === thinkKey) return; thinkKey = key;
     $("wThink").innerHTML = SCS2.mind.card(v.alive ? run.mindOf(v) : null, v, run.battle.turn, nameOfRun, tkHtml, sortieCfg.pal[v.team], { close: "wThinkX" });
     $("wThink").classList.add("show");
@@ -488,7 +493,7 @@
         const m = u.mind;                                                                     // 指揮の場面（v2.s4.story.hl）：号令に従った・背いて倒れた
         if (m && m.order === "fallback" && m.obey >= 0.35 && (u.label === "立て直し" || u.label === "退避")) out.push({ t, id: u.id, score: 2.8 + mine, cap: `${name(u)}、号令で退いた`, sub: "『退け』に従って" });
         if (m && m.order === "guard" && m.obey >= 0.5 && u.label === "かばう") out.push({ t, id: u.id, other: u.tgt, score: 4.0 + mine, cap: `${name(u)}、号令で盾になった`, sub: "『守れ』に従って" });
-        if (m && m.order && m.obey < 0.35) { const dead = [t + 1, t + 2].some((k) => snaps[k] && snaps[k].died.includes(u.id)); if (dead) out.push({ t, id: u.id, score: 3.3 + mine, cap: `${name(u)}、号令に背いて倒れた`, sub: "我が道を行った末に" }); }
+        if (m && m.order && m.lead !== "self" && m.obey < 0.35) { const dead = [t + 1, t + 2].some((k) => snaps[k] && snaps[k].died.includes(u.id)); if (dead) out.push({ t, id: u.id, score: 3.3 + mine, cap: `${name(u)}、号令に背いて倒れた`, sub: "我が道を行った末に" }); }
       }
     }
     const last = snaps[snaps.length - 1];
@@ -509,7 +514,7 @@
     if (sortieCfg.league && lgAfter) {                                                        // この試合のあと（v2.s4.story）：体力と士気の変化と、この節の出来事
       const sq = St.data.squad, chg = (w0, w1) => (w0 === w1 ? w1 : `${w0}→<i>${w1}</i>`);
       $("rsAfter").innerHTML = `<h3>この試合のあと</h3><div>` + sq.map((f, i) => { const b = lgAfter.before.units[i], a = lgAfter.after.units[i]; return `<div class="ra-u">${tkHtml("P", f.emb, "tk-xs", Wd.YOU)}<div><b>${esc(f.name)}</b><small>体力 ${chg(Lg.fatWord(b.fat), Lg.fatWord(a.fat))}　士気 ${chg(Lg.morWord(b.mor), Lg.morWord(a.mor))}</small></div></div>`; }).join("")
-        + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${lgAfter.events.some((e) => e.kind === "swap" || e.kind === "trust") ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}まま</p>`}</div>`;
+        + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${lgAfter.events.some((e) => e.kind === "swap" || e.kind === "trust") ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}${Lg.trustWord(lgAfter.after.trust) === "普通" ? "の" : ""}まま</p>`}</div>`;
       $("rsAfter").classList.add("show");
     } else { $("rsAfter").classList.remove("show"); lgAfter = null; }
     $("rsCards").style.gridTemplateColumns = `repeat(${Math.max(1, hls.length)}, 600px)`;

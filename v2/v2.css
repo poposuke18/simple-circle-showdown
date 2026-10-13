@@ -254,6 +254,7 @@ button { font-family: inherit; color: inherit; }
 /* 考えの札（v2.s4.think）：観戦は戦場の右端に重ねる。なぜ？は右の欄の下に */
 .w-think { left: 1456px; top: 20px; width: 444px; max-height: 1040px; padding: 16px 20px 14px; display: none; overflow: hidden; background: rgba(7, 15, 27, .9); }
 .w-think.show { display: block; }
+.w-think.left { left: 520px; }                                                             /* 注目の駒が右端にいる時は札を左へ（v2.s4.think.open ①の直し） */
 .mc-head { display: flex; align-items: center; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid rgba(140,190,255,.2); }
 .mc-head b { font-family: "Russo One", sans-serif; font-size: 26px; font-weight: 400; }
 .mc-head small { margin-left: auto; font-size: 17px; color: var(--dim); font-weight: 700; white-space: nowrap; }
