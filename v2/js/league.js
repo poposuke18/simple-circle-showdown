@@ -123,8 +123,11 @@ window.SCS2 = window.SCS2 || {};
 
   function fresh(season) {
     const table = {}; for (const k of TEAMS) table[k] = { p: 0, w: 0, d: 0, l: 0, pts: 0 };
-    return { season, round: 0, table, log: [], cond: condFresh() };
+    return { season, round: 0, table, log: [], cond: condFresh(), squad: null };
   }
+  // シーズンの部隊（v2.s4.qa.lg.lock）：最初の試合に入った時点のあなたの3体（名前・紋章・性格）をシーズンの間固定する。null＝まだ固定していない
+  const squadOk = (q) => q == null || (Array.isArray(q) && q.length === 3 && q.every((f) => f && typeof f.name === "string" && W.EMB.includes(f.emb) && Array.isArray(f.choices) && f.choices.length === 10 && f.choices.every((v) => v === 0 || v === 1 || v === 2 || v === 3)));
+  function lockSquad(L, squad) { if (L.squad) return false; L.squad = squad.map((f) => ({ name: f.name, emb: f.emb, choices: f.choices.slice() })); return true; }
   const nat = (v) => Number.isInteger(v) && v >= 0;
   const valid = (L) => !!L && Number.isInteger(L.season) && L.season >= 1 && Number.isInteger(L.round) && L.round >= 0 && L.round <= TEAMS.length - 1
     && !!L.table && TEAMS.every((k) => { const t = L.table[k]; return t && nat(t.p) && nat(t.w) && nat(t.d) && nat(t.l) && nat(t.pts); })
@@ -170,5 +173,5 @@ window.SCS2 = window.SCS2 || {};
     if (L.round >= TEAMS.length - 1) return null;
     const m = schedule(L.season)[L.round].find((p) => p.includes("you")); return { home: m[0], away: m[1], foe: rivalOf(m[0] === "you" ? m[1] : m[0]) };
   }
-  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, storyOf, syncYou, fatWord, morWord, trustWord, fitWord };
+  SCS2.league = { TEAMS, ROUNDS: TEAMS.length - 1, rivalOf, schedule, fresh, valid, squadOk, lockSquad, finishRound, standings, nextMatch, simulate, ensureCond, condFor, leaderOf, fitOf, leaderScore, settle, storyOf, syncYou, fatWord, morWord, trustWord, fitWord };
 })();

@@ -213,14 +213,14 @@
   // 並びの相手と戦場：出撃準備なら選んだ相手、リーグなら次の相手（v2.s4.qa.lg.edit.fix）
   function placeFoe() { if (cur === "league") { const L = lgData(), nm = L.round < Lg.ROUNDS ? Lg.nextMatch(L) : null; if (nm) return { choices: nm.foe.squad, arena: Wd.arenaFor(nm.foe) }; } return { choices: foeOf(Wd.RIVALS[rivalI]).choices, arena: pArena || Wd.PLAZA }; }
   function autoOrder() {                                                                    // 既定の並び＝エンジンと同じ（相手に対する間合いの短い順）
-    const { choices, arena } = placeFoe(), sq = St.data.squad;
+    const { choices, arena } = placeFoe(), sq = cur === "league" ? lgSquad(lgData()) : St.data.squad;
     const b = SCS.makeSquadBattle3(sq.map((f) => f.choices.slice()), choices.map((c) => c.slice()), 1, arena.name, "通常", "散開", "散開");
     return b.teams.P.slice().sort((p, q) => p.winDist - q.winDist).map((u) => u.idx);
   }
   const curOrder = () => St.data.order || autoOrder();
   function renderPlace() {
     const box = $(cur === "league" ? "lgPlace" : "pPlace"); if (!box) return;
-    const xy = SLOT_XY[St.data.form] || SLOT_XY["散開"], ord = curOrder(), sq = St.data.squad, U = 52, cx0 = 128, cy0 = 84;
+    const xy = SLOT_XY[St.data.form] || SLOT_XY["散開"], ord = curOrder(), sq = cur === "league" ? lgSquad(lgData()) : St.data.squad, U = 52, cx0 = 128, cy0 = 84;
     box.innerHTML = `<i class="pl-foe"></i>` + ord.map((si, rank) => { const [x, y] = xy[rank], f = sq[si];
       return `<button class="pl-slot ${placeSel === rank ? "sel" : ""}" data-r="${rank}" title="${esc(f.name)}" style="left:${cx0 + x * U - 29}px;top:${cy0 + y * U - 29}px">${tkHtml("P", f.emb, "tk-sm")}</button>`; }).join("");
   }
@@ -321,12 +321,13 @@
 
   // ===== リーグ：あなた＋ライバル7部隊の総当たり7節（v2.k5.league）=====
   const Lg = SCS2.league;
-  const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } if (Lg.syncYou(L, St.data.squad.map((f) => f.choices))) St.save(); return L; };
+  const lgSquad = (L) => L.squad || St.data.squad;                                        // シーズンの部隊（最初の試合で固定・v2.s4.qa.lg.lock）。固定前は今の部隊
+  const lgData = () => { let L = St.data.league; if (!Lg.valid(L)) { L = St.data.league = Lg.fresh(1); St.save(); } if (!Lg.squadOk(L.squad)) L.squad = null; if (Lg.syncYou(L, lgSquad(L).map((f) => f.choices))) St.save(); return L; };
   const lgName = (k) => (k === "you" ? "あなたの部隊" : Lg.rivalOf(k).name);
-  const lgToks = (k) => (k === "you" ? St.data.squad.map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
+  const lgToks = (k) => (k === "you" ? lgSquad(lgData()).map((f) => tkHtml("P", f.emb, "tk-xs", Wd.YOU)) : Lg.rivalOf(k).emb.map((e) => tkHtml("C", e, "tk-xs", Lg.rivalOf(k).pal))).join("");
   // 連戦の状態（v2.s4.cond.ui）：各駒の体力と士気の棒と言葉、★隊長、隊長への信頼
   function lgCond(L, k) {
-    const you = k === "you", sq = you ? St.data.squad : Lg.rivalOf(k), choices = you ? sq.map((f) => f.choices) : sq.squad, names = you ? sq.map((f) => f.name) : sq.names, embs = you ? sq.map((f) => f.emb) : sq.emb, pal = you ? Wd.YOU : sq.pal;
+    const you = k === "you", sq = you ? lgSquad(L) : Lg.rivalOf(k), choices = you ? sq.map((f) => f.choices) : sq.squad, names = you ? sq.map((f) => f.name) : sq.names, embs = you ? sq.map((f) => f.emb) : sq.emb, pal = you ? Wd.YOU : sq.pal;
     const c = Lg.ensureCond(L)[k], lead = Lg.leaderOf(choices, c), fit = Lg.fitOf(choices, lead), ev = c.log && c.log.length ? c.log[c.log.length - 1] : null;
     return `<div class="lg-cond"><div class="lg-cond-h"><span>${esc(you ? "あなたの部隊" : sq.name)}</span><small>隊長 ${esc(names[lead])}・信頼は${Lg.trustWord(c.trust)}</small></div>`
       + (ev ? `<div class="lg-ev">第${ev.round + 1}節　${esc(ev.text)}</div>` : "")
@@ -340,6 +341,7 @@
   }
   function enterLeague() {
     const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L); placeSel = -1; $("lgSide").scrollTop = 0;   // 戻って来た時に上から（v2.s4.qa.lg.scroll）
+    $("lgSquad").style.display = L.squad && !done ? "none" : "";                              // シーズンの部隊は最初の試合で固定＝性格の画面へは行けない（v2.s4.qa.lg.lock）
     $("lgSeason").textContent = `シーズン ${L.season}`;
     $("lgTable").innerHTML = `<div class="lg-row h"><span>順位</span><span>部隊</span><b>試合</b><b>勝</b><b>分</b><b>敗</b><b>勝点</b></div>`
       + order.map((k, i) => { const t = L.table[k]; return `<div class="lg-row ${k === "you" ? "me" : ""}"><span class="rk">${i + 1}</span><span class="nm"><i class="tks">${lgToks(k)}</i>${esc(lgName(k))}</span><b>${t.p}</b><b>${t.w}</b><b>${t.d}</b><b>${t.l}</b><b class="pt">${t.pts}</b></div>`; }).join("");
@@ -421,7 +423,9 @@
   $("lgGo").addEventListener("click", () => {
     const L = lgData();
     if (L.round >= Lg.ROUNDS) { St.data.league = Lg.fresh(L.season + 1); St.save(); enterLeague(); return; }
-    const foe = Lg.nextMatch(L).foe, sq = St.data.squad;
+    const foe = Lg.nextMatch(L).foe;
+    if (Lg.lockSquad(L, St.data.squad)) St.save();                                            // 最初の試合でシーズンの部隊を固定（v2.s4.qa.lg.lock）
+    const sq = lgSquad(L);
     if (!L.pending || L.pending.round !== L.round) { L.pending = { round: L.round, seed: newSeed() }; St.save(); }   // この節の戦いの種（決着まで保つ）
     sortieCfg = { league: true, mine: { choices: sq.map((f) => f.choices.slice()), emb: sq.map((f) => f.emb), names: sq.map((f) => f.name) }, foe: { choices: foe.squad.map((c) => c.slice()), emb: foe.emb, names: uniqNames(sq.map((f) => f.name), foe.names) },
       seed: L.pending.seed, arena: Wd.arenaFor(foe), mod: Wd.modOf(Wd.arenaFor(foe)), formP: St.data.form, formC: foe.form, rival: foe, orderP: St.data.order ? St.data.order.slice() : null, pal: { P: Wd.YOU, C: foe.pal },
@@ -523,7 +527,7 @@
     else { $("rsBanner").style.cssText = ""; $("rsVerdict").textContent = `${an.plr.verdict}　（${run.battle.turn} ターン・VS ${sortieCfg.rival.name}）`; }
     hls = findHighlights(run.snaps);
     if (sortieCfg.league && lgAfter) {                                                        // この試合のあと（v2.s4.story）：体力と士気の変化と、この節の出来事
-      const sq = St.data.squad, chg = (w0, w1) => (w0 === w1 ? w1 : `${w0}→<i>${w1}</i>`);
+      const sq = lgSquad(lgData()), chg = (w0, w1) => (w0 === w1 ? w1 : `${w0}→<i>${w1}</i>`);
       $("rsAfter").innerHTML = `<h3>この試合のあと</h3><div>` + sq.map((f, i) => { const b = lgAfter.before.units[i], a = lgAfter.after.units[i]; return `<div class="ra-u">${tkHtml("P", f.emb, "tk-xs", Wd.YOU)}<div><b>${esc(f.name)}</b><small>体力 ${chg(Lg.fatWord(b.fat), Lg.fatWord(a.fat))}　士気 ${chg(Lg.morWord(b.mor), Lg.morWord(a.mor))}</small></div></div>`; }).join("")
         + `</div><div class="ra-ev">${lgAfter.events.length ? lgAfter.events.map((e) => `<p>${esc(e.text)}</p>`).join("") : `<p class="none">目立った出来事はなかった</p>`}${lgAfter.events.some((e) => e.kind === "swap" || e.kind === "trust") ? "" : `<p class="none">隊長への信頼は${Lg.trustWord(lgAfter.after.trust)}${Lg.trustWord(lgAfter.after.trust) === "普通" ? "の" : ""}まま</p>`}</div>`;
       $("rsAfter").classList.add("show");
@@ -545,6 +549,7 @@
       return { h, z, cx, cy, rp: SCS2.insight.makeReplay(run.snaps, h.t - 2, h.t + 1, h.t) };
     });
     $("rsAgain").textContent = sortieCfg.league ? "リーグへ" : "もう一度";
+    $("rsSquad").style.display = sortieCfg.league ? "none" : "";                              // シーズン中は性格を変えられない（v2.s4.qa.lg.lock）
     Au.result(r);                                                                           // ジングル→終わったら準備の曲（depth.7.play ①）
     resClock = 0; go("result"); drawCards();
   }
