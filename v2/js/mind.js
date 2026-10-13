@@ -64,9 +64,10 @@ window.SCS2 = window.SCS2 || {};
     if (m.reload) out.push("装填中"); else if (m.ammo <= 0) out.push("弾切れ");
     if (m.fat >= 0.55) out.push("消耗が激しい"); else if (m.fat >= 0.35) out.push("疲れが残る");                 // 連戦の状態（v2.s4.cond）
     if (m.mor >= 0.4) out.push("士気が高い"); else if (m.mor <= -0.4) out.push("士気が低い");
+    if (m.unwilling) out.push("方針に気が乗らない");                                          // 隊長の作戦との相性（v2.s6.willing）
     const OW = { fallback: "退け", guard: "守れ", focus: "集中", charge: "突っ込め", hold: "固まれ" };
     if (m.lead === "self") out.push(m.order && m.order.startsWith("give:") ? `隊長・号令「${OW[m.order.slice(5)] || ""}」` : "隊長"); else if (m.lead === "fell") out.push("隊長を失った");
-    else if (m.order) out.push(m.obey >= 0.35 ? `号令に従う（${OW[m.order] || m.order}）` : "号令を無視");
+    else if (m.order && !m.unwilling) out.push(m.obey >= 0.35 ? `号令に従う（${OW[m.order] || m.order}）` : "号令を無視");   // 気が乗らない駒は号令を聞き流す（上の札で言っている）
     return out.slice(0, 5);
   }
   function eyes(m, nameOf) {

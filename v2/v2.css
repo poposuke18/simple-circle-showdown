@@ -218,6 +218,14 @@ button { font-family: inherit; color: inherit; }
 .acard { border: 2px solid rgba(140,190,255,.35); border-radius: 12px; overflow: hidden; background: rgba(10,22,38,.9); cursor: pointer; transition: transform .14s, box-shadow .14s, border-color .14s; }
 .acard img { display: block; width: 100%; height: 90px; object-fit: cover; filter: saturate(.9) brightness(.85); transition: filter .14s; }
 .acard span { display: block; text-align: center; font-size: 21px; font-weight: 700; padding: 7px 0 8px; }
+.pr-arena .acards { grid-template-columns: repeat(6, 1fr); gap: 10px; }   /* 出撃準備は6枚を1列（作戦の行を入れる分・v2.s6.ui） */
+.pr-arena .acard img { height: 60px; }
+.pr-arena .acard span { font-size: 15px; padding: 4px 0 5px; white-space: nowrap; }
+.pr-plan, .pr-form { margin-top: 10px; }
+.pr-form .chip { height: 48px; }
+.pr-detail .rv-tokens .tk { width: 76px; height: 76px; border-width: 8px; }
+.pr-detail .rv-tokens { margin-top: 10px; gap: 18px; }
+.pr-detail .rv-scout { margin-top: 8px; font-size: 20px; line-height: 1.5; }
 .acard:hover { transform: translateY(-2px); border-color: #8fe6ff; }
 .acard.on { border-color: #8fe6ff; box-shadow: 0 0 20px rgba(95,210,255,.55); }
 .acard.on img { filter: none; }
@@ -229,6 +237,19 @@ button { font-family: inherit; color: inherit; }
 .fic-line { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='4' r='3'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Ccircle cx='12' cy='20' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='4' r='3'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Ccircle cx='12' cy='20' r='3'/%3E%3C/svg%3E"); }
 .fic-wedge { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='19' cy='12' r='3'/%3E%3Ccircle cx='7' cy='5' r='3'/%3E%3Ccircle cx='7' cy='19' r='3'/%3E%3C/svg%3E"); }
 .fic-circle { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='15' cy='6' r='3'/%3E%3Ccircle cx='15' cy='18' r='3'/%3E%3Ccircle cx='5' cy='12' r='3'/%3E%3C/svg%3E"); }
+
+/* 作戦（v2.s6.ui）：隊長・指揮の型・方針のチップ（選べない物は薄い）・隊長の台詞・隊員の気乗り */
+.pr-plan { align-items: start; } .pr-plan .pr-lbl { padding-top: 8px; }
+.plan { display: grid; gap: 6px; }
+.pl-lead { display: flex; align-items: center; gap: 12px; font-size: 22px; }
+.pl-lead b { font-size: 24px; font-weight: 900; } .pl-lead small { color: #9fdcff; font-weight: 700; font-size: 20px; }
+.pchips .chip { height: 40px; padding: 0 15px; font-size: 18px; }
+.chip.off { opacity: .3; cursor: default; }
+.pl-say { font-size: 20px; color: #ffe9b0; font-style: italic; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+.pl-will { display: inline-flex; gap: 14px; font-size: 17px; color: #cfdcef; font-style: normal; }
+.pl-will span { white-space: nowrap; } .pl-will i { font-style: normal; font-weight: 700; margin-left: 6px; }
+.pl-will i.w0 { color: #ff9a9a; } .pl-will i.w1 { color: #e8d8a0; } .pl-will i.w2 { color: #9fe0b0; }
+.lg-side .plan { margin-bottom: 12px; }
 
 /* 隊形と配置（敵は右）。駒を2つ順に押すと入れ替わる */
 .pr-form { grid-template-columns: 110px 300px 1fr; align-items: center; }
