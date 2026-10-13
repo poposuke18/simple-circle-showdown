@@ -41,6 +41,16 @@ button { font-family: inherit; color: inherit; }
   filter: drop-shadow(0 4px 0 #3a4b66) drop-shadow(0 10px 22px rgba(0, 0, 0, .8)) drop-shadow(0 0 30px rgba(90, 170, 255, .45)); }
 .t-menu { position: absolute; left: 50%; top: 420px; transform: translateX(-50%); display: grid; gap: 14px; width: 520px; }
 .mbtn { height: 76px; border-radius: 14px; border: 2px solid var(--line2); background: rgba(10, 26, 46, .82); font-size: 32px; font-weight: 700; letter-spacing: 4px; display: flex; align-items: center; gap: 26px; padding: 0 44px; cursor: pointer; }
+.t-vol { position: absolute; right: 44px; bottom: 36px; display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px 0 10px; border-radius: 27px; border: 1.5px solid rgba(140, 190, 255, .45); background: rgba(10, 26, 46, .82); }   /* 音量（depth.7.play ⑤） */
+.t-vol .vmute { width: 40px; height: 40px; border: 0; background: none; cursor: pointer; display: grid; place-items: center; color: #cfe9ff; }
+.t-vol svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.t-vol svg .vsp { fill: currentColor; }
+.t-vol svg .vx { display: none; }
+.t-vol.mute svg .vw1, .t-vol.mute svg .vw2 { display: none; }
+.t-vol.mute svg .vx { display: block; }
+.t-vol input[type="range"] { -webkit-appearance: none; appearance: none; width: 180px; height: 6px; border-radius: 3px; background: rgba(140, 190, 255, .35); outline: none; cursor: pointer; }
+.t-vol input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #8fe6ff; border: 2px solid #0a1a2e; box-shadow: 0 0 10px rgba(95, 210, 255, .6); }
+.t-vol input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #8fe6ff; border: 2px solid #0a1a2e; }
 .mbtn.hot, .mbtn:hover { border-color: #8fe6ff; box-shadow: 0 0 24px rgba(95, 210, 255, .5), inset 0 0 16px rgba(95, 210, 255, .18); }
 .ic { width: 40px; height: 40px; display: inline-block; background: currentColor; -webkit-mask: center/contain no-repeat; mask: center/contain no-repeat; color: #9fdcff; }
 .ic-go { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 3l15 9-15 9z'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 3l15 9-15 9z'/%3E%3C/svg%3E"); }

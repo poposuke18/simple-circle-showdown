@@ -3,7 +3,7 @@
  * プレーヤーが触れるのは人格10軸の言葉・名前・相手・戦況・隊形だけ。挙動24（小カテゴリ）は出さない（v2.hidden）。 */
 (function () {
   "use strict";
-  const D = SCS.DATA, Wd = SCS2.world, St = SCS2.store, Bd = SCS2.board;
+  const D = SCS.DATA, Wd = SCS2.world, St = SCS2.store, Bd = SCS2.board, Au = SCS2.audio;
   const W = 1920, H = 1080;
   const pxOf = (arena) => W / arena.w;
   const $ = (id) => document.getElementById(id);
@@ -38,10 +38,16 @@
     if (name === "squad" && cur !== "edit" && cur !== "squad") squadBack = cur === "league" || (cur === "result" && sortieCfg && sortieCfg.league) ? "league" : "prep";
     if (cur === "edit") St.save();
     cur = name; navLock = performance.now() + 350;
+    Au.screen(name, name === "watch" && sortieCfg ? sortieCfg.arena.key : null);          // 画面の曲（depth.7.play）
     Object.entries(SC).forEach(([k, id]) => $(id).classList.toggle("on", k === name));
     ({ squad: enterSquad, prep: enterPrep, league: enterLeague, line: enterLine, spec: enterSpec, records: enterRecords, title: enterTitle })[name]?.();
   }
   document.addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { e.preventDefault(); go(b.getAttribute("data-go")); } });
+  // 音量（タイトルの右下・depth.7.play ⑤）
+  const volUi = () => { $("volRange").value = Au.vol; $("tVol").classList.toggle("mute", Au.muted || Au.vol === 0); };
+  $("volRange").addEventListener("input", () => { Au.setVol(+$("volRange").value); volUi(); });
+  $("volMute").addEventListener("click", () => { Au.setMuted(!(Au.muted || Au.vol === 0)); if (!Au.muted && Au.vol === 0) Au.setVol(50); volUi(); });
+  volUi(); Au.screen("title");
 
   // ===== 時計（観戦は一時停止・速度あり）=====
   let real = 0, clock = 0, speed = 1, paused = false;
@@ -523,6 +529,7 @@
       return { h, z, cx, cy, rp: SCS2.insight.makeReplay(run.snaps, h.t - 2, h.t + 1, h.t) };
     });
     $("rsAgain").textContent = sortieCfg.league ? "リーグへ" : "もう一度";
+    Au.result(r);                                                                           // ジングル→終わったら準備の曲（depth.7.play ①）
     resClock = 0; go("result"); drawCards();
   }
   let replays = [], resClock = 0;
