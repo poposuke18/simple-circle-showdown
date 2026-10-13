@@ -370,6 +370,7 @@
   function enterLeague() {
     const L = lgData(), done = L.round >= Lg.ROUNDS, order = Lg.standings(L); placeSel = -1; $("lgSide").scrollTop = 0;   // 戻って来た時に上から（v2.s4.qa.lg.scroll）
     $("lgSquad").style.display = L.squad && !done ? "none" : "";                              // シーズンの部隊は最初の試合で固定＝性格の画面へは行けない（v2.s4.qa.lg.lock）
+    lgResetAt = 0; $("lgReset").textContent = "最初から"; $("lgReset").classList.remove("hot");
     $("lgSeason").textContent = `シーズン ${L.season}`;
     $("lgTable").innerHTML = `<div class="lg-row h"><span>順位</span><span>部隊</span><b>試合</b><b>勝</b><b>分</b><b>敗</b><b>勝点</b></div>`
       + order.map((k, i) => { const t = L.table[k]; return `<div class="lg-row ${k === "you" ? "me" : ""}"><span class="rk">${i + 1}</span><span class="nm"><i class="tks">${lgToks(k)}</i>${esc(lgName(k))}</span><b>${t.p}</b><b>${t.w}</b><b>${t.d}</b><b>${t.l}</b><b class="pt">${t.pts}</b></div>`; }).join("");
@@ -448,6 +449,14 @@
   $("lnFive").addEventListener("click", () => lnStep(5));
   $("lnReset").addEventListener("click", () => { St.data.lineage = Ln.genesis(newSeed(), St.data.squad); St.save(); enterLine(); });
 
+  // リーグを最初から（v2.s4.qa.lg.reset）：2度押しで確定（1度目は4秒だけ「本当に最初から？」）。シーズン1・表0・連戦の状態と部隊の固定を白紙に。相手ごとの記録は残す
+  let lgResetAt = 0;
+  $("lgReset").addEventListener("click", () => {
+    const b = $("lgReset");
+    if (performance.now() - lgResetAt < 4000) { St.data.league = Lg.fresh(1); St.save(); lgResetAt = 0; b.textContent = "最初から"; b.classList.remove("hot"); enterLeague(); return; }
+    lgResetAt = performance.now(); b.textContent = "本当に最初から？"; b.classList.add("hot");
+    setTimeout(() => { if (performance.now() - lgResetAt >= 4000) { b.textContent = "最初から"; b.classList.remove("hot"); } }, 4100);
+  });
   $("lgGo").addEventListener("click", () => {
     const L = lgData();
     if (L.round >= Lg.ROUNDS) { St.data.league = Lg.fresh(L.season + 1); St.save(); enterLeague(); return; }
